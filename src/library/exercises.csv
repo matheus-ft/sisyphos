@@ -1,0 +1,91 @@
+# The exercise library. Ships with the app and is shared by every user.
+#
+# When you create an exercise in the app it is written to your own log repo so
+# it works immediately and offline, and the app opens a pull request adding it
+# here. Your library is therefore this file plus your not-yet-merged additions.
+#
+# Blank cells take defaults: base_lift = none, unilateral = false,
+# load_type = external, default_unit = absolute. Lists use "/" so nothing is quoted.
+#
+# There is no exercise called "deadlift". Sumo and conventional are different
+# movements that compete under one event, so both sit at tier "comp".
+id,name,base_lift,tier,unilateral,load_type,default_unit,primary,secondary,aux
+
+# --- competition ---
+low_bar_squat,Low-Bar Squat,squat,comp,,,,vasti/glute_max,adductor_magnus/erectors_thoracic,rectus_femoris/obliques/rectus_abdominis
+high_bar_squat,High-Bar Squat,squat,comp,,,,vasti/glute_max,adductor_magnus/rectus_femoris,erectors_thoracic/obliques
+bench,Bench Press,bench,comp,,,,pec_lower/triceps_lat_med,front_delts/pec_upper,triceps_long/serratus
+conventional_deadlift,Conventional Deadlift,deadlift,comp,,,,hams_lateral/hams_medial/glute_max,erectors_lumbar/erectors_thoracic,vasti/adductor_magnus/traps_upper/forearm_flexors
+sumo_deadlift,Sumo Deadlift,deadlift,comp,,,,glute_max/adductor_magnus/vasti,hams_medial/erectors_lumbar,glute_med_min/traps_upper/forearm_flexors
+
+# --- squat variations ---
+paused_squat,Paused Squat,squat,high_spec,,,,vasti/glute_max,adductor_magnus/erectors_thoracic,rectus_abdominis/obliques
+tempo_squat,Tempo Squat,squat,high_spec,,,,vasti/glute_max,adductor_magnus/erectors_thoracic,rectus_abdominis
+pin_squat,Pin Squat,squat,high_spec,,,,vasti/glute_max,adductor_magnus/erectors_thoracic,rectus_abdominis
+ssb_squat,Safety-Bar Squat,squat,high_spec,,,,vasti/glute_max,erectors_thoracic/adductor_magnus,rectus_abdominis
+front_squat,Front Squat,squat,low_spec,,,,vasti/rectus_femoris,glute_max/erectors_thoracic,adductor_magnus/rectus_abdominis
+belt_squat,Belt Squat,squat,low_spec,,,,vasti/glute_max,adductor_magnus,rectus_femoris
+hack_squat,Hack Squat,squat,acc,,,,vasti,glute_max/adductor_magnus,rectus_femoris
+leg_press,Leg Press,squat,acc,,,,vasti/glute_max,adductor_magnus,hams_medial
+single_leg_press,Single-Leg Press,squat,acc,true,,,vasti/glute_max,adductor_magnus,hams_medial/glute_med_min
+bulgarian_split_squat,Bulgarian Split Squat,squat,acc,true,,,vasti/glute_max,adductor_magnus/hams_medial,glute_med_min
+walking_lunge,Walking Lunge,squat,acc,true,,,vasti/glute_max,adductor_magnus/hams_medial,glute_med_min
+
+# --- bench variations ---
+cg_bench,Close-Grip Bench Press,bench,high_spec,,,,triceps_lat_med/pec_lower,triceps_long/front_delts,pec_upper/serratus
+spoto_press,Spoto Press,bench,high_spec,,,,pec_lower/triceps_lat_med,front_delts/pec_upper,triceps_long
+larsen_press,Larsen Press,bench,high_spec,,,,pec_lower/triceps_lat_med,front_delts/pec_upper,rectus_abdominis
+pin_press,Pin Press,bench,high_spec,,,,triceps_lat_med/pec_lower,front_delts/triceps_long,pec_upper
+db_bench,Dumbbell Bench Press,bench,low_spec,,,,pec_lower/pec_upper,front_delts/triceps_lat_med,rotator_cuff_ext/serratus
+incline_bench,Incline Bench Press,bench,low_spec,,,,pec_upper/front_delts,triceps_lat_med/pec_lower,triceps_long/serratus
+dip,Dip,bench,acc,,bw_plus,,pec_lower/triceps_lat_med,front_delts/triceps_long,serratus
+overhead_press,Overhead Press,bench,acc,,,,front_delts/triceps_lat_med,side_delts/triceps_long,serratus/rectus_abdominis/traps_upper
+
+# --- deadlift variations ---
+deficit_deadlift,Deficit Deadlift,deadlift,high_spec,,,,hams_lateral/hams_medial/glute_max,erectors_lumbar/vasti,adductor_magnus/traps_upper/forearm_flexors
+block_pull,Block Pull,deadlift,high_spec,,,,glute_max/erectors_lumbar,hams_lateral/hams_medial,traps_upper/forearm_flexors
+paused_deadlift,Paused Deadlift,deadlift,high_spec,,,,hams_lateral/hams_medial/glute_max,erectors_lumbar/erectors_thoracic,vasti/forearm_flexors
+romanian_deadlift,Romanian Deadlift,deadlift,low_spec,,,,hams_lateral/hams_medial,glute_max/erectors_lumbar,adductor_magnus/forearm_flexors
+stiff_leg_deadlift,Stiff-Leg Deadlift,deadlift,high_spec,,,,hams_lateral/hams_medial,glute_max/erectors_lumbar,adductor_magnus
+good_morning,Good Morning,deadlift,acc,,,,hams_lateral/hams_medial/erectors_lumbar,glute_max/erectors_thoracic,adductor_magnus
+hip_thrust,Hip Thrust,deadlift,acc,,,,glute_max,hams_medial/adductor_magnus,rectus_abdominis
+back_extension,Back Extension,deadlift,acc,,bw_plus,,erectors_lumbar,glute_max/hams_medial,erectors_thoracic
+
+# --- leg accessories ---
+leg_extension,Leg Extension,squat,acc,,,,rectus_femoris/vasti,,
+leg_curl_lying,Lying Leg Curl,deadlift,acc,,,,hams_lateral/hams_medial,gastroc,
+leg_curl_seated,Seated Leg Curl,deadlift,acc,,,,hams_medial/hams_lateral,gastroc,
+nordic_curl,Nordic Curl,deadlift,acc,,bw_plus,,hams_lateral/hams_medial,glute_max,gastroc
+adductor_machine,Adductor Machine,squat,acc,,,pins,adductors_short/adductor_magnus,,
+abductor_machine,Abductor Machine,squat,acc,,,pins,glute_med_min,glute_max,
+calf_raise_standing,Standing Calf Raise,,acc,,,,gastroc,soleus,
+calf_raise_seated,Seated Calf Raise,,acc,,,,soleus,gastroc,
+
+# --- back and pulling ---
+pullup,Pull-Up,,acc,,bw_plus,,lats,biceps/teres_major,rear_delts/forearm_flexors/brachialis
+chinup,Chin-Up,,acc,,bw_plus,,lats/biceps,teres_major/brachialis,rear_delts/forearm_flexors
+lat_pulldown,Lat Pulldown,,acc,,,pins,lats,biceps/teres_major,rear_delts/brachialis
+barbell_row,Barbell Row,deadlift,acc,,,,lats/traps_mid_low,rhomboids/rear_delts,biceps/erectors_lumbar/forearm_flexors
+pendlay_row,Pendlay Row,deadlift,acc,,,,lats/traps_mid_low,rhomboids/rear_delts,biceps/erectors_thoracic
+chest_supported_row,Chest-Supported Row,,acc,,,,traps_mid_low/rhomboids,lats/rear_delts,biceps/brachialis
+seated_cable_row,Seated Cable Row,,acc,,,pins,lats/traps_mid_low,rhomboids/rear_delts,biceps/brachialis
+single_arm_db_row,Single-Arm Dumbbell Row,,acc,true,,,lats,traps_mid_low/rhomboids,biceps/rear_delts/forearm_flexors
+face_pull,Face Pull,,acc,,,pins,rear_delts/traps_mid_low,rhomboids/rotator_cuff_ext,
+shrug,Shrug,deadlift,acc,,,,traps_upper,traps_mid_low,forearm_flexors
+
+# --- shoulders and arms ---
+lateral_raise,Lateral Raise,,acc,,,,side_delts,front_delts,traps_upper
+rear_delt_fly,Rear Delt Fly,,acc,,,,rear_delts,rhomboids/traps_mid_low,
+triceps_pushdown,Triceps Pushdown,bench,acc,,,pins,triceps_lat_med,triceps_long,
+overhead_triceps_ext,Overhead Triceps Extension,bench,acc,,,,triceps_long,triceps_lat_med,
+skullcrusher,Skullcrusher,bench,acc,,,,triceps_long/triceps_lat_med,,
+barbell_curl,Barbell Curl,,acc,,,,biceps,brachialis,forearm_flexors
+hammer_curl,Hammer Curl,,acc,,,,brachialis/biceps,forearm_flexors,
+cable_fly,Cable Fly,bench,acc,,,pins,pec_lower/pec_upper,front_delts,
+
+# --- trunk ---
+plank,Plank,,acc,,none,,rectus_abdominis/obliques,erectors_lumbar,serratus
+ab_wheel,Ab Wheel,,acc,,bw_plus,,rectus_abdominis,obliques/lats,serratus/hip_flexors
+hanging_leg_raise,Hanging Leg Raise,,acc,,bw_plus,,rectus_abdominis/hip_flexors,obliques,forearm_flexors
+pallof_press,Pallof Press,,acc,,,pins,obliques,rectus_abdominis/ql,
+suitcase_carry,Suitcase Carry,,acc,true,,,obliques/ql,forearm_flexors/traps_upper,erectors_lumbar

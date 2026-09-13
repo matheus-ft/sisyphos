@@ -1,0 +1,98 @@
+# Turns an exercise submission issue into a pull request.
+#
+# Nobody forks anything. A pull request's source branch has to live in this repo
+# or a fork of it, and a submitter has neither — but an issue is something any
+# authenticated user can open, and this runs with the repo's own permissions, so
+# the branch and the PR are created on this side.
+#
+# Validation failures comment on the issue saying what is wrong. Editing the
+# issue re-runs this, so a submitter can fix it in place.
+name: Exercise submission
+
+on:
+  issues:
+    types: [opened, edited, labeled]
+
+permissions:
+  contents: write
+  pull-requests: write
+  issues: write
+
+concurrency:
+  group: exercise-submission-${{ github.event.issue.number }}
+  cancel-in-progress: true
+
+jobs:
+  propose:
+    if: contains(github.event.issue.labels.*.name, 'exercise-submission')
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Validate and stage the row
+        id: add
+        env:
+          ISSUE_BODY: ${{ github.event.issue.body }}
+        run: |
+          if ! row=$(printf '%s' "$ISSUE_BODY" | node scripts/add-exercise.mjs 2>errors.txt); then
+            {
+              echo "problems<<EOF"
+              cat errors.txt
+              echo "EOF"
+            } >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          {
+            echo "row=$row"
+            echo "ok=true"
+          } >> "$GITHUB_OUTPUT"
+
+      - name: Report validation problems
+        if: steps.add.outputs.problems != ''
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PROBLEMS: ${{ steps.add.outputs.problems }}
+        run: |
+          gh issue comment "${{ github.event.issue.number }}" --body "$(printf 'This submission cannot be added yet:\n\n%s\n\nEdit the issue to fix it and I will try again.' "$PROBLEMS")"
+          exit 1
+
+      - name: Check the library still parses
+        if: steps.add.outputs.ok == 'true'
+        run: |
+          npm ci
+          npm test
+
+      - name: Open the pull request
+        if: steps.add.outputs.ok == 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          branch="exercise/${{ github.event.issue.number }}"
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git checkout -b "$branch"
+          git add src/library/exercises.csv
+          git commit -m "Add exercise from #${{ github.event.issue.number }}
+
+          ${{ steps.add.outputs.row }}"
+          git push --force-with-lease origin "$branch"
+
+          url=$(gh pr list --head "$branch" --json url --jq '.[0].url')
+          if [ -z "$url" ]; then
+            url=$(gh pr create \
+              --title "Add exercise: ${{ github.event.issue.title }}" \
+              --body "Closes #${{ github.event.issue.number }}
+
+          Row added to \`src/library/exercises.csv\`:
+
+          \`\`\`
+          ${{ steps.add.outputs.row }}
+          \`\`\`
+
+          Validated by \`scripts/add-exercise.mjs\`: id is unique and snake_case, tier and load type are in range, and every muscle exists in \`src/library/muscles.csv\`." \
+              --head "$branch")
+          fi
+          gh issue comment "${{ github.event.issue.number }}" --body "Validated and proposed: $url"

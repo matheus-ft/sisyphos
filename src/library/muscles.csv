@@ -1,0 +1,38 @@
+id,name,tags
+vasti,Vasti (VL/VM/VI),quads/legs/lower_body
+rectus_femoris,Rectus femoris,quads/legs/lower_body
+hams_lateral,Biceps femoris,hamstrings/posterior_chain/legs/lower_body
+hams_medial,Semitendinosus / semimembranosus,hamstrings/posterior_chain/legs/lower_body
+glute_max,Gluteus maximus,glutes/posterior_chain/hips/legs/lower_body
+glute_med_min,Gluteus medius / minimus,glutes/hips/legs/lower_body
+adductor_magnus,Adductor magnus,adductors/posterior_chain/hips/legs/lower_body
+adductors_short,Adductor longus / brevis / gracilis,adductors/hips/legs/lower_body
+hip_flexors,Iliopsoas / TFL,hips/legs/lower_body
+gastroc,Gastrocnemius,calves/legs/lower_body
+soleus,Soleus,calves/legs/lower_body
+tib_ant,Tibialis anterior,calves/legs/lower_body
+erectors_lumbar,Lumbar erectors,erectors/posterior_chain/core/trunk
+erectors_thoracic,Thoracic erectors,erectors/posterior_chain/back/trunk
+ql,Quadratus lumborum,core/trunk
+rectus_abdominis,Rectus abdominis,core/trunk
+obliques,Internal / external obliques,core/trunk
+lats,Latissimus dorsi,back/upper_body
+teres_major,Teres major,back/upper_body
+traps_upper,Upper trapezius,back/shoulders/upper_body
+traps_mid_low,Mid / lower trapezius,back/upper_body
+rhomboids,Rhomboids,back/upper_body
+rear_delts,Posterior deltoid,shoulders/back/upper_body
+rotator_cuff_ext,Infraspinatus / teres minor,shoulders/upper_body
+subscapularis,Subscapularis,shoulders/upper_body
+serratus,Serratus anterior,back/core/upper_body
+pec_upper,Pectoralis major (clavicular),chest/upper_body
+pec_lower,Pectoralis major (sternal),chest/upper_body
+front_delts,Anterior deltoid,shoulders/upper_body
+side_delts,Lateral deltoid,shoulders/upper_body
+triceps_long,Triceps (long head),arms/upper_body
+triceps_lat_med,Triceps (lateral / medial),arms/upper_body
+biceps,Biceps brachii,arms/upper_body
+brachialis,Brachialis / brachioradialis,arms/upper_body
+forearm_flexors,Forearm flexors / grip,forearms/arms/upper_body
+forearm_extensors,Forearm extensors,forearms/arms/upper_body
+neck,Neck flexors / extensors,neck

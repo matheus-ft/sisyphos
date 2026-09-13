@@ -1,0 +1,50 @@
+# Builds and publishes to GitHub Pages on every push to main.
+#
+# This is what makes the phone work. A service worker only registers in a secure
+# context, so the installed app needs HTTPS — which Pages provides for free.
+# Once deployed: open the URL in Safari, Share, Add to Home Screen. After that it
+# launches from the icon, full screen, and logs with no signal at all.
+name: Deploy
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+# Never interrupt a deploy in flight; queue behind it instead.
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npm run check
+      - run: npm test
+      # Pages serves from /<repo>/, so the bundle needs that base path.
+      - run: npm run build -- --base="/${GITHUB_REPOSITORY#*/}/"
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: dist
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deploy.outputs.page_url }}
+    steps:
+      - id: deploy
+        uses: actions/deploy-pages@v4

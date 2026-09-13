@@ -1,0 +1,71 @@
+name: New exercise
+description: Add an exercise to the shared library
+title: 'exercise: '
+labels: [exercise-submission]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        The app files this for you when you create an exercise. Filling it in by
+        hand works too. A bot validates the row and opens a pull request; if
+        something is wrong it says what, here, and you can edit and it retries.
+  - type: input
+    id: id
+    attributes:
+      label: id
+      description: snake_case, stable forever, referenced by every log that uses it
+      placeholder: pause_squat_3ct
+    validations: { required: true }
+  - type: input
+    id: name
+    attributes: { label: name, placeholder: 3-Count Paused Squat }
+    validations: { required: true }
+  - type: dropdown
+    id: base_lift
+    attributes:
+      label: base_lift
+      description: Which competition event this serves. Volume attributes here and never crosses events.
+      options: [squat, bench, deadlift, none]
+    validations: { required: true }
+  - type: dropdown
+    id: tier
+    attributes:
+      label: tier
+      description: Specificity relative to that event
+      options:
+        - comp
+        - high_spec
+        - low_spec
+        - acc
+    validations: { required: true }
+  - type: dropdown
+    id: unilateral
+    attributes: { label: unilateral, options: ['false', 'true'] }
+    validations: { required: true }
+  - type: dropdown
+    id: load_type
+    attributes:
+      label: load_type
+      description: external = the number on the bar; bw_plus = bodyweight plus the number; none = not weight-driven
+      options: [external, bw_plus, none]
+    validations: { required: true }
+  - type: dropdown
+    id: default_unit
+    attributes:
+      label: default_unit
+      description: A hint for the entry form only. Each set records its own unit.
+      options: [kg, lb, pins]
+    validations: { required: true }
+  - type: input
+    id: primary
+    attributes:
+      label: primary movers
+      description: Muscle ids from src/library/muscles.csv, separated by /
+      placeholder: vasti/glute_max
+    validations: { required: true }
+  - type: input
+    id: secondary
+    attributes: { label: secondary movers, placeholder: adductor_magnus/erectors_thoracic }
+  - type: input
+    id: aux
+    attributes: { label: auxiliary muscles, placeholder: rectus_abdominis }

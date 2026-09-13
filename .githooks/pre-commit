@@ -1,0 +1,20 @@
+#!/bin/sh
+# Formats staged files in place, then re-stages them. Anything Prettier cannot
+# parse (CSV, the license) is skipped by .prettierignore rather than here.
+#
+# Enabled by `npm run hooks:install`, which sets core.hooksPath. Bypass a single
+# commit with `git commit --no-verify`.
+set -e
+
+staged=$(git diff --cached --name-only --diff-filter=ACMR)
+[ -z "$staged" ] && exit 0
+
+formatted=$(printf '%s\n' "$staged" | tr '\n' '\0' \
+  | xargs -0 npx prettier --ignore-unknown --list-different 2>/dev/null || true)
+
+if [ -n "$formatted" ]; then
+  printf '%s\n' "$formatted" | tr '\n' '\0' | xargs -0 npx prettier --write >/dev/null
+  printf '%s\n' "$formatted" | tr '\n' '\0' | xargs -0 git add
+  echo "pre-commit: formatted and re-staged:"
+  printf '  %s\n' $formatted
+fi

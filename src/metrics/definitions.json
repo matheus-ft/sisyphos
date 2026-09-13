@@ -1,0 +1,118 @@
+{
+  "version": 3,
+  "_about": [
+    "Every number the app or a notebook reports is computed from raw logs plus this file.",
+    "Change a value and all history re-reads under the new definition; nothing is backfilled.",
+    "JSON has no comment syntax, so keys beginning with _ are documentation and the loader",
+    "ignores them.",
+    "",
+    "Only genuine choices live here. Anything derivable from the charts is derived, anything",
+    "with one sane value is a constant in the code, and anything the set state already",
+    "determines is not restated as a policy."
+  ],
+
+  "weights": {
+    "_about": [
+      "Two weightings, same idea: how much of a set counts toward something it is not",
+      "entirely about. Both are switchable live in the analysis UI, and both leave the",
+      "discrete breakdown untouched — you can always ask for 6 comp sets, 2 high-spec, 3",
+      "accessory, rather than one weighted total."
+    ],
+
+    "muscle_roles": {
+      "_about": "How much of a set each muscle receives. Every counting scheme people argue about is a different set of these three numbers, so there is no separate mode setting. Applies to per-muscle volume AND per-muscle stress, so the two always agree.",
+      "active": "fractional",
+      "presets": {
+        "fractional": {
+          "_why": "Standard in the hypertrophy literature. Ratios are contested, which is why this is switchable.",
+          "primary": 1.0,
+          "secondary": 0.5,
+          "aux": 0.25
+        },
+        "direct": {
+          "_why": "Only what the exercise is for. The most conservative reading and the easiest to defend.",
+          "primary": 1.0,
+          "secondary": 0.0,
+          "aux": 0.0
+        },
+        "1:1": {
+          "_why": "Every listed muscle gets a full set. Inflates totals but makes no claim about ratios at all.",
+          "primary": 1.0,
+          "secondary": 1.0,
+          "aux": 1.0
+        },
+        "steep": {
+          "_why": "A harsher falloff, for when secondary involvement feels overstated.",
+          "primary": 1.0,
+          "secondary": 0.33,
+          "aux": 0.1
+        }
+      }
+    },
+
+    "tiers": {
+      "_about": "How much of a set counts toward its base lift's event volume. A paused squat is squat work; a leg extension is squat-adjacent work; how much either counts is the question. Same mechanism as muscle roles, different axis.",
+      "active": "graded",
+      "presets": {
+        "graded": {
+          "_why": "Specificity decays rather than cutting off. A sensible default for stress and for set counts.",
+          "comp": 1.0,
+          "high_spec": 0.75,
+          "low_spec": 0.5,
+          "acc": 0.25
+        },
+        "competition": {
+          "_why": "Only the lift and its close variations. The right lens for tonnage, where an accessory kilogram is not a competition kilogram.",
+          "comp": 1.0,
+          "high_spec": 1.0,
+          "low_spec": 0.0,
+          "acc": 0.0
+        },
+        "strict": {
+          "_why": "The competition movement alone.",
+          "comp": 1.0,
+          "high_spec": 0.0,
+          "low_spec": 0.0,
+          "acc": 0.0
+        },
+        "flat": {
+          "_why": "Every set counts the same. Makes no claim about specificity at all.",
+          "comp": 1.0,
+          "high_spec": 1.0,
+          "low_spec": 1.0,
+          "acc": 1.0
+        }
+      }
+    }
+  },
+
+  "warmups": {
+    "_about": "One decision, in one place, rather than repeated inside every metric. Name the metrics that count ramp-up sets.",
+    "counted_in": [],
+    "_options.counted_in": "Any of: volume, tonnage, stress, records. Empty means working sets only, which is the usual reading. ['tonnage'] is the common exception — ramp-up sets are real work and some of it is heavy."
+  },
+
+  "bodyweight": {
+    "_about": "Everything about bodyweight in one place: when it is needed, how stale a hint may be, and what happens when it is missing.",
+    "required_for_load_types": ["bw_plus"],
+    "hint_max_age_days": 7,
+    "_options.hint_max_age_days": "How stale a reading may be and still appear as ghost text. It is never pre-filled at any age — you always type it.",
+    "when_missing": "skip_set_and_warn",
+    "_options.when_missing": {
+      "skip_set_and_warn": "Excluded from load metrics and the session is flagged so you can backfill.",
+      "skip_set": "Excluded silently.",
+      "use_latest_known": "Fall back to the most recent reading at any age. Convenient and quietly wrong."
+    }
+  },
+
+  "tonnage": {
+    "_status": "PROVISIONAL. Revisit once the analysis screens exist and it is clear what tonnage is being read for.",
+    "tier_weights": "competition",
+    "_options.tier_weights": "Which preset from weights.tiers to apply. An accessory kilogram is not a competition kilogram, so this defaults to counting only the lift and its close variations.",
+    "bodyweight_included": true,
+    "_options.bodyweight_included": {
+      "true": "A weighted dip at 80kg bodyweight plus 20kg counts 100kg per rep.",
+      "false": "Only the added 20kg counts. Badly understates bodyweight work."
+    }
+  }
+}
