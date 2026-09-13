@@ -1,4 +1,4 @@
-# Builds and publishes to GitHub Pages on every push to main.
+# Builds and publishes to GitHub Pages on every push to master.
 #
 # This is what makes the phone work. A service worker only registers in a secure
 # context, so the installed app needs HTTPS — which Pages provides for free.
@@ -8,7 +8,7 @@ name: Deploy
 
 on:
   push:
-    branches: [main]
+    branches: [master]
   workflow_dispatch:
 
 permissions:

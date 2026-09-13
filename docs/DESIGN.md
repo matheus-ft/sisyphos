@@ -183,5 +183,5 @@ Logging from the phone has to be reliable and hassle-free, so the Pages workflow
 exists before any UI does. A service worker only registers in a secure context,
 which means HTTPS, which means a real deploy — a LAN address will load the page
 but never install it. `.github/workflows/deploy.yml` publishes on every push to
-main; the manifest uses relative `start_url` and `scope` so the same build works
+master; the manifest uses relative `start_url` and `scope` so the same build works
 at the domain root or under `/<repo>/`.

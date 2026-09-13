@@ -14,7 +14,7 @@ is resolved when you query.
 
 **Status: pre-alpha.** Schema and metric layer are in place; no logging UI yet.
 
-Live at **<https://matheus-ft.github.io/sisyphos/>**, deployed from `main` on
+Live at **<https://matheus-ft.github.io/sisyphos/>**, deployed from `master` on
 every push. On iOS, open it in Safari and use Share → Add to Home Screen; it then
 launches full screen and works with no signal.
 
