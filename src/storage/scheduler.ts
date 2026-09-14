@@ -27,7 +27,13 @@ export interface SchedulerOptions {
   baseBackoffMs?: number;
   maxBackoffMs?: number;
   saveLocal: () => Promise<void>;
-  pushRemote: (reason: PushReason) => Promise<void>;
+  /**
+   * Pushes whatever is outstanding and reports how much still is. The count is
+   * what drives `pushPending` — the scheduler never decides for itself whether
+   * work exists, because a flag it owns can fall out of step with the queue it
+   * describes.
+   */
+  pushRemote: (reason: PushReason) => Promise<{ remaining: number }>;
   /** Called whenever pending state changes, so the UI can show exposure. */
   onStateChange?: (state: SchedulerState) => void;
 }
@@ -35,7 +41,7 @@ export interface SchedulerOptions {
 export interface SchedulerState {
   /** Local changes not yet written to disk. */
   savePending: boolean;
-  /** Saved locally but not yet accepted by the remote. */
+  /** Documents saved locally that the remote has not accepted. Reported by the pusher. */
   pushPending: boolean;
   /** When the oldest unpushed change was made. */
   oldestUnpushedAt: Date | null;
@@ -99,21 +105,27 @@ export class SaveScheduler {
   }
 
   /**
-   * Push now if there is anything to push. Always saves locally first, so an
-   * interrupted push never loses the change it was carrying.
+   * Push now. Always saves locally first, so an interrupted push never loses the
+   * change it was carrying.
+   *
+   * This does not check whether it believes there is work: the pusher owns the
+   * queue and answers that question. Anything written to storage directly — a
+   * deleted session, a weigh-in, a manual record — is outstanding whether or not
+   * this object was told about it, and a flag here that said otherwise would
+   * silently strand it.
    */
   async flush(reason: PushReason): Promise<void> {
     await this.saveNow();
-    if (!this.state.pushPending || this.state.pushing) return;
+    if (this.state.pushing) return;
 
     this.clearPushTimer();
     this.state.pushing = true;
     this.emit();
 
     try {
-      await this.opts.pushRemote(reason);
-      this.state.pushPending = false;
-      this.state.oldestUnpushedAt = null;
+      const { remaining } = await this.opts.pushRemote(reason);
+      this.state.pushPending = remaining > 0;
+      if (remaining === 0) this.state.oldestUnpushedAt = null;
       this.state.failures = 0;
     } catch {
       // Keep the pending flag and the original timestamp: exposure should grow

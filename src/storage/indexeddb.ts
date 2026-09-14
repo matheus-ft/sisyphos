@@ -33,7 +33,7 @@ interface Schema extends DBSchema {
   oneRm: { key: string; value: OneRmEntry & { key: string } };
   manualRecords: { key: string; value: ManualRecord };
   bodyweight: { key: string; value: BodyweightEntry };
-  dirty: { key: string; value: { path: string; changedAt: string } };
+  dirty: { key: string; value: { path: string; changedAt: string; seq: number } };
   meta: { key: string; value: { key: string; value: unknown } };
 }
 
@@ -94,8 +94,13 @@ export class IndexedDbStorage implements StorageAdapter {
 
   async putSession(session: Session): Promise<void> {
     const tx = this.db.transaction(['sessions', 'dirty'], 'readwrite');
-    await tx.objectStore('sessions').put(session);
-    await markDirty(tx, PATHS.session(session));
+    // Both requests are issued before anything is awaited. An IndexedDB
+    // transaction commits as soon as the microtask queue drains without a new
+    // request, so awaiting between two operations can close the transaction
+    // early and silently drop the second — here, a session saved but never
+    // marked for the remote.
+    void tx.objectStore('sessions').put(session);
+    void markDirty(tx, PATHS.session(session));
     await tx.done;
   }
 
@@ -103,8 +108,8 @@ export class IndexedDbStorage implements StorageAdapter {
     const existing = await this.db.get('sessions', id);
     if (!existing) return;
     const tx = this.db.transaction(['sessions', 'dirty'], 'readwrite');
-    await tx.objectStore('sessions').delete(id);
-    await markDirty(tx, PATHS.session(existing));
+    void tx.objectStore('sessions').delete(id);
+    void markDirty(tx, PATHS.session(existing));
     await tx.done;
   }
 
@@ -120,8 +125,8 @@ export class IndexedDbStorage implements StorageAdapter {
 
   async deleteTemplate(id: string): Promise<void> {
     const tx = this.db.transaction(['templates', 'dirty'], 'readwrite');
-    await tx.objectStore('templates').delete(id);
-    await markDirty(tx, PATHS.templates);
+    void tx.objectStore('templates').delete(id);
+    void markDirty(tx, PATHS.templates);
     await tx.done;
   }
 
@@ -185,8 +190,8 @@ export class IndexedDbStorage implements StorageAdapter {
 
   async deleteManualRecord(id: string): Promise<void> {
     const tx = this.db.transaction(['manualRecords', 'dirty'], 'readwrite');
-    await tx.objectStore('manualRecords').delete(id);
-    await markDirty(tx, PATHS.manualRecords);
+    void tx.objectStore('manualRecords').delete(id);
+    void markDirty(tx, PATHS.manualRecords);
     await tx.done;
   }
 
@@ -223,7 +228,7 @@ export class IndexedDbStorage implements StorageAdapter {
   async listDirty(): Promise<Array<{ path: string; body: string }>> {
     const rows = await this.db.getAll('dirty');
     const out: Array<{ path: string; body: string }> = [];
-    for (const { path } of rows.sort((a, b) => a.changedAt.localeCompare(b.changedAt))) {
+    for (const { path } of rows.sort((a, b) => a.seq - b.seq)) {
       out.push({ path, body: await this.serialize(path) });
     }
     return out;
@@ -231,8 +236,8 @@ export class IndexedDbStorage implements StorageAdapter {
 
   async markClean(path: string, remoteSha: string): Promise<void> {
     const tx = this.db.transaction(['dirty', 'meta'], 'readwrite');
-    await tx.objectStore('dirty').delete(path);
-    await tx.objectStore('meta').put({ key: `sha:${path}`, value: remoteSha });
+    void tx.objectStore('dirty').delete(path);
+    void tx.objectStore('meta').put({ key: `sha:${path}`, value: remoteSha });
     await tx.done;
   }
 
@@ -275,8 +280,8 @@ export class IndexedDbStorage implements StorageAdapter {
     K extends 'templates' | 'localExercises' | 'oneRm' | 'manualRecords' | 'bodyweight',
   >(store: K, value: Schema[K]['value'], path: string): Promise<void> {
     const tx = this.db.transaction([store, 'dirty'], 'readwrite');
-    await (tx.objectStore(store) as never as { put(v: unknown): Promise<unknown> }).put(value);
-    await markDirty(tx, path);
+    void (tx.objectStore(store) as never as { put(v: unknown): Promise<unknown> }).put(value);
+    void markDirty(tx, path);
     await tx.done;
   }
 }

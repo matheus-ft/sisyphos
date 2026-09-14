@@ -3,7 +3,7 @@ import { SaveScheduler, type SchedulerOptions } from '../src/storage/scheduler';
 
 function make(overrides: Partial<SchedulerOptions> = {}) {
   const saveLocal = vi.fn(async () => {});
-  const pushRemote = vi.fn(async () => {});
+  const pushRemote = vi.fn(async () => ({ remaining: 0 }));
   const s = new SaveScheduler({ saveLocal, pushRemote, ...overrides });
   return { s, saveLocal, pushRemote };
 }
@@ -66,17 +66,30 @@ describe('remote pushing', () => {
     const order: string[] = [];
     const { s } = make({
       saveLocal: vi.fn(async () => void order.push('save')),
-      pushRemote: vi.fn(async () => void order.push('push')),
+      pushRemote: vi.fn(async () => {
+        order.push('push');
+        return { remaining: 0 };
+      }),
     });
     s.changed();
     await s.flush('session_ended');
     expect(order).toEqual(['save', 'push']);
   });
 
-  it('does not push when nothing changed', async () => {
+  it('asks the pusher even when it believes nothing changed', async () => {
+    // The dirty queue is the authority, not this object's own flag. A session
+    // deleted straight through storage is outstanding whether or not the
+    // scheduler was told, and must not be stranded by a stale boolean.
     const { s, pushRemote } = make();
     await s.flush('launch');
-    expect(pushRemote).not.toHaveBeenCalled();
+    expect(pushRemote).toHaveBeenCalledWith('launch');
+  });
+
+  it('stays pending while the pusher reports work left over', async () => {
+    const { s } = make({ pushRemote: vi.fn(async () => ({ remaining: 2 })) });
+    s.changed();
+    await s.flush('manual');
+    expect(s.getState().pushPending).toBe(true);
   });
 
   it('clears pending state once a push succeeds', async () => {
@@ -134,6 +147,7 @@ describe('failure handling', () => {
     let fail = true;
     const pushRemote = vi.fn(async () => {
       if (fail) throw new Error('offline');
+      return { remaining: 0 };
     });
     const { s } = make({ pushRemote });
     s.changed();

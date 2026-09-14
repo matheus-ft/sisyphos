@@ -26,6 +26,9 @@ export interface SyncAdapter {
     message: string,
   ): Promise<{ sha: string }>;
 
+  /** Removes a document the lifter deleted, so the archive matches the device. */
+  remove?(path: string, baseSha: string, message: string): Promise<void>;
+
   /** Everything under a prefix, for first-run restore onto a new device. */
   list(prefix: string): Promise<Array<{ path: string; sha: string }>>;
 }
