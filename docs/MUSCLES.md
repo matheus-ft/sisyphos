@@ -202,7 +202,7 @@ Muscles:
 
 Joint actions: scapular retraction, elevation, depression and upward rotation.
 
-Exercises: rows, shrugs, Y-raises and rack pulls. Deadlifts load it isometrically. Upper traps are merged in because shrugs are uncommon in powerlifting programming.
+Exercises: rows, shrugs, Y-raises and rack pulls. Deadlifts work it isometrically, though not enough to credit. Upper traps are merged in because shrugs are uncommon in powerlifting programming.
 
 ### 15. Biceps (`biceps`)
 
@@ -235,4 +235,4 @@ Muscles:
 
 Joint actions: wrist and finger flexion, wrist extension, forearm pronation.
 
-Exercises: grip work, farmer's carries, wrist curls and deadlift holds. Deadlifts and rows load the flexors through grip.
+Exercises: grip work, farmer's carries, wrist curls and deadlift holds. Deadlifts and rows tax grip too, though not enough to credit.

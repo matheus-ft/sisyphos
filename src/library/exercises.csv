@@ -38,7 +38,7 @@ larsen_press,Larsen Press,bench,high_spec,,,,pecs,triceps/front_delts
 pin_press,Pin Press,bench,high_spec,,,,pecs,triceps/front_delts
 db_bench,Dumbbell Bench Press,bench,low_spec,,,,pecs,front_delts/triceps
 incline_bench,Incline Bench Press,bench,low_spec,,,,pecs/front_delts,triceps
-dip,Dip,bench,acc,,bw_plus,,pecs/triceps,front_delts
+dips,Dips,bench,acc,,bw_plus,,pecs/triceps,front_delts
 overhead_press,Overhead Press,bench,acc,,,,front_delts/triceps,upper_back/lower_back
 
 # --- deadlift variations ---
@@ -85,8 +85,8 @@ reverse_prayer,Reverse Prayer,,acc,,,pins,lats,triceps/rear_delts
 
 # --- Teres & Rhomboids and mixed ---
 pullover,Pullover,,acc,,,,lats,pecs/triceps
-diag_pulldown,Diagonal Pulldown,,acc,,,,lats,rear_delts/biceps
-lat_pulldown,Lat Pulldown,,acc,,,pins,upper_back,biceps/rear_delts
+diag_pulldown,Diagonal Pulldown,,acc,,,pins,lats,rear_delts/biceps
+lat_pulldown,Lat Pulldown,,acc,,,pins,upper_back,biceps/rear_delts/lats
 single_arm_db_row,Single-Arm Dumbbell Row,,acc,true,,,lats/lower_back,rear_delts/biceps
 
 # --- mid-upper back ---
