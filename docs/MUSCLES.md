@@ -9,7 +9,7 @@ so per-group totals can be summed. There is no finer level underneath and no
 rollup above. A group is fine enough to show an imbalance and coarse enough that
 an exercise can be tagged without guessing at individual heads.
 
-## Rules for crediting exercises
+## Rules and examples for crediting exercises
 
 - **List each group once, at its highest role.** A bench press is `pecs` primary;
   the incline-biased clavicular head does not add a second `pecs` entry.
@@ -71,7 +71,7 @@ Muscles:
 
 Joint actions: hip flexion, plus knee extension (rectus femoris) and knee flexion (sartorius).
 
-Exercises: leg raises, straight leg raises and leg extensions. Rectus femoris sits here instead of in quads on purpose. Squats barely load it, and leg extensions are the main way to train it. Grouping it with the hip flexors lets leg extensions and hip flexion work show up as their own volume. Straight leg raises also load sartorius hard.
+Exercises: knee raises, straight leg raises and leg extensions. Rectus femoris sits here instead of in quads on purpose. Squats barely load it, and leg extensions are the main way to train it. Grouping it with the hip flexors lets leg extensions and hip flexion work show up as their own volume. Straight leg raises also load sartorius hard.
 
 ### 4. Quads (`quads`)
 
@@ -142,7 +142,7 @@ Muscles:
 
 Joint actions: spinal extension, spinal lateral flexion.
 
-Exercises: deadlifts, good mornings and back extensions load it directly. Squats load it isometrically.
+Exercises: deadlifts, good mornings and back extensions.
 
 ### 10. Lats (`lats`)
 
@@ -167,7 +167,7 @@ Joint actions: shoulder horizontal adduction, shoulder flexion, scapular protrac
 
 Exercises: bench press variations, flyes and dips. Both pec major heads are kept together because every bench variation loads both. Incline work shifts some emphasis to the clavicular head but not enough to justify a separate group. Pec minor has no exercise of its own and gets loaded in dips and pressing.
 
-### 12. Front delts (`front_delts`)
+### 12. Front and side delts (`front_delts`)
 
 Muscles:
 
@@ -180,7 +180,7 @@ Joint actions: shoulder flexion, shoulder abduction, scapular upward rotation.
 
 Exercises: overhead presses, lateral raises and front raises. Overhead presses load both delt heads plus serratus. Lateral raises load the lateral delt and supraspinatus, with the anterior delt helping. Because both main exercises hit both heads, they share one group, named for the front delt because that is the head pressing loads. Bench press loads the anterior delt as a secondary.
 
-### 13. Rear delts (`rear_delts`)
+### 13. Rear delts and rotator cuff (`rear_delts`)
 
 Muscles:
 
