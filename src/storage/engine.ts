@@ -90,6 +90,8 @@ export class LogEngine {
    * that eventually sends it.
    */
   async deleteSession(id: string): Promise<void> {
+    // An edit still waiting out the debounce would write the session straight back.
+    this.pending.delete(id);
     await this.opts.storage.deleteSession(id);
     this.scheduler.changed();
   }
@@ -175,20 +177,45 @@ export class LogEngine {
     const c = this.conflicts.find((x) => x.path === path);
     if (!c) return;
     if (keep === 'mine') {
-      await this.opts.sync.push(path, c.mine, c.remoteSha, `${this.describe(path)} (resolved)`);
+      // The report is a snapshot from when the conflict was found. Anything
+      // edited since is part of "mine", so resolve with what the device holds now.
+      const current = (await this.opts.storage.listDirty()).find((d) => d.path === path);
+      const body = current?.body ?? c.mine;
+      const base = c.remoteSha || null;
+      if (body === '') {
+        // Mine is a deletion: remove the remote copy rather than write an empty file.
+        if (base) await this.opts.sync.remove?.(path, base, `remove ${path} (resolved)`);
+        await this.opts.storage.markClean(path, '', current?.version);
+      } else {
+        const { sha } = await this.opts.sync.push(
+          path,
+          body,
+          base,
+          `${this.describe(path)} (resolved)`,
+        );
+        // The remote is at the sha this push produced, not the one it replaced.
+        await this.opts.storage.markClean(path, sha, current?.version);
+      }
+    } else {
+      // Keeping theirs means accepting the remote as the new base; the caller
+      // reloads from it.
+      await this.opts.storage.markClean(path, c.remoteSha);
     }
-    // Keeping theirs means accepting the remote as the new base; the caller
-    // reloads from it. Either way this path is no longer in disagreement.
-    await this.opts.storage.markClean(path, c.remoteSha);
     this.conflicts = this.conflicts.filter((x) => x.path !== path);
   }
 
   // --- the two callbacks the scheduler drives -------------------------------
 
+  /**
+   * A session leaves `pending` only once it is on disk, and only if no newer
+   * edit replaced it while it was being written. A failed write leaves it and
+   * everything after it pending for the retry.
+   */
   private async writePending(): Promise<void> {
-    const batch = [...this.pending.values()];
-    this.pending.clear();
-    for (const s of batch) await this.opts.storage.putSession(s);
+    for (const [id, s] of [...this.pending]) {
+      await this.opts.storage.putSession(s);
+      if (this.pending.get(id) === s) this.pending.delete(id);
+    }
   }
 
   /**
@@ -206,17 +233,17 @@ export class LogEngine {
     const dirty = await this.opts.storage.listDirty();
     let firstError: unknown = null;
 
-    for (const { path, body } of dirty) {
+    for (const { path, body, version } of dirty) {
       try {
         const baseSha = await this.opts.storage.knownSha(path);
         if (body === '') {
           // An emptied document is a deletion: the session was removed here.
           if (baseSha) await this.opts.sync.remove?.(path, baseSha, `remove ${path}`);
-          await this.opts.storage.markClean(path, '');
+          await this.opts.storage.markClean(path, '', version);
           continue;
         }
         const { sha } = await this.opts.sync.push(path, body, baseSha, this.describe(path));
-        await this.opts.storage.markClean(path, sha);
+        await this.opts.storage.markClean(path, sha, version);
       } catch (err) {
         if (err instanceof Conflict) {
           await this.recordConflict(path, body, err);

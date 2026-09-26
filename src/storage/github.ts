@@ -18,6 +18,11 @@ export interface GitHubSyncOptions {
   owner: string;
   repo: string;
   token: string;
+  /**
+   * Leave unset to use the repository's default branch, which is what the
+   * Contents API does when none is named. A repo created elsewhere, or under an
+   * account whose default is not `main`, then works without configuration.
+   */
   branch?: string;
   /** Injectable for tests. */
   fetchImpl?: typeof fetch;
@@ -26,11 +31,11 @@ export interface GitHubSyncOptions {
 const API = 'https://api.github.com';
 
 export class GitHubSync implements SyncAdapter {
-  private readonly branch: string;
+  private readonly branch: string | undefined;
   private readonly http: typeof fetch;
 
   constructor(private readonly opts: GitHubSyncOptions) {
-    this.branch = opts.branch ?? 'main';
+    this.branch = opts.branch;
     this.http = opts.fetchImpl ?? fetch.bind(globalThis);
   }
 
@@ -52,7 +57,8 @@ export class GitHubSync implements SyncAdapter {
   }
 
   private contentsUrl(path: string): string {
-    return `/repos/${this.opts.owner}/${this.opts.repo}/contents/${encodeURI(path)}?ref=${this.branch}`;
+    const ref = this.branch ? `?ref=${encodeURIComponent(this.branch)}` : '';
+    return `/repos/${this.opts.owner}/${this.opts.repo}/contents/${encodeURI(path)}${ref}`;
   }
 
   /**
@@ -107,7 +113,7 @@ export class GitHubSync implements SyncAdapter {
         body: JSON.stringify({
           message,
           content: encodeBase64(body),
-          branch: this.branch,
+          ...(this.branch ? { branch: this.branch } : {}),
           ...(baseSha ? { sha: baseSha } : {}),
         }),
       },
@@ -129,7 +135,11 @@ export class GitHubSync implements SyncAdapter {
       `/repos/${this.opts.owner}/${this.opts.repo}/contents/${encodeURI(path)}`,
       {
         method: 'DELETE',
-        body: JSON.stringify({ message, sha: baseSha, branch: this.branch }),
+        body: JSON.stringify({
+          message,
+          sha: baseSha,
+          ...(this.branch ? { branch: this.branch } : {}),
+        }),
       },
     );
     if (res.status === 409 || res.status === 422) throw new Conflict(path, '');

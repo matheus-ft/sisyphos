@@ -34,6 +34,38 @@ describe('local saving', () => {
     await s.saveNow();
     expect(saveLocal).not.toHaveBeenCalled();
   });
+
+  it('keeps a change made while the previous one was being written', async () => {
+    let finish: () => void = () => {};
+    const saveLocal = vi.fn(() => new Promise<void>((r) => (finish = r)));
+    const { s } = make({ saveLocal });
+    s.changed();
+    const writing = s.saveNow();
+    s.changed(); // typed during the write
+    finish();
+    await writing;
+    // That write did not contain the second change, so it is still pending...
+    expect(s.getState().savePending).toBe(true);
+    // ...and the debounce it armed writes it.
+    const second = vi.advanceTimersByTimeAsync(1000);
+    finish();
+    await second;
+    expect(saveLocal).toHaveBeenCalledTimes(2);
+  });
+
+  it('keeps a change whose write failed, and tries again', async () => {
+    const saveLocal = vi
+      .fn()
+      .mockRejectedValueOnce(new Error('quota'))
+      .mockResolvedValue(undefined);
+    const { s } = make({ saveLocal });
+    s.changed();
+    await expect(s.saveNow()).rejects.toThrow('quota');
+    expect(s.getState().savePending).toBe(true);
+    await vi.advanceTimersByTimeAsync(1000);
+    expect(saveLocal).toHaveBeenCalledTimes(2);
+    expect(s.getState().savePending).toBe(false);
+  });
 });
 
 describe('remote pushing', () => {

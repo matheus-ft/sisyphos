@@ -1,4 +1,4 @@
-import { openDB, type DBSchema, type IDBPDatabase } from 'idb';
+import { openDB, unwrap, type DBSchema, type IDBPDatabase } from 'idb';
 import type {
   BodyweightEntry,
   Exercise,
@@ -12,7 +12,7 @@ import { parseExercises, parseMuscles } from '../library/parse';
 import musclesCsv from '../library/muscles.csv?raw';
 import exercisesCsv from '../library/exercises.csv?raw';
 import type { StorageAdapter } from './StorageAdapter';
-import { PATHS } from './paths';
+import { PATHS, isSessionPath } from './paths';
 
 /**
  * The on-device store.
@@ -24,6 +24,12 @@ import { PATHS } from './paths';
  * Every write also stamps the document's path into `dirty`, which is the only
  * thing the sync layer reads. Marking a document dirty in the same transaction
  * as the write means a change can never be saved but forgotten.
+ *
+ * Nothing awaits inside a transaction. A transaction commits as soon as the
+ * microtask queue drains without a new request, so awaiting between two
+ * operations can close it early and silently drop the second. A write that
+ * depends on a read is issued from the read's success event instead, where the
+ * transaction is guaranteed to still be open.
  */
 
 interface Schema extends DBSchema {
@@ -33,7 +39,7 @@ interface Schema extends DBSchema {
   oneRm: { key: string; value: OneRmEntry & { key: string } };
   manualRecords: { key: string; value: ManualRecord };
   bodyweight: { key: string; value: BodyweightEntry };
-  dirty: { key: string; value: { path: string; changedAt: string; seq: number } };
+  dirty: { key: string; value: DirtyRow };
   meta: { key: string; value: { key: string; value: unknown } };
 }
 
@@ -94,13 +100,18 @@ export class IndexedDbStorage implements StorageAdapter {
 
   async putSession(session: Session): Promise<void> {
     const tx = this.db.transaction(['sessions', 'dirty'], 'readwrite');
-    // Both requests are issued before anything is awaited. An IndexedDB
-    // transaction commits as soon as the microtask queue drains without a new
-    // request, so awaiting between two operations can close the transaction
-    // early and silently drop the second — here, a session saved but never
-    // marked for the remote.
-    void tx.objectStore('sessions').put(session);
-    void markDirty(tx, PATHS.session(session));
+    const raw = unwrap(tx);
+    const path = PATHS.session(session);
+    // The path carries the date, so a changed date moves the file. The old path
+    // is marked too; it no longer serialises to anything, so the pusher removes
+    // it instead of leaving a second copy on the remote. It is marked after the
+    // new path, so the new file is pushed before the old one goes. Requests run
+    // in order, so this read sees the session as it was before the put below.
+    onResult<Session | undefined>(raw.objectStore('sessions').get(session.id), (before) => {
+      if (before && PATHS.session(before) !== path) markDirty(raw, PATHS.session(before));
+    });
+    raw.objectStore('sessions').put(session);
+    markDirty(raw, path);
     await tx.done;
   }
 
@@ -108,8 +119,9 @@ export class IndexedDbStorage implements StorageAdapter {
     const existing = await this.db.get('sessions', id);
     if (!existing) return;
     const tx = this.db.transaction(['sessions', 'dirty'], 'readwrite');
-    void tx.objectStore('sessions').delete(id);
-    void markDirty(tx, PATHS.session(existing));
+    const raw = unwrap(tx);
+    raw.objectStore('sessions').delete(id);
+    markDirty(raw, PATHS.session(existing));
     await tx.done;
   }
 
@@ -125,8 +137,9 @@ export class IndexedDbStorage implements StorageAdapter {
 
   async deleteTemplate(id: string): Promise<void> {
     const tx = this.db.transaction(['templates', 'dirty'], 'readwrite');
-    void tx.objectStore('templates').delete(id);
-    void markDirty(tx, PATHS.templates);
+    const raw = unwrap(tx);
+    raw.objectStore('templates').delete(id);
+    markDirty(raw, PATHS.templates);
     await tx.done;
   }
 
@@ -190,8 +203,9 @@ export class IndexedDbStorage implements StorageAdapter {
 
   async deleteManualRecord(id: string): Promise<void> {
     const tx = this.db.transaction(['manualRecords', 'dirty'], 'readwrite');
-    void tx.objectStore('manualRecords').delete(id);
-    void markDirty(tx, PATHS.manualRecords);
+    const raw = unwrap(tx);
+    raw.objectStore('manualRecords').delete(id);
+    markDirty(raw, PATHS.manualRecords);
     await tx.done;
   }
 
@@ -225,19 +239,27 @@ export class IndexedDbStorage implements StorageAdapter {
 
   // --- sync bookkeeping ----------------------------------------------------
 
-  async listDirty(): Promise<Array<{ path: string; body: string }>> {
+  async listDirty(): Promise<Array<{ path: string; body: string; version: number }>> {
+    // Rows are read before bodies, so a write in between can only make a body
+    // newer than its version claims. That document is pushed again next time,
+    // which is harmless; the reverse would drop a change.
     const rows = await this.db.getAll('dirty');
-    const out: Array<{ path: string; body: string }> = [];
-    for (const { path } of rows.sort((a, b) => a.seq - b.seq)) {
-      out.push({ path, body: await this.serialize(path) });
+    const out: Array<{ path: string; body: string; version: number }> = [];
+    for (const { path, version } of rows.sort((a, b) => (a.seq ?? 0) - (b.seq ?? 0))) {
+      out.push({ path, body: await this.serialize(path), version: version ?? 0 });
     }
     return out;
   }
 
-  async markClean(path: string, remoteSha: string): Promise<void> {
+  async markClean(path: string, remoteSha: string, version?: number): Promise<void> {
     const tx = this.db.transaction(['dirty', 'meta'], 'readwrite');
-    void tx.objectStore('dirty').delete(path);
-    void tx.objectStore('meta').put({ key: `sha:${path}`, value: remoteSha });
+    const raw = unwrap(tx);
+    // Whatever happens to the dirty mark, the remote is now at this sha.
+    raw.objectStore('meta').put({ key: `sha:${path}`, value: remoteSha });
+    const dirty = raw.objectStore('dirty');
+    onResult<DirtyRow | undefined>(dirty.get(path), (row) => {
+      if (row && (version === undefined || (row.version ?? 0) === version)) dirty.delete(path);
+    });
     await tx.done;
   }
 
@@ -257,14 +279,15 @@ export class IndexedDbStorage implements StorageAdapter {
   // --- serialising a path back to its file ---------------------------------
 
   private async serialize(path: string): Promise<string> {
-    if (path.startsWith('sessions/')) {
+    if (isSessionPath(path)) {
       const id = path
         .split('_')
         .pop()!
         .replace(/\.json$/, '');
       const s = await this.db.get('sessions', id);
-      // A deleted session serialises as empty; the pusher turns that into a delete.
-      return s ? JSON.stringify(s, null, 2) + '\n' : '';
+      // A session that is gone, or has moved to another date, serialises as empty
+      // at this path; the pusher turns that into a delete.
+      return s && PATHS.session(s) === path ? JSON.stringify(s, null, 2) + '\n' : '';
     }
     if (path === PATHS.templates) {
       return JSON.stringify(await this.getTemplates(), null, 2) + '\n';
@@ -280,19 +303,57 @@ export class IndexedDbStorage implements StorageAdapter {
     K extends 'templates' | 'localExercises' | 'oneRm' | 'manualRecords' | 'bodyweight',
   >(store: K, value: Schema[K]['value'], path: string): Promise<void> {
     const tx = this.db.transaction([store, 'dirty'], 'readwrite');
-    void (tx.objectStore(store) as never as { put(v: unknown): Promise<unknown> }).put(value);
-    void markDirty(tx, path);
+    const raw = unwrap(tx);
+    raw.objectStore(store).put(value);
+    markDirty(raw, path);
     await tx.done;
   }
 }
 
-async function markDirty(
-  tx: {
-    objectStore(name: 'dirty'): { put(v: { path: string; changedAt: string }): Promise<unknown> };
-  },
-  path: string,
-): Promise<void> {
-  await tx.objectStore('dirty').put({ path, changedAt: new Date().toISOString() });
+/**
+ * One document waiting for the remote.
+ *
+ * `seq` and `changedAt` belong to the first unpushed change and survive later
+ * writes: push order is oldest change first, and exposure ages from when the
+ * device first held something the remote did not. `version` belongs to the
+ * latest write, so markClean can tell whether a push carried it.
+ */
+interface DirtyRow {
+  path: string;
+  changedAt: string;
+  seq: number;
+  version: number;
+}
+
+let lastSeq = 0;
+
+/**
+ * Increasing across reloads because it starts from the clock, and within one
+ * millisecond because it never repeats: documents written in the same
+ * millisecond still get a definite order.
+ */
+function nextSeq(): number {
+  lastSeq = Math.max(lastSeq + 1, Date.now() * 1000);
+  return lastSeq;
+}
+
+/** Runs `then` in the request's success event, while its transaction is still open. */
+function onResult<T>(req: IDBRequest, then: (value: T) => void): void {
+  req.addEventListener('success', () => then(req.result as T));
+}
+
+function markDirty(tx: IDBTransaction, path: string): void {
+  const dirty = tx.objectStore('dirty');
+  const seq = nextSeq();
+  const now = new Date().toISOString();
+  onResult<DirtyRow | undefined>(dirty.get(path), (before) => {
+    dirty.put({
+      path,
+      changedAt: before?.changedAt ?? now,
+      seq: before?.seq ?? seq,
+      version: seq,
+    } satisfies DirtyRow);
+  });
 }
 
 // --- CSV writers: the mirror of library/parse.ts ---------------------------

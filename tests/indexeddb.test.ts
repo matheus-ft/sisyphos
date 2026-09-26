@@ -1,5 +1,5 @@
 import 'fake-indexeddb/auto';
-import { describe, it, expect, beforeEach } from 'vitest';
+import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { IndexedDbStorage } from '../src/storage/indexeddb';
 import { PATHS } from '../src/storage/paths';
 import type { Session, Exercise } from '../src/model';
@@ -106,7 +106,7 @@ describe('dirty tracking', () => {
     await store.markClean(PATHS.session(s), 'sha1');
     await store.deleteSession(s.id);
     const dirty = await store.listDirty();
-    expect(dirty).toEqual([{ path: PATHS.session(s), body: '' }]);
+    expect(dirty).toEqual([{ path: PATHS.session(s), body: '', version: expect.any(Number) }]);
   });
 
   it('clears on markClean and remembers the sha for the next write', async () => {
@@ -123,6 +123,58 @@ describe('dirty tracking', () => {
     await store.putSession({ ...s, notes: 'felt fine' });
     await store.putSession({ ...s, notes: 'felt good' });
     expect(await store.listDirty()).toHaveLength(1);
+  });
+
+  it('keeps a write made while an older version of it was being pushed', async () => {
+    const s = session();
+    await store.putSession(s);
+    const [pushed] = await store.listDirty();
+    await store.putSession({ ...s, notes: 'written during the push' });
+    await store.markClean(pushed.path, 'sha-of-old', pushed.version);
+    // The newer write is still unpushed, and will go against the new sha.
+    expect(await store.listDirty()).toHaveLength(1);
+    expect(await store.knownSha(pushed.path)).toBe('sha-of-old');
+  });
+
+  it('pushes oldest change first, however often a document is rewritten', async () => {
+    // a changes first but sorts after b by path, so key order would get this wrong.
+    const a = session({ date: '2026-09-15' });
+    const b = session({ date: '2026-09-14' });
+    await store.putSession(a);
+    await store.putSession(b);
+    await store.putSession({ ...a, notes: 'again' });
+    expect((await store.listDirty()).map((d) => d.path)).toEqual([
+      PATHS.session(a),
+      PATHS.session(b),
+    ]);
+  });
+
+  it('ages exposure from the first unpushed change, not the latest', async () => {
+    vi.useFakeTimers({ toFake: ['Date'] });
+    try {
+      vi.setSystemTime(new Date('2026-09-14T06:00:00Z'));
+      const s = session();
+      await store.putSession(s);
+      vi.setSystemTime(new Date('2026-09-14T07:00:00Z'));
+      await store.putSession({ ...s, notes: 'an hour later' });
+      expect((await store.oldestDirtyAt())?.toISOString()).toBe('2026-09-14T06:00:00.000Z');
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('moves the file when a session changes date, removing the old one', async () => {
+    const s = session({ date: '2026-09-25' });
+    await store.putSession(s);
+    await store.markClean(PATHS.session(s), 'sha1');
+    const moved = { ...s, date: '2026-09-24' };
+    await store.putSession(moved);
+    const dirty = await store.listDirty();
+    // New file first, then the removal, so the remote never holds neither.
+    expect(dirty.map((d) => [d.path, d.body === ''])).toEqual([
+      [PATHS.session(moved), false],
+      [PATHS.session(s), true],
+    ]);
   });
 });
 

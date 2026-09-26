@@ -154,3 +154,27 @@ describe('listing', () => {
     expect(await sync.list('sessions')).toEqual([]);
   });
 });
+
+describe('branch', () => {
+  it("names no branch unless one was configured, so the repo's default is used", async () => {
+    const { sync, calls } = stub([
+      { status: 404 },
+      { status: 201, body: { content: { sha: 'new' } } },
+    ]);
+    await sync.pull('lifter/bodyweight.csv');
+    await sync.push('lifter/bodyweight.csv', 'x', null, 'msg');
+    expect(calls[0].url).not.toContain('ref=');
+    expect(JSON.parse(calls[1].init.body as string)).not.toHaveProperty('branch');
+  });
+
+  it('writes to the configured branch when there is one', async () => {
+    const bodies: string[] = [];
+    const fetchImpl = vi.fn(async (_url: string | URL | Request, init: RequestInit = {}) => {
+      bodies.push(init.body as string);
+      return new Response(JSON.stringify({ content: { sha: 'new' } }), { status: 201 });
+    }) as unknown as typeof fetch;
+    const sync = new GitHubSync({ owner: 'o', repo: 'r', token: 't', branch: 'log', fetchImpl });
+    await sync.push('a.csv', 'x', null, 'msg');
+    expect(JSON.parse(bodies[0]).branch).toBe('log');
+  });
+});

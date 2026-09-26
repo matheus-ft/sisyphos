@@ -62,6 +62,8 @@ export class SaveScheduler {
     Pick<SchedulerOptions, 'onStateChange'>;
   private saveTimer: ReturnType<typeof setTimeout> | null = null;
   private pushTimer: ReturnType<typeof setTimeout> | null = null;
+  /** Counts calls to changed(), so a save can tell whether it covered all of them. */
+  private changes = 0;
   private state: SchedulerState = {
     savePending: false,
     pushPending: false,
@@ -80,26 +82,39 @@ export class SaveScheduler {
 
   /** Something changed. Starts the local save clock and the coarse push clock. */
   changed(): void {
+    this.changes += 1;
     this.state.savePending = true;
     if (!this.state.oldestUnpushedAt) this.state.oldestUnpushedAt = new Date();
     this.emit();
 
-    if (this.saveTimer) clearTimeout(this.saveTimer);
-    this.saveTimer = setTimeout(() => void this.saveNow(), this.opts.localDebounceMs);
+    this.armSave();
 
     // Quiet means quiet: every change pushes the remote deadline back.
     this.armQuietPush();
   }
 
-  /** Writes to disk immediately, without waiting out the debounce. */
+  /**
+   * Writes to disk immediately, without waiting out the debounce. Rejects if the
+   * write fails, and leaves the change pending with a retry armed — input that
+   * could not be saved is never treated as saved.
+   */
   async saveNow(): Promise<void> {
     if (this.saveTimer) {
       clearTimeout(this.saveTimer);
       this.saveTimer = null;
     }
     if (!this.state.savePending) return;
-    await this.opts.saveLocal();
-    this.state.savePending = false;
+
+    const covered = this.changes;
+    try {
+      await this.opts.saveLocal();
+    } catch (err) {
+      this.armSave();
+      throw err;
+    }
+    // A change that arrived while the write was in flight is not in it. It keeps
+    // savePending, and the timer changed() armed will write it.
+    if (this.changes === covered) this.state.savePending = false;
     this.state.pushPending = true;
     this.emit();
   }
@@ -115,7 +130,9 @@ export class SaveScheduler {
    * silently strand it.
    */
   async flush(reason: PushReason): Promise<void> {
-    await this.saveNow();
+    // A failed save retries on its own; what earlier saves put on disk is still
+    // worth pushing, so the push goes ahead either way.
+    await this.saveNow().catch(() => {});
     if (this.state.pushing) return;
 
     this.clearPushTimer();
@@ -149,6 +166,14 @@ export class SaveScheduler {
     if (this.saveTimer) clearTimeout(this.saveTimer);
     this.clearPushTimer();
     this.saveTimer = null;
+  }
+
+  private armSave(): void {
+    if (this.saveTimer) clearTimeout(this.saveTimer);
+    this.saveTimer = setTimeout(
+      () => void this.saveNow().catch(() => {}),
+      this.opts.localDebounceMs,
+    );
   }
 
   private armQuietPush(): void {

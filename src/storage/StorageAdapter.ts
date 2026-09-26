@@ -77,7 +77,16 @@ export interface StorageAdapter {
   bodyweightHintFor(date: string, maxAgeDays: number): Promise<BodyweightEntry | null>;
 
   // --- sync bookkeeping ---
-  /** Documents changed since their last successful push. */
-  listDirty(): Promise<Array<{ path: string; body: string }>>;
-  markClean(path: string, remoteSha: string): Promise<void>;
+  /**
+   * Documents changed since their last successful push, oldest change first.
+   * `version` identifies the write the body came from, so a push can say which
+   * write it carried.
+   */
+  listDirty(): Promise<Array<{ path: string; body: string; version: number }>>;
+  /**
+   * The remote accepted a document. With `version`, the dirty mark is cleared
+   * only if nothing wrote the document since that version was read: a change
+   * saved while its predecessor was in flight is still unpushed and stays queued.
+   */
+  markClean(path: string, remoteSha: string, version?: number): Promise<void>;
 }

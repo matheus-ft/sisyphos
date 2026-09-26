@@ -222,6 +222,79 @@ describe('resolving a conflict', () => {
     expect(engine.getConflicts()).toEqual([]);
   });
 
+  it('keeping mine remembers the sha it produced, so the next push is not a conflict', async () => {
+    const s = session();
+    const path = PATHS.session(s);
+    let conflictOnce = true;
+    const { sync, pushed } = fakeSync(
+      async ({ path: p }) => {
+        if (conflictOnce) {
+          conflictOnce = false;
+          throw new Conflict(p, 'theirs-sha');
+        }
+        return { sha: `after-${pushed.length}` };
+      },
+      { pull: async () => ({ body: 'theirs', sha: 'theirs-sha' }) },
+    );
+    const engine = makeEngine({ storage, sync });
+    engine.edit(s);
+    await engine.flush('manual');
+    await engine.resolveConflict(path, 'mine');
+    engine.edit({ ...s, notes: 'next edit' });
+    await engine.flush('manual');
+    expect(pushed.map((p) => p.baseSha)).toEqual(['theirs-sha', 'after-0']);
+  });
+
+  it('keeping mine sends what the device holds now, not the snapshot', async () => {
+    const s = session();
+    const path = PATHS.session(s);
+    let conflictOnce = true;
+    const { sync, pushed } = fakeSync(
+      async ({ path: p }) => {
+        if (conflictOnce) {
+          conflictOnce = false;
+          throw new Conflict(p, 'theirs-sha');
+        }
+        return { sha: 'resolved' };
+      },
+      { pull: async () => ({ body: 'theirs', sha: 'theirs-sha' }) },
+    );
+    const engine = makeEngine({ storage, sync });
+    engine.edit(s);
+    await engine.flush('manual');
+    engine.edit({ ...s, notes: 'edited after the conflict' });
+    await engine.saveNow();
+    await engine.resolveConflict(path, 'mine');
+    expect(JSON.parse(pushed[0].body).notes).toBe('edited after the conflict');
+  });
+
+  it('keeping a deletion removes the remote file instead of writing an empty one', async () => {
+    const s = session();
+    const path = PATHS.session(s);
+    const removed: string[] = [];
+    let conflictOnce = true;
+    const { sync, pushed } = fakeSync(undefined, {
+      pull: async () => ({ body: 'theirs', sha: 'theirs-sha' }),
+      remove: async (p) => {
+        if (conflictOnce) {
+          conflictOnce = false;
+          throw new Conflict(p, '');
+        }
+        removed.push(p);
+      },
+    });
+    const engine = makeEngine({ storage, sync });
+    engine.edit(s);
+    await engine.flush('manual');
+    await engine.deleteSession(s.id);
+    await engine.flush('manual');
+    expect(engine.getConflicts().map((c) => c.path)).toEqual([path]);
+    await engine.resolveConflict(path, 'mine');
+    expect(removed).toEqual([path]);
+    expect(pushed.filter((p) => p.body === '')).toEqual([]);
+    expect(await storage.listDirty()).toEqual([]);
+  });
+
   it('keeping theirs accepts the remote without pushing anything', async () => {
     const s = session();
     const path = PATHS.session(s);
@@ -240,6 +313,66 @@ describe('resolving a conflict', () => {
     expect(pushes).toBe(1);
     expect(engine.getConflicts()).toEqual([]);
     expect(await storage.listDirty()).toEqual([]);
+  });
+});
+
+describe('data that must not be lost', () => {
+  it('keeps an edit saved while the previous version was being pushed', async () => {
+    const s = session();
+    let engine!: LogEngine;
+    const { sync } = fakeSync(async () => {
+      // The lifter keeps typing while the PUT is in flight, and it gets saved.
+      engine.edit({ ...s, notes: 'during the push' });
+      await engine.saveNow();
+      return { sha: 'sha-1' };
+    });
+    engine = makeEngine({ storage, sync });
+    engine.edit(s);
+    await engine.flush('manual');
+    const dirty = await storage.listDirty();
+    expect(dirty).toHaveLength(1);
+    expect(JSON.parse(dirty[0].body).notes).toBe('during the push');
+  });
+
+  it('does not bring back a session deleted while an edit was waiting to be saved', async () => {
+    const { sync, removed, pushed } = fakeSync();
+    const engine = makeEngine({ storage, sync });
+    const s = session();
+    engine.edit(s);
+    await engine.flush('manual');
+    engine.edit({ ...s, notes: 'last keystroke' });
+    await engine.deleteSession(s.id);
+    await engine.flush('manual');
+    expect(await storage.getSession(s.id)).toBeNull();
+    expect(removed).toEqual([PATHS.session(s)]);
+    expect(pushed).toHaveLength(1);
+  });
+
+  it('keeps every unsaved session when one write fails', async () => {
+    const { sync } = fakeSync();
+    const engine = makeEngine({ storage, sync });
+    const a = session();
+    const b = session();
+    engine.edit(a);
+    engine.edit(b);
+    storage.failNextPut = new Error('quota');
+    await expect(engine.saveNow()).rejects.toThrow('quota');
+    await engine.saveNow();
+    expect(await storage.getSession(a.id)).not.toBeNull();
+    expect(await storage.getSession(b.id)).not.toBeNull();
+  });
+
+  it('removes the old file when a session is moved to another date', async () => {
+    const { sync, removed, pushed } = fakeSync();
+    const engine = makeEngine({ storage, sync });
+    const s = session({ date: '2026-09-25' });
+    engine.edit(s);
+    await engine.flush('manual');
+    const moved = { ...s, date: '2026-09-24' };
+    engine.edit(moved);
+    await engine.flush('manual');
+    expect(removed).toEqual([PATHS.session(s)]);
+    expect(pushed.map((p) => p.path)).toEqual([PATHS.session(s), PATHS.session(moved)]);
   });
 });
 

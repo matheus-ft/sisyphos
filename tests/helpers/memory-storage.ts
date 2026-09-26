@@ -8,7 +8,7 @@ import type {
   Session,
   Template,
 } from '../../src/model';
-import { PATHS } from '../../src/storage/paths';
+import { PATHS, isSessionPath } from '../../src/storage/paths';
 
 /**
  * A storage adapter held in plain objects.
@@ -25,12 +25,16 @@ export class MemoryStorage implements StorageAdapter {
   oneRm: OneRmEntry[] = [];
   manualRecords = new Map<string, ManualRecord>();
   bodyweight = new Map<string, BodyweightEntry>();
-  private dirty = new Map<string, number>();
+  /** Mirrors the real adapter: `seq` is the first unpushed change, `version` the latest. */
+  private dirty = new Map<string, { seq: number; version: number }>();
   private shas = new Map<string, string>();
   private seq = 0;
+  /** Set to make the next putSession reject, as a full disk would. */
+  failNextPut: Error | null = null;
 
   private mark(path: string) {
-    this.dirty.set(path, ++this.seq);
+    const version = ++this.seq;
+    this.dirty.set(path, { seq: this.dirty.get(path)?.seq ?? version, version });
   }
 
   async getSession(id: string) {
@@ -50,8 +54,15 @@ export class MemoryStorage implements StorageAdapter {
     return [...this.sessions.values()].filter((s) => s.ended_at === null);
   }
   async putSession(s: Session) {
+    if (this.failNextPut) {
+      const err = this.failNextPut;
+      this.failNextPut = null;
+      throw err;
+    }
+    const before = this.sessions.get(s.id);
     this.sessions.set(s.id, s);
     this.mark(PATHS.session(s));
+    if (before && PATHS.session(before) !== PATHS.session(s)) this.mark(PATHS.session(before));
   }
   async deleteSession(id: string) {
     const s = this.sessions.get(id);
@@ -129,11 +140,12 @@ export class MemoryStorage implements StorageAdapter {
 
   async listDirty() {
     return [...this.dirty.entries()]
-      .sort((a, b) => a[1] - b[1])
-      .map(([path]) => ({ path, body: this.serialize(path) }));
+      .sort((a, b) => a[1].seq - b[1].seq)
+      .map(([path, { version }]) => ({ path, body: this.serialize(path), version }));
   }
-  async markClean(path: string, sha: string) {
-    this.dirty.delete(path);
+  async markClean(path: string, sha: string, version?: number) {
+    const row = this.dirty.get(path);
+    if (row && (version === undefined || row.version === version)) this.dirty.delete(path);
     this.shas.set(path, sha);
   }
   async knownSha(path: string) {
@@ -143,15 +155,15 @@ export class MemoryStorage implements StorageAdapter {
     return this.dirty.size ? new Date(Date.now() - 60_000) : null;
   }
 
-  /** Mirrors the real adapter: a removed session serialises empty. */
+  /** Mirrors the real adapter: a removed or re-dated session serialises empty at its old path. */
   private serialize(path: string): string {
-    if (path.startsWith('sessions/')) {
+    if (isSessionPath(path)) {
       const id = path
         .split('_')
         .pop()!
         .replace(/\.json$/, '');
       const s = this.sessions.get(id);
-      return s ? JSON.stringify(s, null, 2) + '\n' : '';
+      return s && PATHS.session(s) === path ? JSON.stringify(s, null, 2) + '\n' : '';
     }
     if (path === PATHS.templates) return JSON.stringify([...this.templates.values()]);
     if (path === PATHS.localExercises) return JSON.stringify([...this.localExercises.values()]);
