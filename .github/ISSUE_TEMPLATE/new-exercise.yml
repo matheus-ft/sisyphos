@@ -61,11 +61,8 @@ body:
     attributes:
       label: primary movers
       description: Muscle ids from src/library/muscles.csv, separated by /
-      placeholder: vasti/glute_max
+      placeholder: quads/glutes
     validations: { required: true }
   - type: input
-    id: secondary
-    attributes: { label: secondary movers, placeholder: adductor_magnus/erectors_thoracic }
-  - type: input
     id: aux
-    attributes: { label: auxiliary muscles, placeholder: rectus_abdominis }
+    attributes: { label: auxiliary muscles, placeholder: adductors/lower_back }

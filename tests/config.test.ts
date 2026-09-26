@@ -46,8 +46,8 @@ describe('metrics config', () => {
   });
 
   it('encodes every counting scheme as a weight set, not as a separate mode', () => {
-    expect(muscleWeights('1:1')).toEqual({ primary: 1, secondary: 1, aux: 1 });
-    expect(muscleWeights('direct')).toEqual({ primary: 1, secondary: 0, aux: 0 });
+    expect(muscleWeights('1:1')).toEqual({ primary: 1, aux: 1 });
+    expect(muscleWeights('direct')).toEqual({ primary: 1, aux: 0 });
   });
 
   it('rejects an unknown preset instead of silently falling back', () => {
@@ -85,22 +85,19 @@ describe('muscle weights drive volume and stress together', () => {
   it('gives primary movers full credit and scales the rest', () => {
     const v = volumeByMuscle(sets, muscleWeights('fractional'));
     expect(v.get('quads')).toBe(1); // primary
-    expect(v.get('adductors')).toBe(0.5); // secondary
-    expect(v.get('abs')).toBe(0.25); // aux
+    expect(v.get('glutes')).toBe(0.5); // aux
   });
 
   it('drops everything but primaries under "direct"', () => {
     const v = volumeByMuscle(sets, muscleWeights('direct'));
     expect(v.get('quads')).toBe(1);
-    expect(v.has('adductors')).toBe(false);
-    expect(v.has('abs')).toBe(false);
+    expect(v.has('glutes')).toBe(false);
   });
 
   it('counts every listed muscle fully under "1:1"', () => {
     const v = volumeByMuscle(sets, muscleWeights('1:1'));
     expect(v.get('quads')).toBe(1);
-    expect(v.get('adductors')).toBe(1);
-    expect(v.get('abs')).toBe(1);
+    expect(v.get('glutes')).toBe(1);
   });
 
   it('applies the same weights to per-muscle stress', () => {
@@ -108,8 +105,8 @@ describe('muscle weights drive volume and stress together', () => {
     const direct = stressByMuscle(stressSets, muscleWeights('direct'));
     const si = stressIndexOf(stressFor(8, 5)!);
     expect(frac.get('quads')).toBeCloseTo(si, 6);
-    expect(frac.get('adductors')).toBeCloseTo(si * 0.5, 6);
-    expect(direct.has('adductors')).toBe(false);
+    expect(frac.get('glutes')).toBeCloseTo(si * 0.5, 6);
+    expect(direct.has('glutes')).toBe(false);
     // Switching the preset moves volume and stress in step.
     expect(direct.get('quads')).toBeCloseTo(frac.get('quads')!, 6);
   });

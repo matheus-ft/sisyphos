@@ -300,7 +300,7 @@ async function markDirty(
 const esc = (v: string | null | undefined) => (v ?? '').replace(/,/g, ' ');
 
 function exercisesToCsv(rows: Exercise[]): string {
-  const head = 'id,name,base_lift,tier,unilateral,load_type,default_unit,primary,secondary,aux';
+  const head = 'id,name,base_lift,tier,unilateral,load_type,default_unit,primary,aux';
   const body = rows.map((e) =>
     [
       e.id,
@@ -311,7 +311,6 @@ function exercisesToCsv(rows: Exercise[]): string {
       e.load_type === 'external' ? '' : e.load_type,
       e.default_unit === 'kg' ? '' : e.default_unit,
       e.muscles.primary.join('/'),
-      e.muscles.secondary.join('/'),
       e.muscles.aux.join('/'),
     ].join(','),
   );

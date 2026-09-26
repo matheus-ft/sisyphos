@@ -21,7 +21,7 @@ import type { CompetitionLift, Exercise, MuscleRole, PerformedSet, Tier } from '
  * need one number to compare blocks with.
  */
 
-const ROLES: readonly MuscleRole[] = ['primary', 'secondary', 'aux'];
+const ROLES: readonly MuscleRole[] = ['primary', 'aux'];
 const TIERS: readonly Tier[] = ['comp', 'high_spec', 'low_spec', 'acc'];
 
 export interface CountedSet {

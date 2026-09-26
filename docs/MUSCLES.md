@@ -2,7 +2,7 @@
 
 Volume is counted in 17 muscle groups. They are the ids in
 `src/library/muscles.csv`, and every exercise in `src/library/exercises.csv`
-credits one or more of them directly, by role (`primary`, `secondary`, `aux`).
+credits one or more of them directly, by role: `primary` for what the exercise is for, `aux` for what it loads along the way.
 
 The groups are flat and do not overlap: each muscle belongs to exactly one group,
 so per-group totals can be summed. There is no finer level underneath and no
@@ -16,11 +16,11 @@ an exercise can be tagged without guessing at individual heads.
 - **The whole adductor magnus is `adductors`.** Its posterior part extends the
   hip alongside the hamstrings, but crediting it there would make a squat read as
   hamstring work when what it loads is the adductor. Hinges credit `adductors` as
-  a lesser role instead.
+  `aux` instead.
 - **Squats do not credit `hip_flexors`.** Rectus femoris is barely loaded by a
   squat; leg extensions and leg raises are what train it.
 - **Credit serratus through `front_delts`**, which is where upward scapular
-  rotation lives. That is why planks and the ab wheel list it as `aux`.
+  rotation lives. That is why planks list it as `aux`.
 
 ## Changing the vocabulary
 
@@ -97,7 +97,7 @@ Muscles:
 
 Joint actions: hip adduction, plus hip extension (posterior adductor magnus).
 
-Exercises: adductor machine, Copenhagen planks, squats and sumo deadlifts. Conventional deadlifts and other hinges load it through hip extension, as a lesser role.
+Exercises: adductor machine, Copenhagen planks, squats and sumo deadlifts. Conventional deadlifts and other hinges load it through hip extension, as `aux`.
 
 ### 6. Calves (`calves`)
 
@@ -178,7 +178,7 @@ Muscles:
 
 Joint actions: shoulder flexion, shoulder abduction, scapular upward rotation.
 
-Exercises: overhead presses, lateral raises and front raises. Overhead presses load both delt heads plus serratus. Lateral raises load the lateral delt and supraspinatus, with the anterior delt helping. Because both main exercises hit both heads, they share one group, named for the front delt because that is the head pressing loads. Bench press loads the anterior delt as a secondary.
+Exercises: overhead presses, lateral raises and front raises. Overhead presses load both delt heads plus serratus. Lateral raises load the lateral delt and supraspinatus, with the anterior delt helping. Because both main exercises hit both heads, they share one group, named for the front delt because that is the head pressing loads. Bench press loads the anterior delt as `aux`.
 
 ### 13. Rear delts and rotator cuff (`rear_delts`)
 
@@ -214,7 +214,7 @@ Muscles:
 
 Joint actions: elbow flexion, forearm supination.
 
-Exercises: curls of any grip. Hammer curls bias brachialis and brachioradialis. Rows and pull-ups load this group as a secondary.
+Exercises: curls of any grip. Hammer curls bias brachialis and brachioradialis. Rows and pull-ups load this group as `aux`.
 
 ### 16. Triceps (`triceps`)
 

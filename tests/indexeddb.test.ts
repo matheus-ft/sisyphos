@@ -135,7 +135,7 @@ describe('library', () => {
     unilateral: false,
     load_type: 'external',
     default_unit: 'kg',
-    muscles: { primary: ['quads'], secondary: [], aux: [] },
+    muscles: { primary: ['quads'], aux: [] },
   };
 
   it('ships a library that works before anything is added', async () => {
@@ -163,9 +163,9 @@ describe('library', () => {
     await store.addLocalExercise(custom);
     const body = (await store.listDirty()).find((d) => d.path === PATHS.localExercises)!.body;
     expect(body.split('\n')[0]).toBe(
-      'id,name,base_lift,tier,unilateral,load_type,default_unit,primary,secondary,aux',
+      'id,name,base_lift,tier,unilateral,load_type,default_unit,primary,aux',
     );
-    expect(body).toContain('my_variation,My Variation,squat,high_spec,,,,quads,,');
+    expect(body).toContain('my_variation,My Variation,squat,high_spec,,,,quads,');
   });
 });
 

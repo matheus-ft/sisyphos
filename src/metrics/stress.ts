@@ -85,7 +85,7 @@ export function centralBalance(sets: Array<{ rpe: number; reps: number }>): numb
   return t.si > 0 ? t.central / t.si : null;
 }
 
-const ROLES: readonly MuscleRole[] = ['primary', 'secondary', 'aux'];
+const ROLES: readonly MuscleRole[] = ['primary', 'aux'];
 
 /**
  * Stress attributed to each muscle, scaled by the same role weights that drive

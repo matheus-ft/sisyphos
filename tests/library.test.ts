@@ -14,9 +14,7 @@ describe('muscle vocabulary', () => {
   });
 
   it('has no group that no exercise credits', () => {
-    const credited = new Set(
-      exercises.flatMap((e) => [...e.muscles.primary, ...e.muscles.secondary, ...e.muscles.aux]),
-    );
+    const credited = new Set(exercises.flatMap((e) => [...e.muscles.primary, ...e.muscles.aux]));
     expect(muscles.filter((m) => !credited.has(m.id)).map((m) => m.id)).toEqual([]);
   });
 });
@@ -64,13 +62,13 @@ describe('exercise library', () => {
 
   it('rejects an unknown muscle id', () => {
     const bad =
-      'id,name,base_lift,tier,unilateral,load_type,default_unit,primary,secondary,aux\nx,X,,acc,,,,not_a_muscle,,';
+      'id,name,base_lift,tier,unilateral,load_type,default_unit,primary,aux\nx,X,,acc,,,,not_a_muscle,';
     expect(() => parseExercises(bad, ids)).toThrow(/unknown muscle/);
   });
 
   it('rejects an invalid tier', () => {
     const bad =
-      'id,name,base_lift,tier,unilateral,load_type,default_unit,primary,secondary,aux\nx,X,,nonsense,,,,lats,,';
+      'id,name,base_lift,tier,unilateral,load_type,default_unit,primary,aux\nx,X,,nonsense,,,,lats,';
     expect(() => parseExercises(bad, ids)).toThrow(/tier must be one of/);
   });
 });

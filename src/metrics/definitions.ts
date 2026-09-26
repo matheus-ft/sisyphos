@@ -65,11 +65,7 @@ function pick<T extends Record<string, number>>(
 
 export const CONFIG: MetricsConfig = {
   version: raw.version,
-  muscleWeightPresets: pick<MuscleWeights>(raw.weights.muscle_roles.presets, [
-    'primary',
-    'secondary',
-    'aux',
-  ]),
+  muscleWeightPresets: pick<MuscleWeights>(raw.weights.muscle_roles.presets, ['primary', 'aux']),
   activeMuscleWeights: raw.weights.muscle_roles.active,
   tierWeightPresets: pick<TierWeights>(raw.weights.tiers.presets, [
     'comp',

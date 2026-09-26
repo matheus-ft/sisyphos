@@ -40,12 +40,11 @@ export function parseExercises(csv: string, knownMuscles?: Set<string>): Exercis
     const id = row.id;
     const muscles = {
       primary: parseList(row.primary ?? ''),
-      secondary: parseList(row.secondary ?? ''),
       aux: parseList(row.aux ?? ''),
     };
 
     if (knownMuscles) {
-      for (const role of ['primary', 'secondary', 'aux'] as const) {
+      for (const role of ['primary', 'aux'] as const) {
         for (const m of muscles[role]) {
           if (!knownMuscles.has(m)) {
             throw new Error(`${id}: ${role} references unknown muscle "${m}"`);

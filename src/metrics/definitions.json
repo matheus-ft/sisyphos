@@ -20,32 +20,23 @@
     ],
 
     "muscle_roles": {
-      "_about": "How much of a set each muscle receives. Every counting scheme people argue about is a different set of these three numbers, so there is no separate mode setting. Applies to per-muscle volume AND per-muscle stress, so the two always agree.",
+      "_about": "How much of a set each muscle receives. Every counting scheme people argue about is a different pair of these numbers, so there is no separate mode setting. Applies to per-muscle volume AND per-muscle stress, so the two always agree.",
       "active": "fractional",
       "presets": {
         "fractional": {
           "_why": "Standard in the hypertrophy literature. Ratios are contested, which is why this is switchable.",
           "primary": 1.0,
-          "secondary": 0.5,
-          "aux": 0.25
+          "aux": 0.5
         },
         "direct": {
           "_why": "Only what the exercise is for. The most conservative reading and the easiest to defend.",
           "primary": 1.0,
-          "secondary": 0.0,
           "aux": 0.0
         },
         "1:1": {
           "_why": "Every listed muscle gets a full set. Inflates totals but makes no claim about ratios at all.",
           "primary": 1.0,
-          "secondary": 1.0,
           "aux": 1.0
-        },
-        "steep": {
-          "_why": "A harsher falloff, for when secondary involvement feels overstated.",
-          "primary": 1.0,
-          "secondary": 0.33,
-          "aux": 0.1
         }
       }
     },

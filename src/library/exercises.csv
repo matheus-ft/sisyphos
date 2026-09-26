@@ -9,108 +9,108 @@
 #
 # There is no exercise called "deadlift". Sumo and conventional are different
 # movements that compete under one event, so both sit at tier "comp".
-id,name,base_lift,tier,unilateral,load_type,default_unit,primary,secondary,aux
+id,name,base_lift,tier,unilateral,load_type,default_unit,primary,aux
 
 # --- competition ---
-low_bar_squat,Low-Bar Squat,squat,comp,,,,quads/adductors,glutes/lower_back,
-high_bar_squat,High-Bar Squat,squat,comp,,,,quads,adductors/glutes/lower_back,
-bench,Bench Press,bench,comp,,,,pecs,triceps/front_delts,
-conventional_deadlift,Conventional Deadlift,deadlift,comp,,,,hamstrings/glutes/lower_back,adductors,
-sumo_deadlift,Sumo Deadlift,deadlift,comp,,,,glutes/adductors,hamstrings/lower_back/quads,
+low_bar_squat,Low-Bar Squat,squat,comp,,,,quads/adductors,glutes/lower_back
+high_bar_squat,High-Bar Squat,squat,comp,,,,quads,adductors/glutes/lower_back
+bench,Bench Press,bench,comp,,,,pecs,triceps/front_delts
+conventional_deadlift,Conventional Deadlift,deadlift,comp,,,,hamstrings/glutes/lower_back,adductors
+sumo_deadlift,Sumo Deadlift,deadlift,comp,,,,glutes/adductors,hamstrings/lower_back/quads
 
 # --- squat variations ---
-paused_squat,Paused Squat,squat,high_spec,,,,quads/adductors,glutes/lower_back,
-tempo_squat,Tempo Squat,squat,high_spec,,,,quads/adductors,glutes/lower_back,
-pin_squat,Pin Squat,squat,high_spec,,,,quads/adductors,glutes/lower_back,
-ssb_squat,Safety-Bar Squat,squat,high_spec,,,,quads/lower_back,glutes/adductors,
-front_squat,Front Squat,squat,low_spec,,,,quads/lower_back,glutes/adductors,
-belt_squat,Belt Squat,squat,low_spec,,,,quads,adductors,
-hack_squat,Hack Squat,squat,acc,,,,quads,glutes/adductors,
-leg_press,Leg Press,squat,acc,,,,quads/glutes,adductors,
-single_leg_press,Single-Leg Press,squat,acc,true,,,quads/glutes,adductors,
-bulgarian_split_squat,Bulgarian Split Squat,squat,acc,true,,,quads/glutes,hip_flexors,
-walking_lunge,Walking Lunge,squat,acc,true,,,quads/glutes,adductors,
+paused_squat,Paused Squat,squat,high_spec,,,,quads/adductors,glutes/lower_back
+tempo_squat,Tempo Squat,squat,high_spec,,,,quads/adductors,glutes/lower_back
+pin_squat,Pin Squat,squat,high_spec,,,,quads/adductors,glutes/lower_back
+ssb_squat,Safety-Bar Squat,squat,high_spec,,,,quads/lower_back,glutes/adductors
+front_squat,Front Squat,squat,low_spec,,,,quads/lower_back,glutes/adductors
+belt_squat,Belt Squat,squat,low_spec,,,,quads,adductors
+hack_squat,Hack Squat,squat,acc,,,,quads,glutes/adductors
+leg_press,Leg Press,squat,acc,,,,quads/glutes,adductors
+single_leg_press,Single-Leg Press,squat,acc,true,,,quads/glutes,adductors
+bulgarian_split_squat,Bulgarian Split Squat,squat,acc,true,,,quads/glutes,hip_flexors
+walking_lunge,Walking Lunge,squat,acc,true,,,quads/glutes,adductors
 
 # --- bench variations ---
-cg_bench,Close-Grip Bench Press,bench,high_spec,,,,triceps/pecs,front_delts,
-spoto_press,Spoto Press,bench,high_spec,,,,pecs,triceps/front_delts,
-larsen_press,Larsen Press,bench,high_spec,,,,pecs,triceps/front_delts,
-pin_press,Pin Press,bench,high_spec,,,,pecs,triceps/front_delts,
-db_bench,Dumbbell Bench Press,bench,low_spec,,,,pecs,front_delts/triceps,
-incline_bench,Incline Bench Press,bench,low_spec,,,,pecs/front_delts,triceps,
-dip,Dip,bench,acc,,bw_plus,,pecs/triceps,front_delts,
-overhead_press,Overhead Press,bench,acc,,,,front_delts/triceps,upper_back/lower_back,
+cg_bench,Close-Grip Bench Press,bench,high_spec,,,,triceps/pecs,front_delts
+spoto_press,Spoto Press,bench,high_spec,,,,pecs,triceps/front_delts
+larsen_press,Larsen Press,bench,high_spec,,,,pecs,triceps/front_delts
+pin_press,Pin Press,bench,high_spec,,,,pecs,triceps/front_delts
+db_bench,Dumbbell Bench Press,bench,low_spec,,,,pecs,front_delts/triceps
+incline_bench,Incline Bench Press,bench,low_spec,,,,pecs/front_delts,triceps
+dip,Dip,bench,acc,,bw_plus,,pecs/triceps,front_delts
+overhead_press,Overhead Press,bench,acc,,,,front_delts/triceps,upper_back/lower_back
 
 # --- deadlift variations ---
-deficit_deadlift,Deficit Deadlift,deadlift,high_spec,,,,glutes/lower_back,quads/adductors,
-block_pull,Block Pull,deadlift,high_spec,,,,glutes/lower_back,hamstrings/upper_back,
-paused_deadlift,Paused Deadlift,deadlift,high_spec,,,,glutes/lower_back,hamstrings/adductors/quads,
-romanian_deadlift,Romanian Deadlift,deadlift,low_spec,,,,hamstrings,glutes/lower_back,
-stiff_leg_deadlift,Stiff-Leg Deadlift,deadlift,high_spec,,,,hamstrings/lower_back,glutes/adductors,
-good_morning,Good Morning,deadlift,acc,,,,hamstrings/lower_back,glutes/adductors,
-hip_thrust,Hip Thrust,deadlift,acc,,,,glutes,quads/abs,
-back_extension,Back Extension,deadlift,acc,,bw_plus,,lower_back/glutes,hamstrings,
+deficit_deadlift,Deficit Deadlift,deadlift,high_spec,,,,glutes/lower_back,quads/adductors
+block_pull,Block Pull,deadlift,high_spec,,,,glutes/lower_back,hamstrings/upper_back
+paused_deadlift,Paused Deadlift,deadlift,high_spec,,,,glutes/lower_back,hamstrings/adductors/quads
+romanian_deadlift,Romanian Deadlift,deadlift,low_spec,,,,hamstrings,glutes/lower_back
+stiff_leg_deadlift,Stiff-Leg Deadlift,deadlift,high_spec,,,,hamstrings/lower_back,glutes/adductors
+good_morning,Good Morning,deadlift,acc,,,,hamstrings/lower_back,glutes/adductors
+hip_thrust,Hip Thrust,deadlift,acc,,,,glutes,quads/abs
+back_extension,Back Extension,deadlift,acc,,bw_plus,,lower_back/glutes,hamstrings
 
 # --- leg accessories ---
-leg_extension,Leg Extension,squat,acc,,,,hip_flexors/quads,,
-leg_curl_lying,Lying Leg Curl,deadlift,acc,,,,hamstrings,calves/hip_flexors,
-leg_curl_seated,Seated Leg Curl,deadlift,acc,,,,hamstrings,calves,
-nordic_curl,Nordic Curl,deadlift,acc,,bw_plus,,hamstrings,glutes/calves,
-adductor_machine,Adductor Machine,squat,acc,,,pins,adductors,,
-abductor_machine,Abductor Machine,deadlift,acc,,,pins,glutes,,
-calf_raise_standing,Standing Calf Raise,,acc,,,,calves,,
-calf_raise_seated,Seated Calf Raise,,acc,,,,calves,,
-tib_raise,Tib Raise,,acc,,,,tibialis,,
+leg_extension,Leg Extension,squat,acc,,,,hip_flexors/quads,
+leg_curl_lying,Lying Leg Curl,deadlift,acc,,,,hamstrings,calves/hip_flexors
+leg_curl_seated,Seated Leg Curl,deadlift,acc,,,,hamstrings,calves
+nordic_curl,Nordic Curl,deadlift,acc,,bw_plus,,hamstrings,glutes/calves
+adductor_machine,Adductor Machine,squat,acc,,,pins,adductors,
+abductor_machine,Abductor Machine,deadlift,acc,,,pins,glutes,
+calf_raise_standing,Standing Calf Raise,,acc,,,,calves,
+calf_raise_seated,Seated Calf Raise,,acc,,,,calves,
+tib_raise,Tib Raise,,acc,,,,tibialis,
 
 # --- thoracic/upper lats ---
-high_to_low_row,High-to-Low Row,,acc,,,pins,lats,biceps/rear_delts,
-pull_around,Pull Around,,acc,,,pins,lats/rear_delts,upper_back,
-cg_seated_cable_row,Close-Grip Seated Cable Row,,acc,,,pins,lats,rear_delts/biceps,
-cg_chest_supported_row,Close-Grip Chest-Supported Row,,acc,,,,lats/rear_delts,biceps/upper_back,
-barbell_row,Barbell Row,,acc,,,,lats/biceps,rear_delts/lower_back,
+high_to_low_row,High-to-Low Row,,acc,,,pins,lats,biceps/rear_delts
+pull_around,Pull Around,,acc,,,pins,lats/rear_delts,upper_back
+cg_seated_cable_row,Close-Grip Seated Cable Row,,acc,,,pins,lats,rear_delts/biceps
+cg_chest_supported_row,Close-Grip Chest-Supported Row,,acc,,,,lats/rear_delts,biceps/upper_back
+barbell_row,Barbell Row,,acc,,,,lats/biceps,rear_delts/lower_back
 
 # --- lumbar/mid lats ---
 pullup,Pull-Up,,acc,,bw_plus,,lats,biceps/upper_back
-wide_lat_pulldown,Wide-Grip Lat Pulldown,,acc,,,pins,lats,upper_back/biceps/rear_delts,
-pull_in,Pull-In,,acc,,,pins,lats,biceps/rear_delts,
-iso_pulldown,Iso-Lateral Pulldown,,acc,,,pins,lats,biceps/rear_delts,
+wide_lat_pulldown,Wide-Grip Lat Pulldown,,acc,,,pins,lats,upper_back/biceps/rear_delts
+pull_in,Pull-In,,acc,,,pins,lats,biceps/rear_delts
+iso_pulldown,Iso-Lateral Pulldown,,acc,,,pins,lats,biceps/rear_delts
 
 # --- pelvic/lower lats = lumbar + scap depression ---
-chinup,Chin-Up,,acc,,bw_plus,,lats/biceps,rear_delts,
-illiac_pullup,Illiac Pull-Up,,acc,,bw_plus,,lats,biceps/upper_back
-illiac_pulldown,Illiac Pulldown,,acc,,,pins,lats,biceps/lower_back,
-chest_supported_pulldown,Chest-Supported Pulldown,,acc,,,pins,lats,biceps/upper_back,
-cg_lat_pulldown,Close-Grip Lat Pulldown,,acc,,,pins,lats,biceps/rear_delts,
-reverse_prayer,Revese Prayer,,acc,,,pins,lats,triceps/rear_delts,
+chinup,Chin-Up,,acc,,bw_plus,,lats/biceps,rear_delts
+iliac_pullup,Iliac Pull-Up,,acc,,bw_plus,,lats,biceps/upper_back
+iliac_pulldown,Iliac Pulldown,,acc,,,pins,lats,biceps/lower_back
+chest_supported_pulldown,Chest-Supported Pulldown,,acc,,,pins,lats,biceps/upper_back
+cg_lat_pulldown,Close-Grip Lat Pulldown,,acc,,,pins,lats,biceps/rear_delts
+reverse_prayer,Reverse Prayer,,acc,,,pins,lats,triceps/rear_delts
 
 # --- Teres & Rhomboids and mixed ---
-pullover,Pullover,,acc,,,,lats,pecs/triceps,
-diag_pulldown,Diagonal Pulldown,,acc,,,,lats,rear_delts/biceps,
-lat_pulldown,Lat Pulldown,,acc,,,pins,upper_back,biceps/rear_delts,
-single_arm_db_row,Single-Arm Dumbbell Row,,acc,true,,,lats/lower_back,rear_delts/biceps,
+pullover,Pullover,,acc,,,,lats,pecs/triceps
+diag_pulldown,Diagonal Pulldown,,acc,,,,lats,rear_delts/biceps
+lat_pulldown,Lat Pulldown,,acc,,,pins,upper_back,biceps/rear_delts
+single_arm_db_row,Single-Arm Dumbbell Row,,acc,true,,,lats/lower_back,rear_delts/biceps
 
 # --- mid-upper back ---
-low_row,Low Row,,acc,,,pins,upper_back,rear_delts,
-seated_cable_row,Seated Cable Row,,acc,,,pins,upper_back,rear_delts/lats/biceps,
-chest_supported_row,Chest-Supported Row,,acc,,,,upper_back/rear_delts,lats/biceps,
-pendlay_row,Pendlay Row,deadlift,acc,,,,upper_back/lower_back,lats/rear_delts/biceps,
-meadows_row,Meadow's Row,,acc,true,,,upper_back,rear_delts/low_back,
-shrugs,Shrugs,,acc,,,,upper_back,forearms,
-kelso_shrugs,Face Pull,,acc,,,pins,upper_back/rear_delts,biceps,
-face_pull,Face Pull,,acc,,,pins,rear_delts,upper_back,
+low_row,Low Row,,acc,,,pins,upper_back,rear_delts
+seated_cable_row,Seated Cable Row,,acc,,,pins,upper_back,rear_delts/lats/biceps
+chest_supported_row,Chest-Supported Row,,acc,,,,upper_back/rear_delts,lats/biceps
+pendlay_row,Pendlay Row,deadlift,acc,,,,upper_back/lower_back,lats/rear_delts/biceps
+meadows_row,Meadow's Row,,acc,true,,,upper_back,rear_delts/lower_back
+shrugs,Shrugs,,acc,,,,upper_back,forearms
+kelso_shrugs,Kelso Shrug,,acc,,,pins,upper_back/rear_delts,biceps
+face_pull,Face Pull,,acc,,,pins,rear_delts,upper_back
 
 # --- shoulders and arms ---
-lateral_raise,Lateral Raise,,acc,,,,front_delts,,
-rear_delt_fly,Rear Delt Fly,,acc,,,,rear_delts,upper_back,
-triceps_pushdown,Triceps Pushdown,bench,acc,,,pins,triceps,,
-overhead_triceps_ext,Overhead Triceps Extension,bench,acc,,,,triceps,,
-skullcrusher,Skullcrusher,bench,acc,,,,triceps,,
-barbell_curl,Barbell Curl,,acc,,,,biceps,,
-hammer_curl,Hammer Curl,,acc,,,,biceps,forearms,
-cable_fly,Cable Fly,bench,acc,,,pins,pecs,front_delts,
+lateral_raise,Lateral Raise,,acc,,,,front_delts,
+rear_delt_fly,Rear Delt Fly,,acc,,,,rear_delts,upper_back
+triceps_pushdown,Triceps Pushdown,bench,acc,,,pins,triceps,
+overhead_triceps_ext,Overhead Triceps Extension,bench,acc,,,,triceps,
+skullcrusher,Skullcrusher,bench,acc,,,,triceps,
+barbell_curl,Barbell Curl,,acc,,,,biceps,
+hammer_curl,Hammer Curl,,acc,,,,biceps,forearms
+cable_fly,Cable Fly,bench,acc,,,pins,pecs,front_delts
 
 # --- trunk ---
-plank,Plank,,acc,,none,,abs,front_delts,
-ab_wheel,Ab Wheel,,acc,,bw_plus,,abs,lats,
-hanging_leg_raise,Hanging Leg Raise,,acc,,bw_plus,,abs/hip_flexors,forearms/lats,
-suitcase_carry,Suitcase Carry,,acc,true,,,abs/lower_back,forearms/upper_back,
+plank,Plank,,acc,,none,,abs,front_delts
+ab_wheel,Ab Wheel,,acc,,bw_plus,,abs,lats
+hanging_leg_raise,Hanging Leg Raise,,acc,,bw_plus,,abs/hip_flexors,forearms/lats
+suitcase_carry,Suitcase Carry,,acc,true,,,abs/lower_back,forearms/upper_back

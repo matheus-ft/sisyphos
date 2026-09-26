@@ -19,7 +19,7 @@ export type CompetitionLift = 'squat' | 'bench' | 'deadlift';
 export type Tier = 'comp' | 'high_spec' | 'low_spec' | 'acc';
 
 /** How a muscle contributes. Numeric weights live in config/metrics.json, never here. */
-export type MuscleRole = 'primary' | 'secondary' | 'aux';
+export type MuscleRole = 'primary' | 'aux';
 
 /** How a logged number combines into the load actually moved. */
 export type LoadType =

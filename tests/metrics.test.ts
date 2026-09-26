@@ -13,7 +13,7 @@ const ex = (over: Partial<Exercise> = {}): Exercise => ({
   unilateral: false,
   load_type: 'external',
   default_unit: 'kg',
-  muscles: { primary: ['quads'], secondary: [], aux: [] },
+  muscles: { primary: ['quads'], aux: [] },
   ...over,
 });
 

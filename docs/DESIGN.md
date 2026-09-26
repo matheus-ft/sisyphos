@@ -77,7 +77,7 @@ imbalance.
 
 ## Two weighting axes, and the breakdown always survives
 
-Muscle roles (`primary` / `secondary` / `aux`) and specificity tiers get the same
+Muscle roles (`primary` / `aux`) and specificity tiers get the same
 treatment: named weight presets, switchable live, with the numbers in config
 rather than in code. Tonnage defaults to `competition` (1 / 1 / 0 / 0) because an
 accessory kilogram is not a competition kilogram; set counts and stress default
@@ -89,6 +89,10 @@ answers "for the squat: 6 comp, 2 high-spec, 3 accessory", which is usually the
 more useful sentence; `eventVolume` collapses that to one number only when you
 need to compare blocks. Building the weighted version first would have made the
 discrete one hard to recover, so both exist from the start.
+
+**Two muscle roles, not three.** A `secondary` role between primary and aux was
+dropped. The counting schemes worth having are `fractional` (1 / .5), `direct`
+(1 / 0) and `1:1` (1 / 1), and none of them needs a middle value.
 
 Those same muscle weights scale per-muscle **stress**, not just volume, so
 switching preset moves both together. Movement-level stress is never scaled: the

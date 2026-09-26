@@ -103,7 +103,7 @@
       {/each}
     </div>
     <p class="weights tabular">
-      primary {weights.primary} · secondary {weights.secondary} · aux {weights.aux}
+      primary {weights.primary} · aux {weights.aux}
     </p>
 
     <ul class="bars">
