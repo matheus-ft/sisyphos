@@ -32,7 +32,6 @@ export function parseMuscles(csv: string): Muscle[] {
   return parseCsv(csv).map((row: Row) => ({
     id: row.id,
     name: row.name,
-    tags: parseList(row.tags ?? ''),
   }));
 }
 

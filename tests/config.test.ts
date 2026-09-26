@@ -15,7 +15,7 @@ import {
   totalStress,
 } from '../src/metrics/stress';
 import { eventVolume, setsByTierForLift } from '../src/metrics/volume';
-import { volumeByMuscle, volumeByTier, rollUpToTags, type CountedSet } from '../src/metrics/volume';
+import { volumeByMuscle, volumeByTier, type CountedSet } from '../src/metrics/volume';
 import { parseExercises, parseMuscles } from '../src/library/parse';
 import musclesCsv from '../src/library/muscles.csv?raw';
 import exercisesCsv from '../src/library/exercises.csv?raw';
@@ -84,34 +84,34 @@ describe('muscle weights drive volume and stress together', () => {
 
   it('gives primary movers full credit and scales the rest', () => {
     const v = volumeByMuscle(sets, muscleWeights('fractional'));
-    expect(v.get('vasti')).toBe(1); // primary
-    expect(v.get('adductor_magnus')).toBe(0.5); // secondary
-    expect(v.get('obliques')).toBe(0.25); // aux
+    expect(v.get('quads')).toBe(1); // primary
+    expect(v.get('adductors')).toBe(0.5); // secondary
+    expect(v.get('abs')).toBe(0.25); // aux
   });
 
   it('drops everything but primaries under "direct"', () => {
     const v = volumeByMuscle(sets, muscleWeights('direct'));
-    expect(v.get('vasti')).toBe(1);
-    expect(v.has('adductor_magnus')).toBe(false);
-    expect(v.has('obliques')).toBe(false);
+    expect(v.get('quads')).toBe(1);
+    expect(v.has('adductors')).toBe(false);
+    expect(v.has('abs')).toBe(false);
   });
 
   it('counts every listed muscle fully under "1:1"', () => {
     const v = volumeByMuscle(sets, muscleWeights('1:1'));
-    expect(v.get('vasti')).toBe(1);
-    expect(v.get('adductor_magnus')).toBe(1);
-    expect(v.get('obliques')).toBe(1);
+    expect(v.get('quads')).toBe(1);
+    expect(v.get('adductors')).toBe(1);
+    expect(v.get('abs')).toBe(1);
   });
 
   it('applies the same weights to per-muscle stress', () => {
     const frac = stressByMuscle(stressSets, muscleWeights('fractional'));
     const direct = stressByMuscle(stressSets, muscleWeights('direct'));
     const si = stressIndexOf(stressFor(8, 5)!);
-    expect(frac.get('vasti')).toBeCloseTo(si, 6);
-    expect(frac.get('adductor_magnus')).toBeCloseTo(si * 0.5, 6);
-    expect(direct.has('adductor_magnus')).toBe(false);
+    expect(frac.get('quads')).toBeCloseTo(si, 6);
+    expect(frac.get('adductors')).toBeCloseTo(si * 0.5, 6);
+    expect(direct.has('adductors')).toBe(false);
     // Switching the preset moves volume and stress in step.
-    expect(direct.get('vasti')).toBeCloseTo(frac.get('vasti')!, 6);
+    expect(direct.get('quads')).toBeCloseTo(frac.get('quads')!, 6);
   });
 
   it('excludes warm-ups, skipped and pending sets from volume', () => {
@@ -120,18 +120,10 @@ describe('muscle weights drive volume and stress together', () => {
     expect(volumeByMuscle([{ set: doneSet({ state: 'pending' }), exercise: squat }]).size).toBe(0);
   });
 
-  it('rolls muscles up into overlapping tag groups', () => {
-    const tagsOf = new Map(muscles.map((m) => [m.id, m.tags]));
-    const rolled = rollUpToTags(volumeByMuscle(sets, muscleWeights('direct')), tagsOf);
-    // vasti is tagged quads / legs / lower_body, so it lands in all three.
-    expect(rolled.get('quads')).toBe(1);
-    expect(rolled.get('lower_body')).toBeGreaterThanOrEqual(1);
-  });
-
   it('counts a unilateral set once, not twice', () => {
     const uni = byId.get('single_leg_press')!;
     const v = volumeByMuscle([{ set: doneSet(), exercise: uni }], muscleWeights('direct'));
-    expect(v.get('vasti')).toBe(UNILATERAL_SET_COUNT_MULTIPLIER);
+    expect(v.get('quads')).toBe(UNILATERAL_SET_COUNT_MULTIPLIER);
   });
 
   it('groups by tier for specificity distribution', () => {

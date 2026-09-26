@@ -66,24 +66,6 @@ export function volumeByMuscle(
   return out;
 }
 
-/**
- * Rolls per-muscle volume up to the groupings in config/muscles.csv. A muscle in
- * several tags contributes to each, so group totals overlap by design and must
- * not be summed against one another.
- */
-export function rollUpToTags(
-  byMuscle: Map<string, number>,
-  tagsOf: Map<string, string[]>,
-): Map<string, number> {
-  const out = new Map<string, number>();
-  for (const [muscle, value] of byMuscle) {
-    for (const tag of tagsOf.get(muscle) ?? []) {
-      out.set(tag, (out.get(tag) ?? 0) + value);
-    }
-  }
-  return out;
-}
-
 // --- by tier: discrete first, weighted second --------------------------------
 
 /** Sets per specificity tier. The honest breakdown, with nothing weighted away. */

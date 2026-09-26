@@ -27,17 +27,15 @@ export type LoadType =
   | 'bw_plus' // effective load = bodyweight + the number (negative = assisted)
   | 'none'; // not weight-driven at all
 
+/**
+ * A muscle group, the unit volume is counted in. The groups are flat and do not
+ * overlap, so per-group totals can be summed; docs/MUSCLES.md says what each covers.
+ */
 export interface Muscle {
   /** Referenced by exercises. Stable forever once an exercise points at it. */
   id: string;
   /** Shown in the UI. Safe to reword without touching any log. */
   name: string;
-  /**
-   * Arbitrary groupings used for aggregation: `quads`, `posterior_chain`,
-   * `lower_body`. Tags rather than a tree, so one muscle belongs to several at
-   * once — gluteus maximus is both `glutes` and `posterior_chain`.
-   */
-  tags: string[];
 }
 
 export interface Exercise {

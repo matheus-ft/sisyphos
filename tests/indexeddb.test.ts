@@ -135,12 +135,12 @@ describe('library', () => {
     unilateral: false,
     load_type: 'external',
     default_unit: 'kg',
-    muscles: { primary: ['vasti'], secondary: [], aux: [] },
+    muscles: { primary: ['quads'], secondary: [], aux: [] },
   };
 
   it('ships a library that works before anything is added', async () => {
     expect((await store.getExercises()).length).toBeGreaterThan(50);
-    expect((await store.getMuscles()).length).toBeGreaterThan(30);
+    expect(await store.getMuscles()).toHaveLength(17);
   });
 
   it('merges local additions over the shipped rows', async () => {
@@ -165,7 +165,7 @@ describe('library', () => {
     expect(body.split('\n')[0]).toBe(
       'id,name,base_lift,tier,unilateral,load_type,default_unit,primary,secondary,aux',
     );
-    expect(body).toContain('my_variation,My Variation,squat,high_spec,,,,vasti,,');
+    expect(body).toContain('my_variation,My Variation,squat,high_spec,,,,quads,,');
   });
 });
 

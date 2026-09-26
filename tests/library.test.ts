@@ -13,8 +13,11 @@ describe('muscle vocabulary', () => {
     expect(ids.size).toBe(muscles.length);
   });
 
-  it('gives every muscle at least one grouping tag', () => {
-    expect(muscles.filter((m) => m.tags.length === 0)).toEqual([]);
+  it('has no group that no exercise credits', () => {
+    const credited = new Set(
+      exercises.flatMap((e) => [...e.muscles.primary, ...e.muscles.secondary, ...e.muscles.aux]),
+    );
+    expect(muscles.filter((m) => !credited.has(m.id)).map((m) => m.id)).toEqual([]);
   });
 });
 
@@ -35,8 +38,8 @@ describe('exercise library', () => {
   });
 
   it('distinguishes them by muscle emphasis, not just by name', () => {
-    expect(byId.get('sumo_deadlift')?.muscles.primary).toContain('adductor_magnus');
-    expect(byId.get('conventional_deadlift')?.muscles.primary).toContain('hams_lateral');
+    expect(byId.get('sumo_deadlift')?.muscles.primary).toContain('adductors');
+    expect(byId.get('conventional_deadlift')?.muscles.primary).not.toContain('adductors');
   });
 
   it('defaults a blank unilateral cell to false', () => {

@@ -4,6 +4,3 @@ package-lock.json
 
 # Data files. Prettier has no CSV parser, and the lookup tables are generated.
 *.csv
-
-# Published as-is; reformatting risks changing rendered output.
-docs/muscle-taxonomy-review.html

@@ -6,7 +6,6 @@
   import { setStressIndex, centralBalance, stressByMuscle } from './metrics/stress';
   import {
     volumeByMuscle,
-    rollUpToTags,
     setsByTierForLift,
     eventVolume,
     type CountedSet,
@@ -24,7 +23,7 @@
   // reference shows up now rather than in three weeks, and it demonstrates the
   // one interaction that matters for analysis: switching how muscles are counted.
   const muscles = parseMuscles(musclesCsv);
-  const tagsOf = new Map(muscles.map((m) => [m.id, m.tags]));
+  const nameOf = new Map(muscles.map((m) => [m.id, m.name]));
   const exercises = parseExercises(exercisesCsv, new Set(muscles.map((m) => m.id)));
   const byId = new Map(exercises.map((e) => [e.id, e]));
 
@@ -62,10 +61,9 @@
   const perLift = $derived(setsByTierForLift(counted));
   const eventTotals = $derived(eventVolume(counted, tw));
   const byMuscle = $derived(volumeByMuscle(counted, weights));
-  const byGroup = $derived(rollUpToTags(byMuscle, tagsOf));
   const stress = $derived(stressByMuscle(stressSets, weights));
 
-  const ranked = $derived([...byGroup.entries()].sort((a, b) => b[1] - a[1]).slice(0, 9));
+  const ranked = $derived([...byMuscle.entries()].sort((a, b) => b[1] - a[1]).slice(0, 9));
   const peak = $derived(ranked.length ? ranked[0][1] : 1);
 
   const worked: Array<[string, number, number, number]> = [
@@ -83,7 +81,7 @@
   <h1>Sisyphos</h1>
   <p class="sub">
     Schema and metric layer wired up; no logging UI yet. Everything below is computed live from
-    <code>config/</code> — {exercises.length} exercises, {muscles.length} muscles.
+    <code>config/</code> — {exercises.length} exercises, {muscles.length} muscle groups.
   </p>
 
   <section>
@@ -111,7 +109,7 @@
     <ul class="bars">
       {#each ranked as [group, sets]}
         <li>
-          <span class="bar-label">{group}</span>
+          <span class="bar-label">{nameOf.get(group)}</span>
           <span class="bar-track"
             ><span class="bar-fill" style="width:{(sets / peak) * 100}%"></span></span
           >
@@ -122,9 +120,7 @@
     </ul>
     <p class="note">
       Sets per muscle group from one sample session, and the stress attributed to it. Both use the
-      same weights, so they move together instead of telling different stories. Groups overlap by
-      design — a muscle tagged <code>quads</code> and <code>lower_body</code> counts in both — so these
-      columns must never be summed against each other.
+      same weights, so they move together instead of telling different stories.
     </p>
   </section>
 
