@@ -13,12 +13,13 @@ an exercise can be tagged without guessing at individual heads.
 
 - **List each group once, at its highest role.** A bench press is `pecs` primary;
   the incline-biased clavicular head does not add a second `pecs` entry.
-- **Hinges credit the adductor magnus to `hamstrings`.** Its posterior part
-  extends the hip alongside them. Squats, sumo deadlifts and the adductor machine
-  credit `adductors`.
+- **The whole adductor magnus is `adductors`.** Its posterior part extends the
+  hip alongside the hamstrings, but crediting it there would make a squat read as
+  hamstring work when what it loads is the adductor. Hinges credit `adductors` as
+  a lesser role instead.
 - **Squats do not credit `hip_flexors`.** Rectus femoris is barely loaded by a
   squat; leg extensions and leg raises are what train it.
-- **Credit serratus through `front_side_delts`**, which is where upward scapular
+- **Credit serratus through `front_delts`**, which is where upward scapular
   rotation lives. That is why planks and the ab wheel list it as `aux`.
 
 ## Changing the vocabulary
@@ -41,11 +42,10 @@ Muscles:
 - Biceps femoris (long and short heads)
 - Semitendinosus
 - Semimembranosus
-- Adductor magnus (posterior part)
 
 Joint actions: hip extension, knee flexion.
 
-Exercises: RDLs, good mornings, deadlifts and leg curls. The posterior adductor magnus works as a hip extensor alongside the hamstrings, so hinge work counts here, not toward adductors. Hinges alone miss the short head of the biceps femoris, which only flexes the knee, so leg curls are still needed to cover the whole group.
+Exercises: RDLs, good mornings, deadlifts and leg curls. The adductor magnus helps extend the hip in all of these but belongs to adductors, not here. Hinges alone miss the short head of the biceps femoris, which only flexes the knee, so leg curls are still needed to cover the whole group.
 
 ### 2. Glutes (`glutes`)
 
@@ -89,15 +89,15 @@ Exercises: squats, leg presses, lunges, split squats and leg extensions.
 
 Muscles:
 
-- Adductor magnus (anterior part)
+- Adductor magnus (anterior and posterior parts)
 - Adductor longus
 - Adductor brevis
 - Pectineus
 - Gracilis
 
-Joint actions: hip adduction.
+Joint actions: hip adduction, plus hip extension (posterior adductor magnus).
 
-Exercises: adductor machine, Copenhagen planks, wide-stance squats and sumo deadlifts.
+Exercises: adductor machine, Copenhagen planks, squats and sumo deadlifts. Conventional deadlifts and other hinges load it through hip extension, as a lesser role.
 
 ### 6. Calves (`calves`)
 
@@ -167,7 +167,7 @@ Joint actions: shoulder horizontal adduction, shoulder flexion, scapular protrac
 
 Exercises: bench press variations, flyes and dips. Both pec major heads are kept together because every bench variation loads both. Incline work shifts some emphasis to the clavicular head but not enough to justify a separate group. Pec minor has no exercise of its own and gets loaded in dips and pressing.
 
-### 12. Front and side delts (`front_side_delts`)
+### 12. Front delts (`front_delts`)
 
 Muscles:
 
@@ -178,7 +178,7 @@ Muscles:
 
 Joint actions: shoulder flexion, shoulder abduction, scapular upward rotation.
 
-Exercises: overhead presses, lateral raises and front raises. Overhead presses load both delt heads plus serratus. Lateral raises load the lateral delt and supraspinatus, with the anterior delt helping. Because both main exercises hit both heads, they share one group. Bench press loads the anterior delt as a secondary.
+Exercises: overhead presses, lateral raises and front raises. Overhead presses load both delt heads plus serratus. Lateral raises load the lateral delt and supraspinatus, with the anterior delt helping. Because both main exercises hit both heads, they share one group, named for the front delt because that is the head pressing loads. Bench press loads the anterior delt as a secondary.
 
 ### 13. Rear delts (`rear_delts`)
 
@@ -190,7 +190,7 @@ Muscles:
 
 Joint actions: shoulder horizontal abduction, shoulder external rotation, shoulder extension.
 
-Exercises: face pulls, reverse flyes and external rotation work. Rows load it partly. It is the counterpart of front and side delts. It is kept separate from upper back because it trains through shoulder movement, not shoulder blade movement.
+Exercises: face pulls, reverse flyes and external rotation work. Rows load it partly. It is the counterpart of front delts. It is kept separate from upper back because it trains through shoulder movement, not shoulder blade movement.
 
 ### 14. Upper back (`upper_back`)
 

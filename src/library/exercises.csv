@@ -14,8 +14,8 @@ id,name,base_lift,tier,unilateral,load_type,default_unit,primary,secondary,aux
 # --- competition ---
 low_bar_squat,Low-Bar Squat,squat,comp,,,,quads/glutes,adductors/lower_back,abs
 high_bar_squat,High-Bar Squat,squat,comp,,,,quads/glutes,adductors,lower_back/abs
-bench,Bench Press,bench,comp,,,,pecs/triceps,front_side_delts,
-conventional_deadlift,Conventional Deadlift,deadlift,comp,,,,hamstrings/glutes,lower_back,quads/upper_back/forearms
+bench,Bench Press,bench,comp,,,,pecs/triceps,front_delts,
+conventional_deadlift,Conventional Deadlift,deadlift,comp,,,,hamstrings/glutes,lower_back,quads/adductors/upper_back/forearms
 sumo_deadlift,Sumo Deadlift,deadlift,comp,,,,glutes/adductors/quads,hamstrings/lower_back,upper_back/forearms
 
 # --- squat variations ---
@@ -32,23 +32,23 @@ bulgarian_split_squat,Bulgarian Split Squat,squat,acc,true,,,quads/glutes,adduct
 walking_lunge,Walking Lunge,squat,acc,true,,,quads/glutes,adductors/hamstrings,
 
 # --- bench variations ---
-cg_bench,Close-Grip Bench Press,bench,high_spec,,,,triceps/pecs,front_side_delts,
-spoto_press,Spoto Press,bench,high_spec,,,,pecs/triceps,front_side_delts,
-larsen_press,Larsen Press,bench,high_spec,,,,pecs/triceps,front_side_delts,abs
-pin_press,Pin Press,bench,high_spec,,,,triceps/pecs,front_side_delts,
-db_bench,Dumbbell Bench Press,bench,low_spec,,,,pecs,front_side_delts/triceps,rear_delts
-incline_bench,Incline Bench Press,bench,low_spec,,,,pecs/front_side_delts,triceps,
-dip,Dip,bench,acc,,bw_plus,,pecs/triceps,front_side_delts,
-overhead_press,Overhead Press,bench,acc,,,,front_side_delts/triceps,,abs/upper_back
+cg_bench,Close-Grip Bench Press,bench,high_spec,,,,triceps/pecs,front_delts,
+spoto_press,Spoto Press,bench,high_spec,,,,pecs/triceps,front_delts,
+larsen_press,Larsen Press,bench,high_spec,,,,pecs/triceps,front_delts,abs
+pin_press,Pin Press,bench,high_spec,,,,triceps/pecs,front_delts,
+db_bench,Dumbbell Bench Press,bench,low_spec,,,,pecs,front_delts/triceps,rear_delts
+incline_bench,Incline Bench Press,bench,low_spec,,,,pecs/front_delts,triceps,
+dip,Dip,bench,acc,,bw_plus,,pecs/triceps,front_delts,
+overhead_press,Overhead Press,bench,acc,,,,front_delts/triceps,,abs/upper_back
 
 # --- deadlift variations ---
-deficit_deadlift,Deficit Deadlift,deadlift,high_spec,,,,hamstrings/glutes,lower_back/quads,upper_back/forearms
+deficit_deadlift,Deficit Deadlift,deadlift,high_spec,,,,hamstrings/glutes,lower_back/quads,adductors/upper_back/forearms
 block_pull,Block Pull,deadlift,high_spec,,,,glutes/lower_back,hamstrings,upper_back/forearms
 paused_deadlift,Paused Deadlift,deadlift,high_spec,,,,hamstrings/glutes,lower_back,quads/forearms
-romanian_deadlift,Romanian Deadlift,deadlift,low_spec,,,,hamstrings,glutes/lower_back,forearms
-stiff_leg_deadlift,Stiff-Leg Deadlift,deadlift,high_spec,,,,hamstrings,glutes/lower_back,
-good_morning,Good Morning,deadlift,acc,,,,hamstrings/lower_back,glutes,
-hip_thrust,Hip Thrust,deadlift,acc,,,,glutes,hamstrings,abs
+romanian_deadlift,Romanian Deadlift,deadlift,low_spec,,,,hamstrings,glutes/lower_back,adductors/forearms
+stiff_leg_deadlift,Stiff-Leg Deadlift,deadlift,high_spec,,,,hamstrings,glutes/lower_back,adductors
+good_morning,Good Morning,deadlift,acc,,,,hamstrings/lower_back,glutes,adductors
+hip_thrust,Hip Thrust,deadlift,acc,,,,glutes,hamstrings/adductors,abs
 back_extension,Back Extension,deadlift,acc,,bw_plus,,lower_back,glutes/hamstrings,
 
 # --- leg accessories ---
@@ -75,18 +75,18 @@ face_pull,Face Pull,,acc,,,pins,rear_delts/upper_back,,
 shrug,Shrug,deadlift,acc,,,,upper_back,,forearms
 
 # --- shoulders and arms ---
-lateral_raise,Lateral Raise,,acc,,,,front_side_delts,,upper_back
+lateral_raise,Lateral Raise,,acc,,,,front_delts,,upper_back
 rear_delt_fly,Rear Delt Fly,,acc,,,,rear_delts,upper_back,
 triceps_pushdown,Triceps Pushdown,bench,acc,,,pins,triceps,,
 overhead_triceps_ext,Overhead Triceps Extension,bench,acc,,,,triceps,,
 skullcrusher,Skullcrusher,bench,acc,,,,triceps,,
 barbell_curl,Barbell Curl,,acc,,,,biceps,,forearms
 hammer_curl,Hammer Curl,,acc,,,,biceps,forearms,
-cable_fly,Cable Fly,bench,acc,,,pins,pecs,front_side_delts,
+cable_fly,Cable Fly,bench,acc,,,pins,pecs,front_delts,
 
 # --- trunk ---
-plank,Plank,,acc,,none,,abs,lower_back,front_side_delts
-ab_wheel,Ab Wheel,,acc,,bw_plus,,abs,lats,front_side_delts/hip_flexors
+plank,Plank,,acc,,none,,abs,lower_back,front_delts
+ab_wheel,Ab Wheel,,acc,,bw_plus,,abs,lats,front_delts/hip_flexors
 hanging_leg_raise,Hanging Leg Raise,,acc,,bw_plus,,abs/hip_flexors,,forearms
 pallof_press,Pallof Press,,acc,,,pins,abs,lower_back,
 suitcase_carry,Suitcase Carry,,acc,true,,,abs/lower_back,forearms/upper_back,

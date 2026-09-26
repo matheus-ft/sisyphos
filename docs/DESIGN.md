@@ -68,7 +68,7 @@ a submission that becomes a pull request; changing the vocabulary is a change to
 the app.
 
 **Seventeen flat muscle groups, no finer level.** Exercises credit groups like
-`hamstrings` and `front_side_delts` directly; `docs/MUSCLES.md` defines each one.
+`hamstrings` and `front_delts` directly; `docs/MUSCLES.md` defines each one.
 The provisional vocabulary had 37 anatomical leaves with overlapping tags rolled
 up above them. Rejected: tagging an exercise at the level of individual heads
 claims a precision nobody has, and overlapping tags produce totals that cannot be
