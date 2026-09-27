@@ -611,3 +611,23 @@ describe('GitHubRemote: the token', () => {
     expect(error.message).toContain('[token]');
   });
 });
+
+describe('GitHubRemote: a request that never answers', () => {
+  it('gives up after the timeout, as it would with no network', async () => {
+    // Answers only by rejecting when the request's signal aborts, as fetch does.
+    const hanging: typeof fetch = (_input, init) =>
+      new Promise((_resolve, reject) => {
+        init?.signal?.addEventListener('abort', () => reject(init.signal?.reason));
+      });
+    const remote = new GitHubRemote({
+      owner: 'lifter',
+      repo: 'sisyphos-log',
+      token: TOKEN,
+      branch: 'main',
+      fetch: hanging,
+      timeoutMs: 20,
+    });
+    const error = await failure(remote.head(), 'retryable');
+    expect(error.message).toContain('did not answer in time');
+  });
+});

@@ -29,7 +29,15 @@ export interface GitHubRemoteOptions {
   branch: string | null;
   /** Injectable for tests. */
   fetch?: typeof fetch;
+  /**
+   * How long a request may take, body included, before it counts as no network.
+   * Without a limit, a request that hangs holds the sync lock (7.2) indefinitely.
+   * Default 30 seconds.
+   */
+  timeoutMs?: number;
 }
+
+const DEFAULT_TIMEOUT_MS = 30_000;
 
 const API = 'https://api.github.com';
 
@@ -242,9 +250,18 @@ export class GitHubRemote implements Remote {
         headers,
         body: body === undefined ? undefined : JSON.stringify(body),
         cache: 'no-store',
+        // Covers reading the body too, since `read` consumes it under the same signal.
+        signal: AbortSignal.timeout(this.options.timeoutMs ?? DEFAULT_TIMEOUT_MS),
       });
     } catch (cause) {
-      throw this.error('retryable', 'Could not reach GitHub', { cause });
+      const timedOut = cause instanceof DOMException && cause.name === 'TimeoutError';
+      throw this.error(
+        'retryable',
+        timedOut ? 'GitHub did not answer in time' : 'Could not reach GitHub',
+        {
+          cause,
+        },
+      );
     }
   }
 
