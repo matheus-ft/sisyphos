@@ -190,9 +190,8 @@ export function storeContract(name: string, make: StoreFactory): void {
         'sessions/2026/2026-09-14-k3f9.json',
       ];
       expect(await store.paths()).toEqual(all);
-      expect((await store.entries()).map((e) => e.path)).toEqual(
-        [...all].sort((a, b) => a.localeCompare(b)),
-      );
+      // Entries in the same plain code-unit order as paths.
+      expect((await store.entries()).map((e) => e.path)).toEqual(all);
       // Every path's local sha is its content's blob sha.
       for (const e of await store.entries()) {
         const text = await store.content(e.path);

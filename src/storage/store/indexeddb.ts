@@ -135,8 +135,9 @@ export class IndexedDbStore implements LocalStore {
   }
 
   async entries(): Promise<SyncEntry[]> {
-    // Sorted as `MemoryStore` sorts them, not in IndexedDB's key order.
-    return (await this.db.getAll('sync')).sort((a, b) => a.path.localeCompare(b.path));
+    // IndexedDB returns string keys in code-unit order, the order `paths()` and
+    // `MemoryStore` use: the same on every device, which `localeCompare` is not.
+    return this.db.getAll('sync');
   }
 
   async meta(): Promise<SyncMeta> {
