@@ -556,8 +556,17 @@ the addition, **R** the shipped row now; rows are equal when their hashes are.
 | R = B     | The shipped row has not changed since the addition was made          | **The addition is used.** A brand-new exercise is this case too (both absent)        |
 | Otherwise | The shipped row changed after the addition was made                  | **Conflict**, flagged like every other (5.2). The shipped row is used until resolved |
 
-The first two results are ordinary writes and sync like any other. A library
-conflict is not written to `conflicts/`: both versions already persist, one in
+The first two results are ordinary writes and sync like any other. A rebase is
+only written when `based_on` actually changes, so assembling the library twice
+writes nothing the second time.
+
+An addition whose `based_on` names a shipped row this build does not have was
+made on a newer version of the app. Ids never leave the shipped library, so this
+build simply has not seen that row yet. The addition is used and nothing is
+written: to this build the base is as absent as the shipped row. The newer
+version decides it properly once this device updates.
+
+A library conflict is not written to `conflicts/`: both versions already persist, one in
 the app and one in the log, so the conflict is derived afresh every time the
 library is assembled, identically on every device.
 
