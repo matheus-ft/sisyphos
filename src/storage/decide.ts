@@ -12,8 +12,6 @@
  *
  * In a pull, a unit with a local change (L ≠ B and L ≠ R) is skipped entirely:
  * nothing taken, nothing saved, base untouched.
- *
- * STUB — implemented by the decisions work package.
  */
 
 export type Mode = 'full' | 'pull';
@@ -40,8 +38,17 @@ export type FileDecision =
   /** Pull only: L changed and differs from R. Leave the path exactly as it is. */
   | 'skip';
 
-export function decideFile(_versions: FileVersions, _mode: Mode): FileDecision {
-  throw new Error('not implemented: storage/decide');
+export function decideFile(versions: FileVersions, mode: Mode): FileDecision {
+  // Null is compared like any other value: absent on both sides is equal, which
+  // is how a deletion, and a path a device never agreed on, fall out of the rule.
+  const { base, local, remote } = versions;
+  if (local === remote) return 'same';
+  if (local === base) return 'take';
+  // From here on the device holds a change the remote does not have, whichever
+  // of the two rows below would apply. A pull leaves it for the next full sync.
+  if (mode === 'pull') return 'skip';
+  if (remote === base) return 'push';
+  return 'conflict';
 }
 
 /**
@@ -67,6 +74,35 @@ export interface TableDecision {
   conflicts: Array<{ key: string; local: string | null }>;
 }
 
-export function decideTable(_versions: TableVersions, _mode: Mode): TableDecision {
-  throw new Error('not implemented: storage/decide');
+export function decideTable(versions: TableVersions, mode: Mode): TableDecision {
+  const { base, local, remote } = versions;
+  const result = new Map<string, string>();
+  const nextBase = new Map<string, string>();
+  const conflicts: TableDecision['conflicts'] = [];
+
+  // Every key any version has. Sorted, so the same versions always give the
+  // same output in the same order, whatever order the maps were built in.
+  const keys = [...new Set([...base.keys(), ...local.keys(), ...remote.keys()])].sort();
+
+  for (const key of keys) {
+    const b = base.get(key) ?? null;
+    const l = local.get(key) ?? null;
+    const r = remote.get(key) ?? null;
+    const decision = decideFile({ base: b, local: l, remote: r }, mode);
+
+    // Pushing and skipping keep this device's row; every other outcome leaves
+    // the device holding the remote's.
+    const row = decision === 'push' || decision === 'skip' ? l : r;
+    if (row !== null) result.set(key, row);
+
+    // The remote holds `r` at this head whether or not the push lands, so where
+    // the device now agrees with it, that is the new base. Everywhere else the
+    // old base stays, so the key still reads as changed here next round.
+    const agreed = row === r ? r : b;
+    if (agreed !== null) nextBase.set(key, agreed);
+
+    if (decision === 'conflict') conflicts.push({ key, local: l });
+  }
+
+  return { result, nextBase, conflicts };
 }
