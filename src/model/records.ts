@@ -231,9 +231,12 @@ export interface SessionRecord {
   set_id: Id;
 }
 
+/**
+ * Identified by date, exercise and reps: a day has one best at each rep count
+ * for an exercise, so no separate id is needed.
+ */
 export interface ManualRecord {
   source: 'manual';
-  id: Id;
   exercise_id: string;
   reps: number;
   weight_kg: number;
@@ -248,4 +251,28 @@ export interface BodyweightEntry {
   date: IsoDate;
   weight_kg: number;
   source: 'manual' | 'import';
+}
+
+// --- conflicts ---------------------------------------------------------------
+
+/** A table row as it appears in its CSV file: column name to cell text. */
+export type TableRow = Record<string, string>;
+
+/**
+ * The version that did not stand when two devices changed the same record
+ * differently (docs/STORAGE.md section 5). The version that stands is whatever
+ * the data holds now; it is not copied here. Written once, only ever deleted.
+ */
+export interface ConflictRecord {
+  /** `<date found>-<4 random>`, e.g. `2026-09-27-7xq2`. Names its file. */
+  id: Id;
+  /** The log-repo file in conflict. */
+  path: string;
+  /** For a table, the row's key as column to cell text; null for a file. */
+  key: TableRow | null;
+  found_at: Instant;
+  /** The device whose version this is. */
+  device_id: string;
+  /** That device's version: the whole record, the row, or null if it had deleted it. */
+  version: Session | Template | TableRow | null;
 }

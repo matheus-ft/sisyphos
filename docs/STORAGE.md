@@ -101,9 +101,11 @@ built. Absent values are `null`, never omitted.
 **CSV files:**
 
 - A header row, then one row per record, comma-separated.
-- A cell containing a comma, a double quote, `\r` or `\n`, or starting with `#`,
-  is wrapped in double quotes, with inner quotes doubled (RFC 4180). No other
-  cell is quoted.
+- A cell containing a comma, a double quote, `\r` or `\n`, starting with `#`, or
+  starting or ending with whitespace, is wrapped in double quotes, with inner
+  quotes doubled (RFC 4180). No other cell is quoted. The reader trims unquoted
+  cells (the shipped library relies on it), so whitespace a value really has
+  must be quoted to survive.
 - `null` is an empty cell. Booleans are `true` or empty. Numbers use JavaScript's
   shortest round-trip form (`String(n)`). Dates are `YYYY-MM-DD`; instants are
   ISO-8601 UTC with milliseconds.
@@ -160,8 +162,8 @@ One queued operation:
 
 1. Reads what it needs (for a table row: the table's current rows).
 2. Computes the new record, the file's new serialisation and its hash (section
-   3). Hashing is asynchronous, so it happens here, **before** any transaction
-   opens.
+   3), **before** any transaction opens. Hashing is synchronous (a plain SHA-1,
+   `storage/hash.ts`), because the browser's own is asynchronous only.
 3. Opens one transaction and writes the record and its path's `sync` entry
    together. No `await` may separate two requests of one transaction: IndexedDB
    commits a transaction as soon as the microtask queue drains with nothing
