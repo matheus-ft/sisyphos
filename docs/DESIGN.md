@@ -21,19 +21,70 @@ years.
 
 ## Storage
 
+The full specification is `docs/STORAGE.md`. What follows is why.
+
 **JSON on device, one document per session.** A session is roughly 4KB; five
 sessions a week is about 1MB a year. SQLite-in-the-browser was considered and
 dropped: it means a ~1MB wasm payload plus OPFS handling on iOS, and it buys
 query performance this dataset will never need.
 
-Per-session documents make sync granular. Two devices editing different sessions
-never conflict, which is what made a locking scheme unnecessary.
+**The log repo holds one file per session and per template, and one table per
+kind of lifter data.** Sessions and templates are nested documents, edited as a
+whole; bodyweight, reference maxes, manual records and custom exercises are
+rows, and read as tables. Two devices editing different sessions never touch the
+same file.
+
+Rejected: a file per bodyweight entry. It would make sync uniform, but a daily
+time series as hundreds of files a year is the wrong shape for the data.
+Rejected: one JSON file per kind of lifter data. It shares a file between
+devices exactly as a CSV does, so it needs the same row merge, and gives up the
+table.
+
+**Sync works the way git does: one commit per sync, and the branch only moves
+forward.** A sync reads what the remote changed since this device last agreed
+with it, merges, writes everything as one commit, and moves the branch only if
+nothing else moved it first. That refusal is the compare-and-swap: it needs no
+coordination and cannot lose data. Restoring a reinstalled app is just a first
+sync.
+
+Rejected: the Contents API, file by file. It made a commit per file with no way
+to push several atomically, had no cheap way to ask what changed, and answers
+422 both for "someone else wrote this" and for plain validation errors.
 
 **Rejected: file locking.** Acquiring a lock needs the network, and the moment
 you most need to write — mid-session, no signal — is the moment you cannot
-acquire one. Stale locks after a dead phone have no clean recovery either. The
-GitHub Contents API's sha requirement provides compare-and-swap instead, which
-needs no coordination and cannot lose data.
+acquire one. Stale locks after a dead phone have no clean recovery either.
+
+**What needs syncing is derived, never stored.** Each file's content hash is
+compared with the hash both sides last agreed on; a difference is what needs
+syncing. Rejected: a dirty queue. A flag has to be cleared at exactly the right
+moment, and every way of clearing it at the wrong one (an edit during a save, an
+edit during a push, a failed write) lost a change in the first version of this
+layer. A hash cannot fall out of step with the content it is computed from. It
+is the same rule as everything else here: nothing derived is stored.
+
+**Conflicts are kept in the data and resolved by hand.** When two devices change
+the same record differently, sync keeps both — the version already on the remote
+stands, the other is kept beside it marked as a conflict — and carries on. The
+marked copy counts toward nothing until the lifter picks one. Because the mark
+is in the data, it syncs, shows everywhere, and survives a reinstall.
+
+Rejected: the later write wins. It silently replaces a weigh-in or a reference
+max with whichever device synced last. Rejected: asking at sync time. It blocks
+sync on a decision, and keeps the pending decision on one device, where a
+reinstall loses it.
+
+**No sync while a session is in progress.** iOS reports the app as hidden every
+time the phone locks, which between sets is constantly; syncing on each would
+put a commit per set in the history. A session in progress is safe on the
+device. Losing the phone mid-session loses that session, and that risk is
+accepted. Rejected: a timer that syncs after ten minutes of quiet, which still
+pushed mid-session, on mobile data.
+
+**You create the log repo; the app does not.** A token allowed to create
+repositories must be allowed far more than one repo, and a token limited to
+selected repositories can only name ones that already exist. Creating it by hand
+is one click, and keeps the token scoped to Contents on that one repo.
 
 **Rejected: iCloud Drive.** No web API exists. Safari has no File System Access
 API, so a PWA cannot write to a user folder without a Share Sheet tap each time.
@@ -66,6 +117,11 @@ exercise and every past analysis reads the new way.
 rename would silently break every exercise pointing at it. Adding an exercise is
 a submission that becomes a pull request; changing the vocabulary is a change to
 the app.
+
+**Submitting an exercise opens a prefilled issue in the browser**, which the
+lifter submits signed in on github.com. Rejected: filing it with the log token.
+A fine-grained token cannot write to a repository its owner does not own, so
+that would work for the app's author and nobody else.
 
 **Seventeen flat muscle groups, no finer level.** Exercises credit groups like
 `hamstrings` and `front_delts` directly; `docs/MUSCLES.md` defines each one.

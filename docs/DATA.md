@@ -4,92 +4,86 @@ Two repositories, and the split is not arbitrary: it's the line between what the
 app _is_ and what the app _records_.
 
 ```
-sisyphos/                      ← this repo. Code and the shared library. AGPL.
-└── config/, src/, tests/, docs/
+sisyphos/                          ← this repo. Code and the shared library. AGPL.
+└── src/, tests/, docs/, scripts/
 
-sisyphos-log/                  ← a separate PRIVATE repo. Your training.
-├── sessions/2026/2026-09-14_01J8X.json
-├── library/additions.csv      ← exercises you made that aren't upstream yet
+sisyphos-log/                      ← your own PRIVATE repo. Your training.
+├── sisyphos.json                  format marker
+├── sessions/2026/<id>.json        one file per session
+├── templates/<id>.json            one file per template
+├── lifter/bodyweight.csv
 ├── lifter/one-rm-history.csv
 ├── lifter/manual-records.csv
-├── lifter/bodyweight.csv
-└── templates/*.json
+└── library/additions.csv          exercises you made
 ```
 
 Nothing personal is committed here. Your bodyweight is not a project asset.
 
-## First run: the log repo creates itself
+How the two are kept in step — writing, syncing, conflicts — is specified in
+[`STORAGE.md`](STORAGE.md).
 
-You paste one fine-grained GitHub token into settings. The app then:
+## Setup: you create the log repo
 
-1. Checks whether the log repo exists.
-2. If not, creates it as **`sisyphos-log`** — `POST /user/repos` with
-   `private: true` — under your own
-   account. Nobody else can see it, including whoever wrote this app.
-3. Writes the directory skeleton and an initial commit.
+On github.com you create a private repository (any name; `sisyphos-log` is
+suggested) and a fine-grained token that can read and write Contents on that one
+repository and nothing else. In the app you enter the repo's name and paste the
+token. The app marks the repo as a log, and its first sync restores whatever the
+repo already holds. `STORAGE.md` section 8 has the details.
 
-So the setup is: paste a token, pick a name, done. No repository to create by
-hand, no directory structure to get right. The token needs `contents: write` on
-that one repo and `issues: write` on the public app repo, which is what lets the
-app file an exercise submission for you.
+The app never creates the repo: a token allowed to do that is allowed far more
+than one repository.
 
-If you would rather create the repo yourself, point the app at an existing empty
-one and it will use that instead.
+## Shipped with the app
 
-## config/ — ships with the app, effectively fixed
+| File                           | What it holds                                                                                                                                                               | Who edits it                                                                        |
+| ------------------------------ | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------- |
+| `src/metrics/definitions.json` | Every metric definition: role and tier weight presets, which metrics count warm-ups, bodyweight and tonnage settings. Settings list their alternatives in an `_options` key | You, when you change your mind about a definition                                   |
+| `src/library/muscles.csv`      | The 17 muscle groups exercises credit: `id`, `name`. See `docs/MUSCLES.md`                                                                                                  | Rarely. Adding one is additive; renaming an id breaks every exercise pointing at it |
+| `src/library/exercises.csv`    | The shared exercise library                                                                                                                                                 | Everyone, through submissions (below)                                               |
+| `src/metrics/rpe-chart.csv`    | `rpe, reps, factor`: the RPE/RIR chart. 232 rows, deliberately ragged: low-RPE rows stop short of 12 reps                                                                   | Nobody, unless you swap charts                                                      |
+| `src/metrics/stress-chart.csv` | `rpe, reps, peripheral, central`: per-set fatigue. 252 rows, complete                                                                                                       | Nobody                                                                              |
 
-| File                    | What it holds                                                                                                                                                            | Who edits it                                                                        |
-| ----------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | ----------------------------------------------------------------------------------- |
-| `metrics.json`          | Every metric definition: role weights, null policies, which chart drives e1RM, whether warm-ups count. Each setting lists its alternatives in a matching `_options` key. | You, when you change your mind about a definition                                   |
-| `muscles.csv`           | The 17 muscle groups exercises credit: `id`, `name`. See `docs/MUSCLES.md`.                                                                                              | Rarely. Adding one is additive; renaming an id breaks every exercise pointing at it |
-| `metrics/rpe-chart.csv` | `rpe, reps, factor` — the RPE/RIR chart. 232 rows, deliberately ragged: low-RPE rows stop short of 12 reps.                                                              | Nobody, unless you swap charts                                                      |
-| `stress-factors.csv`    | `rpe, reps, peripheral, central` — per-set fatigue. 252 rows, complete.                                                                                                  | Nobody                                                                              |
+## The exercise library
 
-These are configuration in the strict sense: the app cannot function without them
-and the lifter does not routinely change them.
+The exercises you can pick from are the shipped `src/library/exercises.csv` plus
+your own additions in `library/additions.csv` in the log repo. The two are
+combined when read, never copied into each other.
 
-## The exercise library is shared
-
-`exercises.csv` is imported once on first run and then belongs to you. The moment
-you add an exercise in the app, the live library is your data, not this file. It
-lives here so a fresh install isn't an empty screen, and so the format has a
-worked example.
-
-The exercise library is therefore _not_ config, even though it looks like it:
-config is what the app needs, and the exercise library is what the lifter builds.
-
-## src/lib/ — what each file contains
-
-| Path                        | Contents                                                           |
-| --------------------------- | ------------------------------------------------------------------ |
-| `model/primitives.ts`       | Scalars: ids, instants, dates, intervals, load units               |
-| `model/library.ts`          | The taxonomy — what `src/library/*.csv` describes                  |
-| `model/log.ts`              | What you record: sessions, sets, templates                         |
-| `model/lifter.ts`           | Reference maxes, records, bodyweight                               |
-| `model/intervals.ts`        | Prescription ranges: AMRAP detection, display formatting           |
-| `model/index.ts`            | Re-exports the four; import from here, not from the parts          |
-| `csv.ts`                    | A ~30-line CSV reader. Our files need no quoting, so no dependency |
-| `library/parse.ts`          | CSV rows → `Muscle` and `Exercise`, with validation and defaults   |
-| `metrics/rpe-chart.ts`      | The RPE→%1RM chart, and `e1rm()`                                   |
-| `metrics/stress.ts`         | The fatigue chart, stress index, central balance                   |
-| `metrics/load.ts`           | Unit conversion, effective load, tonnage                           |
-| `storage/StorageAdapter.ts` | The persistence interface. IndexedDB implements it                 |
-| `sync/SyncAdapter.ts`       | The remote interface. A private git repo implements it             |
+An exercise you create goes into your additions at once, so it works offline.
+Proposing it for everyone opens a prefilled issue on github.com; a workflow
+validates it and opens a pull request adding the row to the shipped file.
 
 ## The log repo's files
 
-`sessions/YYYY/<date>_<id>.json` — one document per session, so two devices
-editing different sessions never collide. Nested, machine-written, never edited
-by hand.
+Every table has a **key**: the columns that identify a row. There is at most one
+row per key, except while two versions of it are in conflict. Every table ends
+with the same two columns:
 
-`library/additions.csv` — exercises you created that haven't merged upstream yet.
+- `updated_at` — when the row last changed. Shown when you resolve a conflict;
+  never used to decide anything.
+- `conflict` — empty, or `both_edited` / `edited_and_deleted` on a version kept
+  because two devices disagreed. `STORAGE.md` section 5 says what each means.
 
-`lifter/one-rm-history.csv` — `date, lift, weight_kg, note`. Effective-dated
-reference maxes that resolve percentage prescriptions. Always set by hand.
+`sisyphos.json` — `{ "format": 1 }`. Marks the repo as a log and says which
+format its files are in.
 
-`lifter/manual-records.csv` — `exercise_id, reps, weight_kg, date, rpe, context`.
-Records with **no session behind them**: a competition lift, or anything from
-before you started logging here.
+`sessions/<YYYY>/<id>.json` — one session, with its exercises and sets. The year
+is the year the session was created, so moving a session to another date edits
+the file and moves nothing. Nested, machine-written, never edited by hand.
+
+`templates/<id>.json` — one template: the skeleton a session starts from.
+
+`lifter/bodyweight.csv` — `date, weight_kg, source, updated_at, conflict`. Key:
+`date`, since there is at most one weigh-in a day. Needed for `bw_plus` loads.
+
+`lifter/one-rm-history.csv` — `date, lift, weight_kg, note, updated_at,
+conflict`. Key: `date, lift`. Effective-dated reference maxes that resolve
+percentage prescriptions. Always set by hand.
+
+`lifter/manual-records.csv` — `date, exercise_id, reps, weight_kg, rpe, context,
+updated_at, conflict`. Key: `date, exercise_id, reps`. Records with **no session
+behind them**: a competition lift, or anything from before you started logging
+here.
 
 Records that _do_ come from logged sets are not stored at all. They're derived by
 scanning sessions, exactly like tonnage and e1RM, and each one points at the set
@@ -100,14 +94,18 @@ fall out of agreement with the set that produced it.
 Note this is a different thing again from the 1RM history. The 1RM history drives
 prescriptions and is a decision you make; records are observations.
 
-`lifter/bodyweight.csv` — `date, weight_kg, source`. Needed for `bw_plus` loads.
+`library/additions.csv` — exactly the columns of the shipped
+`src/library/exercises.csv`, then `updated_at, conflict`. Key: `id`. The parser
+reads columns by name, so the same parser reads both files.
+
+Any other file you put in the log repo is yours: the app never touches it.
 
 ## Exports
 
 Generated on demand, never a source of truth, and they carry no library-derived
 data — no muscles, no tier, no base lift. Exports reference `exercise_id` and the
 consumer joins against `exercises.csv`, which is the whole point of having a
-truth table.
+truth table. Anything marked as a conflict is left out.
 
 ```
 sets.csv       session_id, date, exercise_id, set_n, reps, rpe, load_kg, is_warmup, state
@@ -119,3 +117,20 @@ In a notebook that's one join:
 ```python
 df = pd.read_csv('sets.csv').merge(pd.read_csv('exercises.csv'), on='exercise_id')
 ```
+
+## Source layout
+
+| Path                     | Contents                                                                         |
+| ------------------------ | -------------------------------------------------------------------------------- |
+| `model/primitives.ts`    | Scalars: ids, instants, dates, intervals, load units                             |
+| `model/taxonomy.ts`      | Muscles and exercises: what `src/library/*.csv` describes                        |
+| `model/records.ts`       | What you record: sessions, sets, templates, reference maxes, records, bodyweight |
+| `model/index.ts`         | Re-exports the three; import from here, not from the parts                       |
+| `csv.ts`                 | The CSV reader. No dependency                                                    |
+| `library/parse.ts`       | CSV rows → `Muscle` and `Exercise`, with validation and defaults                 |
+| `metrics/definitions.ts` | Reads `definitions.json`: weight presets and warm-up rules                       |
+| `metrics/rpe-chart.ts`   | The RPE→%1RM chart, and `e1rm()`                                                 |
+| `metrics/stress.ts`      | The fatigue chart, stress index, central balance                                 |
+| `metrics/load.ts`        | Unit conversion, effective load, tonnage                                         |
+| `metrics/volume.ts`      | Volume by muscle, by tier and by event                                           |
+| `storage/`               | The device store, sync and scheduling, specified in `STORAGE.md`                 |

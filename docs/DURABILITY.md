@@ -26,11 +26,10 @@ with a date on it.
 
 ## The three mechanisms
 
-**Sync, which does nearly all the work.** Every session is pushed as a commit to
-a private repo. Pushes fire on ten minutes of quiescence, on switching away from
-the app, on ending a session, on launch, and on demand. In practice a session is
-in the remote within seconds of you leaving the gym. The remote is the archive;
-the phone holds a copy of it.
+**Sync, which does nearly all the work.** Everything you record is synced to a
+private repo you own, one commit per sync. Ending a session syncs it, so in
+practice a session is in the remote the moment you finish it. The remote is the
+archive; the phone holds a copy of it.
 
 **Persistent storage.** `requestPersistence()` calls `navigator.storage.persist()`
 at launch, which asks the browser not to evict this origin under disk pressure.
@@ -43,52 +42,56 @@ you want a copy in your hand right now.
 
 ## Exposure
 
-`exposure()` in `storage/durability.ts` answers one question: _if this phone
-vanished right now, what would be lost?_ It returns one of four levels, and the
-UI shows it permanently rather than only when something is wrong, so the number
-is never a surprise.
+Exposure answers one question: _if this phone vanished right now, what would be
+lost?_ It is one of four levels, and the UI shows it permanently rather than only
+when something is wrong, so it is never a surprise.
 
 - **safe** — everything here is in the remote
-- **pending** — unpushed work, minutes old, normal mid-session
-- **at_risk** — unpushed work older than an hour, worth acting on
-- **unprotected** — sync was never configured, so the phone is the only copy
+- **pending** — unsynced changes, minutes old, or a session in progress
+- **at_risk** — unsynced changes older than an hour, worth acting on
+- **unprotected** — sync was never set up, so the phone is the only copy
 
 `unprotected` is deliberately impossible to escape by having a tidy local state:
-zero unsynced documents on a device with nowhere to sync to means everything is
+zero unsynced changes on a device with nowhere to sync to means everything is
 unsynced, not that everything is safe. First run therefore either sets up sync or
 makes you explicitly choose to go without.
 
+Age is measured from the first change that has not reached the remote, not the
+latest, so repeated edits or failed syncs never make old work look new.
+
+A session in progress keeps exposure at **pending** at most. Syncing pauses on
+purpose while you train (below), so the session is safe on the phone and only on
+the phone until you end it.
+
+## When syncing happens
+
+Every change is written to the phone the moment it is complete, with no network.
+Syncing is separate, and happens when:
+
+| Trigger           | Why                                                        |
+| ----------------- | ---------------------------------------------------------- |
+| Ending a session  | The session is complete; this is the one that matters most |
+| Launching the app | Finishes whatever the last run could not send              |
+| Asking            | For when you want certainty now                            |
+| Leaving the app   | Only when no session is in progress                        |
+| Regaining signal  | Only when no session is in progress                        |
+
+While a session is in progress, leaving the app does not sync. Locking the phone
+between sets counts as leaving it, and a commit per set would be noise. The
+accepted cost: lose the phone mid-session and that session is lost.
+
+A failed sync retries from thirty seconds, doubling to a cap of fifteen minutes.
+An expired or revoked token stops syncing and asks for a new one rather than
+retrying forever. `STORAGE.md` section 7 has the exact rules.
+
 ## Restoring
 
-On a new device: install, point it at the same repo, pull. Every session, your
-records, your reference maxes and your bodyweight history come back, because they
-were never only on the old phone.
+On a new device: install, and set it up with the same repo and a token for it.
+The first sync brings back every session, your records, your reference maxes and
+your bodyweight history, because they were never only on the old phone.
 
-## What the scheduler actually does
+## Conflicts
 
-`storage/scheduler.ts` holds both cadences, because they are two halves of one
-decision and splitting them across files would let them drift apart.
-
-**Local**: one second after the last change. At most a second of input is ever
-at risk, and a change is on disk long before it is anywhere else.
-
-**Remote**, on any of:
-
-| Trigger                     | Why                                                                                           |
-| --------------------------- | --------------------------------------------------------------------------------------------- |
-| Ten minutes of quiet        | You stopped. Every change pushes this deadline back, so mid-session typing never fires a push |
-| Switching away from the app | The strongest signal that you are done. Leaving the gym is exactly this                       |
-| Ending a session            | The session is complete; there is nothing left to batch                                       |
-| Launch                      | Flushes whatever the last run could not send                                                  |
-| Regaining signal            | The gym basement ends                                                                         |
-| Asking                      | For when you want certainty now                                                               |
-
-Every push saves locally first, so an interrupted push never loses the change it
-was carrying. A failed push keeps its pending flag _and its original timestamp_ —
-exposure grows with the age of the change rather than resetting on each failed
-attempt, which is the difference between a warning that means something and one
-that never fires. Retries back off from thirty seconds, doubling to a cap of
-fifteen minutes.
-
-In practice: a session is in the remote seconds after you leave the gym, and at
-worst ten minutes after your last edit.
+If two devices change the same thing before either syncs, both versions are
+kept, the one already in the repo counts, and the other waits for you to pick. You
+lose nothing and sync never stops to ask. `STORAGE.md` section 5 has the rules.

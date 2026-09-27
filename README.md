@@ -24,11 +24,11 @@ Runs as an installable PWA. No backend, no app store, no Apple developer account
 Once installed it launches and logs with no network at all, which is the only
 requirement that actually matters in a gym.
 
-Data lives on device as one JSON document per session and syncs to a private
-repo. That gives cloud backup, complete version history of your training, and
-conflict detection for free — GitHub's Contents API requires the file's current
-sha on write, so a second device that changed the same document is detected
-rather than silently overwritten.
+Data lives on device and syncs to a private GitHub repo you own. That gives cloud
+backup and complete version history of your training. Each sync is one commit,
+and the branch only ever moves forward, so a second device that got there first
+is detected and merged rather than silently overwritten; when two devices changed
+the same thing, both versions are kept for you to choose.
 
 Nothing derived is ever stored. Not e1RM, not tonnage, not stress, not personal
 records. Every number is computed from raw sets plus `src/metrics/definitions.json`,
@@ -58,8 +58,9 @@ src/
 ```
 
 **No training data lives in this repo.** Sessions, bodyweight, reference maxes
-and records go in a separate private log repo the app creates for you. See
-[`docs/DATA.md`](docs/DATA.md).
+and records go in a separate private log repo you create once. See
+[`docs/DATA.md`](docs/DATA.md), and [`docs/STORAGE.md`](docs/STORAGE.md) for how
+syncing works.
 
 Sessions are JSON because they are nested and machine-written. The library and
 the charts are CSV because they are read by humans in diffs, where one changed
