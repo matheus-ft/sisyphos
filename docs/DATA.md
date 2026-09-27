@@ -9,12 +9,13 @@ sisyphos/                          ← this repo. Code and the shared library. A
 
 sisyphos-log/                      ← your own PRIVATE repo. Your training.
 ├── sisyphos.json                  format marker
-├── sessions/2026/<id>.json        one file per session
-├── templates/<id>.json            one file per template
+├── sessions/2026/2026-09-14-k3f9.json
+├── templates/squat-day-a-k3f9.json
 ├── lifter/bodyweight.csv
 ├── lifter/one-rm-history.csv
 ├── lifter/manual-records.csv
-└── library/additions.csv          exercises you made
+├── library/additions.csv          exercises you made
+└── conflicts/                     versions waiting for you to choose
 ```
 
 Nothing personal is committed here. Your bodyweight is not a project asset.
@@ -55,35 +56,34 @@ validates it and opens a pull request adding the row to the shipped file.
 
 ## The log repo's files
 
-Every table has a **key**: the columns that identify a row. There is at most one
-row per key, except while two versions of it are in conflict. Every table ends
-with the same two columns:
-
-- `updated_at` — when the row last changed. Shown when you resolve a conflict;
-  never used to decide anything.
-- `conflict` — empty, or `both_edited` / `edited_and_deleted` on a version kept
-  because two devices disagreed. `STORAGE.md` section 5 says what each means.
+Every table has a **key**: the columns that identify a row, and there is exactly
+one row per key. The data files only ever hold one version of anything. When
+two devices disagree, the version already in the log stays, and the other waits
+in `conflicts/` until you choose; no file carries any marker for it.
 
 `sisyphos.json` — `{ "format": 1 }`. Marks the repo as a log and says which
 format its files are in.
 
-`sessions/<YYYY>/<id>.json` — one session, with its exercises and sets. The year
-is the year the session was created, so moving a session to another date edits
-the file and moves nothing. Nested, machine-written, never edited by hand.
+`sessions/<YYYY>/<id>.json` — one session, with its exercises and sets. The id is
+the session's date when it was created plus four random characters, such as
+`2026-09-14-k3f9`, and the folder is that date's year. An id never changes, so
+moving a session to another date edits the file and moves nothing. Nested,
+machine-written, never edited by hand.
 
-`templates/<id>.json` — one template: the skeleton a session starts from.
+`templates/<id>.json` — one template: the skeleton a session starts from. The id
+is its name when created plus four random characters, such as
+`squat-day-a-k3f9`, and it survives renaming.
 
-`lifter/bodyweight.csv` — `date, weight_kg, source, updated_at, conflict`. Key:
-`date`, since there is at most one weigh-in a day. Needed for `bw_plus` loads.
+`lifter/bodyweight.csv` — `date, weight_kg, source`. Key: `date`, since there is
+at most one weigh-in a day. Needed for `bw_plus` loads.
 
-`lifter/one-rm-history.csv` — `date, lift, weight_kg, note, updated_at,
-conflict`. Key: `date, lift`. Effective-dated reference maxes that resolve
-percentage prescriptions. Always set by hand.
+`lifter/one-rm-history.csv` — `date, lift, weight_kg, note`. Key: `date, lift`.
+Effective-dated reference maxes that resolve percentage prescriptions. Always set
+by hand.
 
-`lifter/manual-records.csv` — `date, exercise_id, reps, weight_kg, rpe, context,
-updated_at, conflict`. Key: `date, exercise_id, reps`. Records with **no session
-behind them**: a competition lift, or anything from before you started logging
-here.
+`lifter/manual-records.csv` — `date, exercise_id, reps, weight_kg, rpe, context`.
+Key: `date, exercise_id, reps`. Records with **no session behind them**: a
+competition lift, or anything from before you started logging here.
 
 Records that _do_ come from logged sets are not stored at all. They're derived by
 scanning sessions, exactly like tonnage and e1RM, and each one points at the set
@@ -95,8 +95,14 @@ Note this is a different thing again from the 1RM history. The 1RM history drive
 prescriptions and is a decision you make; records are observations.
 
 `library/additions.csv` — exactly the columns of the shipped
-`src/library/exercises.csv`, then `updated_at, conflict`. Key: `id`. The parser
-reads columns by name, so the same parser reads both files.
+`src/library/exercises.csv`. Key: `id`. The same parser reads both files, and an
+addition is the very row the shipped library would hold.
+
+`conflicts/<id>.json` — one per unresolved conflict: which file (and for a
+table, which row), when it was found, which device's version it is, and that
+version. The app shows these the moment it finds them and until you choose;
+`STORAGE.md` section 5 has the rules. Nothing that reads your data needs to look
+here.
 
 Any other file you put in the log repo is yours: the app never touches it.
 
@@ -105,7 +111,7 @@ Any other file you put in the log repo is yours: the app never touches it.
 Generated on demand, never a source of truth, and they carry no library-derived
 data — no muscles, no tier, no base lift. Exports reference `exercise_id` and the
 consumer joins against `exercises.csv`, which is the whole point of having a
-truth table. Anything marked as a conflict is left out.
+truth table.
 
 ```
 sets.csv       session_id, date, exercise_id, set_n, reps, rpe, load_kg, is_warmup, state

@@ -66,23 +66,27 @@ the phone until you end it.
 ## When syncing happens
 
 Every change is written to the phone the moment it is complete, with no network.
-Syncing is separate, and happens when:
+Your log reaches the repo when:
 
-| Trigger           | Why                                                        |
-| ----------------- | ---------------------------------------------------------- |
-| Ending a session  | The session is complete; this is the one that matters most |
-| Launching the app | Finishes whatever the last run could not send              |
-| Asking            | For when you want certainty now                            |
-| Leaving the app   | Only when no session is in progress                        |
-| Regaining signal  | Only when no session is in progress                        |
+| Moment                               | Why                                                        |
+| ------------------------------------ | ---------------------------------------------------------- |
+| You end a session                    | The session is complete; this is the one that matters most |
+| You tap sync                         | For when you want certainty now                            |
+| You leave the app, outside a session | You are done for now                                       |
+| You open the app, outside a session  | Finishes whatever the last sync could not                  |
 
-While a session is in progress, leaving the app does not sync. Locking the phone
-between sets counts as leaving it, and a commit per set would be noise. The
-accepted cost: lose the phone mid-session and that session is lost.
+Opening the app during a session only fetches what your other devices wrote.
 
-A failed sync retries from thirty seconds, doubling to a cap of fifteen minutes.
-An expired or revoked token stops syncing and asks for a new one rather than
-retrying forever. `STORAGE.md` section 7 has the exact rules.
+A session counts as in progress until it is ended, or for three hours after its
+last change if you forget to end it. While one is in progress, leaving the app
+does not sync: the phone cannot tell closing the app from locking it between
+sets, and a commit per set would be noise. The accepted cost: lose the phone
+mid-session and that session is lost.
+
+A failed sync retries from thirty seconds, doubling to a cap of fifteen minutes,
+and at once when the connection returns. An expired or revoked token stops
+syncing and asks for a new one rather than retrying forever. `STORAGE.md`
+section 7 has the exact rules.
 
 ## Restoring
 
@@ -92,6 +96,7 @@ your bodyweight history, because they were never only on the old phone.
 
 ## Conflicts
 
-If two devices change the same thing before either syncs, both versions are
-kept, the one already in the repo counts, and the other waits for you to pick. You
-lose nothing and sync never stops to ask. `STORAGE.md` section 5 has the rules.
+If two devices change the same thing before either syncs, the version already in
+the repo counts and the other is saved for you. The app tells you at once, full
+screen, and keeps a banner up until you pick one; you lose nothing, and sync
+never stops to ask. `STORAGE.md` section 5 has the rules.

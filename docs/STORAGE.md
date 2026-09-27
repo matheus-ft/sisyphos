@@ -11,38 +11,67 @@ and is listed under [Not decided yet](#not-decided-yet) rather than guessed at.
 ## The model in one paragraph
 
 The device holds a working copy; a private GitHub repo, the **log repo**, is the
-archive. Every write lands on the device first, immediately, with no network.
-A sync compares three versions of every file in the log repo: the **base** (what
-this device and the remote last agreed on), the **local** version and the
-**remote** version. What changed on one side is taken from that side. What
-changed differently on both sides is a **conflict**: both versions are kept, in
-the data itself, until the lifter picks one. Everything the sync decides is then
-written as one commit and the branch is moved by fast-forward only, so a device
-that raced ahead is detected and merged, never overwritten.
+archive. Every change is written to the device the moment it is complete, with
+no network. A sync compares three versions of every file in the log repo: the
+**base** (what this device and the remote last agreed on), the **local** version
+and the **remote** version. What changed on one side is taken from that side.
+When both sides changed the same record differently, that is a **conflict**: the
+log repo's version stands, this device's version is saved beside the data as a
+conflict record, and the app puts it in front of the lifter until they pick one.
+Everything a sync decides is written as one commit, and the branch moves by
+fast-forward only, so a device that raced ahead is detected and merged, never
+overwritten.
 
 ## 1. The log repo
 
 ### 1.1 Layout
 
 ```
-sisyphos.json                      format marker, see 1.2
+sisyphos.json                      format marker, see 1.3
 sessions/<YYYY>/<id>.json          one file per session
 templates/<id>.json                one file per template
 lifter/bodyweight.csv              one table per kind of lifter data
 lifter/one-rm-history.csv
 lifter/manual-records.csv
 library/additions.csv              exercises the lifter created
+conflicts/<id>.json                one file per unresolved conflict, see 5
 ```
 
-- `<YYYY>` is the year of the session's `created_at`, which never changes. A
-  path must depend only on fields that never change, so re-dating a session edits
-  one file and moves nothing.
-- Columns and keys of each table are listed in `DATA.md`.
+- A path must depend only on things that never change. `<YYYY>` is the year in
+  the session's id (1.2), so moving a session to another date edits one file and
+  moves nothing.
+- Columns and keys of each table are listed in `DATA.md`. A table has exactly
+  one row per key.
 - Any other file in the repo (a README, the lifter's own notes) is not the app's.
   It must never be modified or deleted, and every commit must carry it forward
   unchanged.
 
-### 1.2 Format marker
+### 1.2 Ids
+
+Sessions, templates and conflict records are named by their ids, so those ids
+are meant to be read.
+
+| Record          | Id                                                                   | Example            |
+| --------------- | -------------------------------------------------------------------- | ------------------ |
+| Session         | The session's date when it was created, then four random characters  | `2026-09-14-k3f9`  |
+| Template        | Its name when it was created, as a slug, then four random characters | `squat-day-a-k3f9` |
+| Conflict record | The date it was found, then four random characters                   | `2026-09-27-7xq2`  |
+
+- Dates are `YYYY-MM-DD`, so file listings sort chronologically.
+- The random characters come from `0123456789abcdefghjkmnpqrstvwxyz`
+  (lowercase Crockford base 32). They keep ids unique when two devices create
+  records on the same day without talking to each other: about a million
+  possibilities per date or name. A device never generates an id it already
+  holds. If two devices ever did pick the same one, sync would see one file with
+  two contents and treat it as a conflict (4.3), so even then nothing is lost.
+- A slug is the name lowercased, with every run of characters other than ASCII
+  letters and digits replaced by one hyphen, trimmed of hyphens, and cut to 40
+  characters.
+- An id never changes. A session moved to another date, or a template renamed,
+  keeps its id: the file name is a label, and the record's fields are the truth.
+- Ids that never appear in a path (exercise instances, sets) stay random UUIDs.
+
+### 1.3 Format marker
 
 `sisyphos.json` holds `{ "format": 1 }`. The app knows the highest format it can
 read.
@@ -56,7 +85,7 @@ read.
 A log repo without `sisyphos.json` is handled by setup (section 8), never by
 sync.
 
-### 1.3 Serialisation
+### 1.4 Serialisation
 
 Every file must serialise **deterministically**: the same data always produces
 the same bytes. Sync compares content by hash (section 3), so a serialiser that
@@ -80,15 +109,13 @@ built. Absent values are `null`, never omitted.
   ISO-8601 UTC with milliseconds.
 - Rows are sorted by the table's key (listed in `DATA.md`), compared field by
   field in the order listed: numbers numerically, everything else by code point.
-  Rows sharing a key, which happens only while they are in conflict (section 5),
-  follow in this order: the row with an empty `conflict` cell first, then the
-  rest ordered by their serialised text.
 
 A table whose header row is not exactly the one its format defines is
-unreadable (section 6). The CSV reader must accept everything the writer produces, including quoted
-cells with embedded newlines. The current `src/csv.ts` splits on newlines and
-does not handle quoting, so it must be replaced. The shipped library files are
-read with the same reader and are unaffected: they contain no quoted cells.
+unreadable (section 6). The CSV reader must accept everything the writer
+produces, including quoted cells with embedded newlines. The current
+`src/csv.ts` splits on newlines and does not handle quoting, so it must be
+replaced. The shipped library files are read with the same reader and are
+unaffected: they contain no quoted cells.
 
 **Files the app did not write.** A remote file that parses but does not
 serialise back to the same bytes (hand-formatted JSON, say) is taken, then
@@ -103,10 +130,10 @@ IndexedDB holds, per install:
 
 | Store                     | Contents                                                                                                                      |
 | ------------------------- | ----------------------------------------------------------------------------------------------------------------------------- |
-| One store per record type | Sessions, templates, and the rows of each table. Sessions are indexed by `date`                                               |
+| One store per record type | Sessions, templates, conflict records, and the rows of each table. Sessions are indexed by `date`                             |
 | `sync`                    | One entry per log-repo path: `base_sha`, `local_sha`, `unsynced_since`, and for tables `base_body`                            |
 | `sync_meta`               | `last_synced_head` and `last_synced_tree`: the commit, and its tree, that every base agreed with when the last sync completed |
-| `inflight`                | At most one entry: the commit this device is trying to land (section 4.4)                                                     |
+| `inflight`                | At most one entry: the commit this device is trying to land (4.5)                                                             |
 | `settings`                | Repo owner and name, branch, token, device id. Never synced                                                                   |
 
 The device id is random, generated once per install and never copied between
@@ -116,6 +143,9 @@ The IndexedDB schema is versioned. Opening an older version migrates it in the
 upgrade transaction, and a migration never drops data.
 
 ### 2.2 Writing
+
+Local writes are as fast as the device allows: every change goes to IndexedDB
+the moment it is complete, and nothing waits for the network.
 
 Every change goes through **one write queue**, first in, first out. A queued
 operation resolves when its IndexedDB transaction has committed, and not before.
@@ -138,18 +168,17 @@ One queued operation:
    pending, and an `await` between requests can split one write into two.
 
 Because the queue runs one operation at a time, the read in step 1 cannot go
-stale before step 3. A write whose only change would be a new `updated_at` is
-skipped entirely.
+stale before step 3.
 
-`updated_at` on a record is set by the write that changes it. It is shown to the
-lifter when resolving a conflict and is never used to decide anything.
+Sessions and templates carry `updated_at`, set by the write that changes them. A
+write whose only change would be a new `updated_at` is skipped. It is shown to
+the lifter when resolving a conflict and never used to decide anything.
 
-### 2.3 Tables have one standing row per key
+### 2.3 One row per key
 
-The write API for a table replaces the row with the given key. There is at most
-one row per key with an empty `conflict` cell (the **standing** row). Changing a
-key field, such as re-dating a weigh-in, is a delete of the old key and an add
-of the new one.
+The write API for a table replaces the row with the given key, so a table always
+has exactly one row per key. Changing a key field, such as re-dating a weigh-in,
+is a delete of the old key and an add of the new one.
 
 ## 3. Knowing what needs syncing
 
@@ -207,7 +236,7 @@ fast-forward rule is what the sync is tested against (section 10).
 
 A sync runs under the lock described in 7.2. In outline:
 
-1. **Recover** an unfinished commit, if `inflight` holds one (4.4).
+1. **Recover** an unfinished commit, if `inflight` holds one (4.5).
 2. **Read the head.** If it equals `last_synced_head` and no path needs syncing,
    stop. The common case therefore costs one request.
 3. **Read the remote tree**, recursively. When the head has not moved, no
@@ -219,12 +248,15 @@ A sync runs under the lock described in 7.2. In outline:
 5. **Decide**, as one operation on the write queue (2.2), every path whose base,
    local and remote versions are not all equal (4.3). Then, in the same
    operation:
-   - write each result to the device where it differs from the local version;
-   - where the result equals the remote version, set the path's base to it. The
-     remote holds that version at this head whatever happens next, so this is
-     true even if the push below fails;
-   - collect every result that differs from the remote version: that is what
-     must be pushed.
+   - write each result to the device where it differs from the local version,
+     and write any conflict records the decision produced;
+   - move each base to the remote version wherever the result equals it. The
+     remote holds that version at this head whatever happens next, so this
+     holds even if the push below fails. For a table this is done key by key:
+     `base_body` takes the remote rows of every key whose result equals the
+     remote's, and keeps its old rows for the rest;
+   - collect every path whose result differs from the remote version, plus the
+     new conflict records: that is what must be pushed.
 6. If nothing must be pushed, set `last_synced_head` and `last_synced_tree` to
    the head and stop.
 7. **Write** the tree (on the head's tree) and the commit (parent: the head).
@@ -236,7 +268,7 @@ A sync runs under the lock described in 7.2. In outline:
     `last_synced_tree`, and clear `inflight`.
 
 If step 9 is refused because the branch moved, clear `inflight` and go back to
-step 2. The base of every pushed path is still the old one, so the next round
+step 2. The bases of pushed paths are still the old ones, so the next round
 merges correctly against the new remote. After five rounds the sync stops with a
 retryable error (section 6).
 
@@ -247,27 +279,32 @@ former turns a real error into an endless retry.
 
 ### 4.3 Deciding one path
 
-For files that hold one record (sessions, templates), the unit is the file. For
-tables, the unit is the group of rows sharing a key: normally one row, more
-during a conflict. Let **B**, **L** and **R** be a unit's base, local and remote
-versions, each possibly absent. Units are equal when their serialisations are
-equal. The rows are checked in order, and the first that
+For files that hold one record (sessions, templates, conflict records), the
+unit is the file. For tables, the unit is the row with a given key. Let **B**,
+**L** and **R** be a unit's base, local and remote versions, each possibly
+absent (no file, or no row with that key). Units are equal when their
+serialisations are equal. The rows are checked in order, and the first that
 matches applies.
 
-| Case                                        | Result                                                            |
-| ------------------------------------------- | ----------------------------------------------------------------- |
-| L = R                                       | Nothing to do                                                     |
-| L = B, R ≠ B                                | Take R                                                            |
-| R = B, L ≠ B                                | Push L                                                            |
-| L, R and B all differ; L and R both present | **Both edited**: R stands; L is kept beside it as a conflict copy |
-| L ≠ B, R absent                             | **Edited and deleted**: L is kept, marked                         |
-| L absent, R ≠ B                             | **Edited and deleted**: R is kept, marked                         |
+| Case      | Result                                                            |
+| --------- | ----------------------------------------------------------------- |
+| L = R     | Nothing to change                                                 |
+| L = B     | Take R                                                            |
+| R = B     | Push L                                                            |
+| Otherwise | **Conflict.** Take R, and save L as a conflict record (section 5) |
 
-"Absent" for a table unit means no rows with that key. A deletion is detected by
-comparison with the base, so nothing is ever kept to mark a record as deleted.
-A device that never agreed on a path (null base) takes what the remote has and
-pushes what it has, and conflicts where both have different content. That is
-exactly right for a first sync onto an existing log.
+Absence covers deletion. Taking an absent R deletes locally; pushing an absent L
+deletes remotely. In a conflict where R is absent (deleted elsewhere, edited
+here), the deletion stands and the edit is saved; where L is absent (deleted
+here, edited elsewhere), the edit stands and the deletion is saved. The rule is
+the same every time: **the remote version stands, and this device's version is
+saved.**
+
+Because a deletion is detected by comparison with the base, nothing is ever kept
+to mark a record as deleted. A device that never agreed on a path (null base)
+takes what the remote has, pushes what it has, and records a conflict where both
+have different content. That is exactly right for a first sync onto an existing
+log.
 
 For a table, the file's result is the combination of every key's result, and it
 is pushed if it differs from R. A table's result is computed from the device's
@@ -277,7 +314,15 @@ not overwritten.
 The decision is a pure function of B, L and R. It must be implemented, and
 tested exhaustively, separately from everything that reads and writes them.
 
-### 4.4 Recovering an unfinished commit
+### 4.4 Pulling
+
+A **pull** is a sync that pushes nothing. It decides every path as above, but
+applies only units where L = B (take R) or L = R. Every unit with a local
+change is left exactly as it is, base included, for the next full sync. A pull
+therefore never finds a conflict and never reaches step 7. Launching the app
+while a session is in progress pulls (7.1).
+
+### 4.5 Recovering an unfinished commit
 
 A device can be killed after step 9 (the branch moved) and before step 10 (the
 device recorded it). Without a record, its next sync would compare its content
@@ -296,48 +341,64 @@ holds a commit:
 
 ## 5. Conflicts
 
-A conflict is recorded **in the data**, not in device state. It therefore syncs,
-shows on every device, survives a reinstall, and can be resolved from any device.
-Sync never stops for a conflict and never asks: it keeps both versions and
-carries on. Resolving is the lifter's job, by hand.
+The data only ever holds one version of anything: no markers, no copies, no
+second row for a key. Everything that reads the data (analysis, records,
+prescriptions, bodyweight hints, exports, a notebook) sees exactly one version
+and needs no rule about conflicts.
 
-### 5.1 How a conflict is written
+The version that did not stand is kept in `conflicts/`, in the log repo. It
+therefore syncs, shows on every device, survives losing the phone, and can be
+resolved from any device. Sync never stops for a conflict and never asks: it
+saves the other version and carries on. Choosing between them is the lifter's
+job, by hand, and the app makes sure it happens promptly.
 
-| Kind                   | Session or template                                                                                                                | Table row                                                                                         |
-| ---------------------- | ---------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------- |
-| **Both edited**        | R stays at its path, unchanged. L is written as a new record with a new id and `conflict: { kind: "both_edited", of: "<R's id>" }` | R's rows stand unchanged. L's rows that R does not have are added with `conflict` = `both_edited` |
-| **Edited and deleted** | The edited version is kept at its path with `conflict: { kind: "edited_and_deleted" }`                                             | The edited rows are kept with `conflict` = `edited_and_deleted`                                   |
+### 5.1 The conflict record
 
-Records not in conflict have `conflict: null` (JSON) or an empty `conflict`
-cell (CSV).
+`conflicts/<id>.json`, one per conflict:
 
-A conflict copy is ordinary data. If it is edited on two devices in turn, the
-same rules apply to it again, and repeating a merge that already produced a
-copy produces the same copy. Merging is idempotent, so interrupted and retried
-syncs converge.
+| Field       | Meaning                                                                                               |
+| ----------- | ----------------------------------------------------------------------------------------------------- |
+| `id`        | See 1.2                                                                                               |
+| `path`      | The file in conflict                                                                                  |
+| `key`       | For a table, the row's key as `{ column: value }`; null for sessions and templates                    |
+| `found_at`  | When the sync found it                                                                                |
+| `device_id` | The device whose version this is                                                                      |
+| `version`   | That device's version: the whole record, or the row as `{ column: value }`; null if it had deleted it |
 
-### 5.2 What a conflict means while unresolved
+The version that stands is not copied here. It is whatever the data holds now,
+which may be nothing if the deletion stood.
 
-- A record marked `both_edited` is excluded from every calculation: analysis,
-  records, prescriptions, bodyweight hints, exports. The version it conflicts
-  with stands and counts until the lifter decides.
-- A record marked `edited_and_deleted` is also excluded: one device said it
-  should not exist.
-- The UI lists every marked record, showing both versions with their
-  `updated_at` and, for sessions, their `device_id`.
+A conflict record is written once and only ever deleted. Nothing edits one, so
+conflict records never conflict with each other.
+
+### 5.2 Telling the lifter
+
+A conflict is easiest to settle while both versions are fresh in mind, so the
+app is loud about it, from the first moment:
+
+1. When a sync finds a conflict, or pulls one another device found, the app
+   interrupts whatever is on screen with a full-screen notice listing every
+   unresolved conflict. **Resolve now** is the default action.
+2. While any conflict is unresolved, every screen carries a banner that cannot
+   be dismissed, one tap from resolving.
+3. Every launch shows the full-screen notice again while any conflict is
+   unresolved.
+
+The resolution screen shows the two versions side by side (the one in the log
+and the saved one) with the device and time of each, differences highlighted.
+Resolving is one tap.
 
 ### 5.3 Resolving
 
-Resolving is an ordinary edit made through the write queue, and it syncs like
-any other.
+| Choice                 | Effect                                                                                                     |
+| ---------------------- | ---------------------------------------------------------------------------------------------------------- |
+| Keep the log's version | Delete the conflict record                                                                                 |
+| Use the saved version  | Write `version` into the data (or delete the record or row, if it is null), and delete the conflict record |
 
-| Conflict           | Keep the standing version | Keep the copy                                                                                                                                                                 |
-| ------------------ | ------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Both edited        | Delete the copy           | Sessions and templates: write the copy's content over the original (same id, `conflict: null`) and delete the copy. Rows: delete the standing row and clear the copy's marker |
-| Edited and deleted | Clear the marker          | Delete the record                                                                                                                                                             |
-
-Two devices resolving the same conflict differently before syncing produce a new
-conflict under the same rules. That is rare and still loses nothing.
+Both happen in one operation on the write queue, and sync like any other change.
+Two devices resolving the same conflict both delete its record, which agrees. If
+they wrote different versions into the data, that is a new conflict under the
+same rules: rare, and still nothing is lost.
 
 ## 6. Errors
 
@@ -345,7 +406,7 @@ Every failure falls in exactly one class, and the class decides what happens.
 
 | Class               | Examples                                                                                                           | Behaviour                                                                                                                                                                                             |
 | ------------------- | ------------------------------------------------------------------------------------------------------------------ | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| **Retryable**       | No network, timeout, 5xx, five rounds lost to other devices                                                        | Back off (7.2) and retry                                                                                                                                                                              |
+| **Retryable**       | No network, timeout, 5xx, five rounds lost to other devices                                                        | Retry (7.2)                                                                                                                                                                                           |
 | **Rate limit**      | 403 or 429 with `x-ratelimit-remaining: 0` or `retry-after`                                                        | Wait until the time GitHub gives, then retry                                                                                                                                                          |
 | **Token**           | 401; 403 that is not a rate limit                                                                                  | Stop automatic syncing. Status asks for a new token; syncing resumes once one is saved                                                                                                                |
 | **Repo**            | 404 for the repo or branch (gone, renamed, or no longer visible to the token); format marker missing or unreadable | Stop automatic syncing. Status says what is wrong                                                                                                                                                     |
@@ -361,39 +422,49 @@ computing.
 
 ### 7.1 Triggers
 
+Writing to the device is immediate and needs nothing (2.2). The log repo is
+written only at these moments:
+
+| Moment                                          | What happens                                           |
+| ----------------------------------------------- | ------------------------------------------------------ |
+| A session ends                                  | Full sync                                              |
+| The lifter taps sync                            | Full sync                                              |
+| The app is left while no session is in progress | Full sync                                              |
+| The app launches, no session in progress        | Full sync                                              |
+| The app launches, a session in progress         | Pull (4.4)                                             |
+| A full sync failed                              | Retried (7.2), unless a session is in progress by then |
+
 A **session in progress** is one with `ended_at` null that was written in the
-last 12 hours. The 12-hour limit matches the stale-session nudge, so a forgotten
-session cannot pause syncing forever.
+last three hours.
 
-| Trigger                         | While a session is in progress |
-| ------------------------------- | ------------------------------ |
-| App launch                      | Syncs                          |
-| Setup completed                 | Syncs                          |
-| A session ended                 | Syncs                          |
-| The lifter asks                 | Syncs                          |
-| App hidden (`visibilitychange`) | Skipped                        |
-| Connection regained (`online`)  | Skipped                        |
-| Retry after a failure           | Skipped                        |
+**Leaving the app** is `visibilitychange` to hidden, or `pagehide`. The browser
+cannot tell closing the app from locking the phone or switching to another app:
+all three look the same. That is why leaving only syncs outside a session.
+Locking the phone between sets pushes nothing.
 
-There is no timer-driven sync. iOS reports the app as hidden every time the
-phone is locked, which between sets is constantly; syncing on each would put a
-commit per set in the history. A session in progress is safe on the device, and
-the accepted risk is losing the phone mid-session.
+**Launching** outside a session syncs because, outside a session, unsynced work
+only exists if a sync failed or was cut off; launching finishes it. During a
+session it only pulls, so the device shows what other devices wrote while the
+session itself stays local.
 
-A sync started when the app is hidden may be cut off when iOS suspends it. It
+There is no timer. The history gets about one commit per session. The accepted
+risk: lose the phone mid-session, and that session is lost.
+
+A sync started as the app is left may be cut off when iOS suspends the app. It
 must never be relied on; the next launch finishes the job, and the in-flight
-record (4.4) makes that safe.
+record (4.5) makes that safe.
 
 ### 7.2 One sync at a time
 
 - Syncs run under the Web Locks API (`navigator.locks`), lock name
   `sisyphos-sync`, so two open tabs or windows never sync at once.
-- A trigger arriving during a sync schedules exactly one more sync after it,
-  however many arrive. The caller of a sync that was folded into the next one
-  waits for that one.
-- After a retryable failure, retries back off from 30 seconds, doubling, capped
-  at 15 minutes, and reset after a success. A trigger that is not skipped (7.1)
-  and arrives while backing off runs a sync immediately.
+- A request arriving during a sync schedules exactly one more after it, however
+  many arrive. A request for a full sync outranks a pull. The caller of a
+  request folded into the next sync waits for that one.
+- A failed full sync is retried after 30 seconds, doubling, capped at 15
+  minutes, and immediately when the connection returns (`online`). The delay
+  resets after a success. Retries stop while a session is in progress; the
+  session ending syncs anyway.
 - Stopping the scheduler (app teardown) cancels every timer and prevents any
   from being set again.
 
@@ -403,7 +474,7 @@ The UI always shows two things.
 
 **Sync status:** `syncing`, `idle`, `offline`, `retrying` (with the next
 attempt's time), `needs token`, `repo problem`, `needs update`, `not set up`.
-It also shows a count of unresolved conflicts, and names any unreadable file.
+It also shows the number of unresolved conflicts, and names any unreadable file.
 
 **Exposure:** what would be lost if this phone vanished now. The four levels
 and their meaning are in `DURABILITY.md`. It is computed from how many paths
@@ -430,24 +501,24 @@ In the app, the lifter enters `owner/repo` and pastes the token. The app then:
    A **public** repo is refused: this is training data.
 2. Stores the repo's default branch.
 3. Reads the head and tree.
-   - **No commits:** writes `sisyphos.json` with `PUT /repos/{o}/{r}/contents/sisyphos.json`.
-     The Git Data API cannot write to an empty repository, so this is the one
-     use of the Contents API.
+   - **No commits:** writes `sisyphos.json` with
+     `PUT /repos/{o}/{r}/contents/sisyphos.json`. The Git Data API cannot write
+     to an empty repository, so this is the one use of the Contents API.
    - **No `sisyphos.json`, and nothing but README, LICENSE or .gitignore files:**
      commits `sisyphos.json`.
    - **No `sisyphos.json`, and other files:** refuses. This is not a log.
-   - **`sisyphos.json` present:** checks the format (1.2).
-4. Runs the first sync. On a fresh install this is the restore; on a device
+   - **`sisyphos.json` present:** checks the format (1.3).
+4. Runs the first full sync. On a fresh install this is the restore; on a device
    that logged before setup, it merges what the device has with what the log
-   holds (section 4.3, null bases).
+   holds (4.3, null bases).
 
 Write access is proven by the first commit; a 403 then is a **Token** error
 whose message names the Contents permission. A new token can be pasted at any
 time, and nothing else changes. Pointing the device at a **different repo** is
 another matter: it clears every base, `last_synced_head`, `last_synced_tree` and
 `inflight`, so the first sync with the new repo is a first sync (null bases), and
-never compares against the old repo's history. Skipping setup is allowed; exposure is then
-`unprotected` until it is done.
+never compares against the old repo's history. Skipping setup is allowed;
+exposure is then `unprotected` until it is done.
 
 The token is stored in `settings` on the device only. It is sent only as an
 `Authorization` header to `api.github.com`, and never logged or synced.
@@ -471,8 +542,8 @@ access. This is fixed as part of the rebuild.
 
 ## 10. Tests
 
-The previous storage layer was tested with hand-picked examples, and each review
-found cases none of them covered. This one is tested against properties.
+The first version of this layer was tested with hand-picked examples, and each
+review found cases none of them covered. This one is tested against properties.
 
 **Pure pieces, tested exhaustively:**
 
@@ -481,22 +552,24 @@ found cases none of them covered. This one is tested against properties.
   empty cells.
 - Blob hash: matches `git hash-object` on fixtures, including the empty file
   (`e69de29bb2d1d6434b8b29ae775ad8c2e48c5391`).
+- Ids: the format of 1.2, slugs of awkward names, and no repeats against ids
+  already held.
 - The decision (4.3): every combination of absent, equal and different B, L and
-  R, for files and for table units.
+  R, for files and for table rows, in both full syncs and pulls.
 
 **The sync, simulated:** two or three simulated devices share the in-memory
 remote. A seeded random schedule makes edits, deletes, conflicting edits and
-resolutions, runs syncs, drops the network, and kills a device at every step of
-section 4.2, then lets every device sync until nothing changes. After every
-schedule:
+resolutions, starts and ends sessions, runs syncs and pulls, drops the network,
+and kills a device at every step of section 4.2, then lets every device sync
+until nothing changes. After every schedule:
 
 1. **Convergence.** Every device and the remote hold identical content.
-2. **Nothing lost.** Every version a device wrote survives, as the standing
-   version or as a conflict copy, unless it was replaced or deleted by a write
-   made on a device that had already seen it.
+2. **Nothing lost.** Every version a device wrote survives, in the data or in a
+   conflict record, unless it was replaced or deleted by a write made on a
+   device that had already seen it.
 3. **Nothing comes back.** A record deleted on a device that had seen all its
    versions stays deleted.
-4. **Conflicts only when concurrent.** A conflict mark appears only where two
+4. **Conflicts only when concurrent.** A conflict record appears only where two
    devices changed the same unit without either having seen the other's change.
 5. **Quiet when idle.** A sync with nothing to do makes no commit.
 6. **Crash-safe.** None of the above depends on where a device was killed. In
@@ -513,16 +586,17 @@ rate-limit response.
 
 ## 11. Build order
 
-1. Model changes: the `conflict` field on sessions and templates; `updated_at`
-   and `conflict` on table rows; manual records keyed by exercise, reps and date
-   instead of an id.
-2. Formats: serialisers, the CSV reader with quoting, the blob hash.
-3. The decision (4.3), as pure functions.
+1. Model changes: readable ids for sessions and templates (1.2); manual records
+   keyed by date, exercise and reps instead of an id; the conflict record type.
+2. Formats: serialisers, the CSV reader with quoting, the blob hash, id
+   generation.
+3. The decision (4.3, 4.4), as pure functions.
 4. The device store: records, the write queue, `sync` entries.
-5. The sync (4.2, 4.4) against the in-memory remote, with the simulation.
+5. The sync (4.2, 4.5) against the in-memory remote, with the simulation.
 6. The GitHub adapter and the error classes.
 7. Setup, status, triggers and scheduling.
-8. The submission workflow fix and the prefilled-issue link.
+8. The conflict notice, banner and resolution screen (5.2, 5.3).
+9. The submission workflow fix and the prefilled-issue link.
 
 The current `src/storage/` is replaced, not adapted: its interfaces are built
 around a dirty queue that this design does not have.

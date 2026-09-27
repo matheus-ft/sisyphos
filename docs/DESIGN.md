@@ -63,23 +63,42 @@ edit during a push, a failed write) lost a change in the first version of this
 layer. A hash cannot fall out of step with the content it is computed from. It
 is the same rule as everything else here: nothing derived is stored.
 
-**Conflicts are kept in the data and resolved by hand.** When two devices change
-the same record differently, sync keeps both — the version already on the remote
-stands, the other is kept beside it marked as a conflict — and carries on. The
-marked copy counts toward nothing until the lifter picks one. Because the mark
-is in the data, it syncs, shows everywhere, and survives a reinstall.
+**Conflicts are resolved by hand, and the app insists on it early.** When two
+devices change the same record differently, the version already in the log
+stands, the other is saved in `conflicts/` in the log repo, and sync carries on.
+The app interrupts with the conflict the moment it is found, and keeps a banner
+up until it is resolved, because it is easiest to settle while both versions are
+fresh in mind.
+
+The data files never carry the conflict. Rejected: marking conflicting versions
+inside the data, with a flag on a session or a second row for a key in a table.
+Every reader of the data (analysis, exports, a notebook) would then need to know
+to skip them, and a table could no longer promise one row per key. Kept in the
+log repo rather than on the device, the saved version still syncs, shows on
+every device and survives losing the phone.
 
 Rejected: the later write wins. It silently replaces a weigh-in or a reference
 max with whichever device synced last. Rejected: asking at sync time. It blocks
 sync on a decision, and keeps the pending decision on one device, where a
 reinstall loses it.
 
-**No sync while a session is in progress.** iOS reports the app as hidden every
-time the phone locks, which between sets is constantly; syncing on each would
-put a commit per set in the history. A session in progress is safe on the
-device. Losing the phone mid-session loses that session, and that risk is
-accepted. Rejected: a timer that syncs after ten minutes of quiet, which still
-pushed mid-session, on mobile data.
+**Local writes are immediate; the log repo is written at three moments.** Every
+change is on the device the moment it is complete. The log repo is written when
+a session ends, when the lifter asks, and when the app is left outside a
+session; launching finishes anything a previous sync did not. The browser cannot
+tell closing the app from locking the phone, and iOS reports a lock between sets
+as leaving the app, so leaving syncs only when no session is in progress (none
+written in the last three hours). The history gets about one commit per session.
+Losing the phone mid-session loses that session, and that risk is accepted.
+Rejected: a timer that syncs after ten minutes of quiet, which pushed
+mid-session, on mobile data.
+
+**Sessions and templates have readable ids.** Their ids name their files, so a
+session is `2026-09-14-k3f9`: its date when created, then four random
+characters. Rejected: UUIDs, which make the log repo unreadable. Rejected: the
+date alone, which collides for two sessions on one day or two devices working
+offline. Rejected: `14Sep26`-style dates, which do not sort. An id never
+changes, so re-dating a session or renaming a template moves no file.
 
 **You create the log repo; the app does not.** A token allowed to create
 repositories must be allowed far more than one repo, and a token limited to
