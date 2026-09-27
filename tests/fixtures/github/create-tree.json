@@ -1,0 +1,37 @@
+{
+  "sha": "f0952c3bda5fe0306a509ca891e6d1a50fd85caf",
+  "url": "https://api.github.com/repos/lifter/sisyphos-log/git/trees/f0952c3bda5fe0306a509ca891e6d1a50fd85caf",
+  "tree": [
+    {
+      "path": "README.md",
+      "mode": "100644",
+      "type": "blob",
+      "sha": "64e050b6e283a02d1027fd788beeefe89ebfb87f",
+      "size": 15,
+      "url": "https://api.github.com/repos/lifter/sisyphos-log/git/blobs/64e050b6e283a02d1027fd788beeefe89ebfb87f"
+    },
+    {
+      "path": "lifter",
+      "mode": "040000",
+      "type": "tree",
+      "sha": "37047ac7f0d673d2314ba533970c9aa515fd9022",
+      "url": "https://api.github.com/repos/lifter/sisyphos-log/git/trees/37047ac7f0d673d2314ba533970c9aa515fd9022"
+    },
+    {
+      "path": "sessions",
+      "mode": "040000",
+      "type": "tree",
+      "sha": "1f7a7a472abf3dd9643fd615f6da379c4acb3e3a",
+      "url": "https://api.github.com/repos/lifter/sisyphos-log/git/trees/1f7a7a472abf3dd9643fd615f6da379c4acb3e3a"
+    },
+    {
+      "path": "sisyphos.json",
+      "mode": "100644",
+      "type": "blob",
+      "sha": "00517d70de6db1e19725caa81a52566a6f9011a8",
+      "size": 18,
+      "url": "https://api.github.com/repos/lifter/sisyphos-log/git/blobs/00517d70de6db1e19725caa81a52566a6f9011a8"
+    }
+  ],
+  "truncated": false
+}

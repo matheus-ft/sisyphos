@@ -1,0 +1,10 @@
+{
+  "ref": "refs/heads/main",
+  "node_id": "REF_kwDOM1a2b69yZWZzL2hlYWRzL21haW4",
+  "url": "https://api.github.com/repos/lifter/sisyphos-log/git/refs/heads/main",
+  "object": {
+    "sha": "47d95352d32c158115d1787fb44d3743bb867486",
+    "type": "commit",
+    "url": "https://api.github.com/repos/lifter/sisyphos-log/git/commits/47d95352d32c158115d1787fb44d3743bb867486"
+  }
+}

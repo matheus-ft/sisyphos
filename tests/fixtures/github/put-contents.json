@@ -1,0 +1,47 @@
+{
+  "content": {
+    "name": "sisyphos.json",
+    "path": "sisyphos.json",
+    "sha": "00517d70de6db1e19725caa81a52566a6f9011a8",
+    "size": 18,
+    "url": "https://api.github.com/repos/lifter/sisyphos-log/contents/sisyphos.json?ref=main",
+    "html_url": "https://github.com/lifter/sisyphos-log/blob/main/sisyphos.json",
+    "git_url": "https://api.github.com/repos/lifter/sisyphos-log/git/blobs/00517d70de6db1e19725caa81a52566a6f9011a8",
+    "download_url": "https://raw.githubusercontent.com/lifter/sisyphos-log/main/sisyphos.json",
+    "type": "file",
+    "_links": {
+      "self": "https://api.github.com/repos/lifter/sisyphos-log/contents/sisyphos.json?ref=main",
+      "git": "https://api.github.com/repos/lifter/sisyphos-log/git/blobs/00517d70de6db1e19725caa81a52566a6f9011a8",
+      "html": "https://github.com/lifter/sisyphos-log/blob/main/sisyphos.json"
+    }
+  },
+  "commit": {
+    "sha": "8c1d5879198f7afa189e32e5f41e9d975b6cf591",
+    "node_id": "C_kwDOM1a2b9oAKDhjMWQ1ODc5MTk4ZjdhZmExODllMzJlNWY0MWU5ZDk3NWI2Y2Y1OTE",
+    "url": "https://api.github.com/repos/lifter/sisyphos-log/git/commits/8c1d5879198f7afa189e32e5f41e9d975b6cf591",
+    "html_url": "https://github.com/lifter/sisyphos-log/commit/8c1d5879198f7afa189e32e5f41e9d975b6cf591",
+    "author": {
+      "name": "Lifter",
+      "email": "1234567+lifter@users.noreply.github.com",
+      "date": "2026-09-27T12:00:00Z"
+    },
+    "committer": {
+      "name": "Lifter",
+      "email": "1234567+lifter@users.noreply.github.com",
+      "date": "2026-09-27T12:00:00Z"
+    },
+    "tree": {
+      "sha": "90cfa461d198466fb7371ce5bdc5a4403f02a0a4",
+      "url": "https://api.github.com/repos/lifter/sisyphos-log/git/trees/90cfa461d198466fb7371ce5bdc5a4403f02a0a4"
+    },
+    "message": "Start the training log",
+    "parents": [],
+    "verification": {
+      "verified": false,
+      "reason": "unsigned",
+      "signature": null,
+      "payload": null,
+      "verified_at": null
+    }
+  }
+}
