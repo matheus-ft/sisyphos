@@ -1,15 +1,30 @@
+import { csvLine, parseCsvRecords, parseNumber } from '../csv';
+import { exerciseFromRow } from '../library/parse';
 import type {
   BodyweightEntry,
+  CompetitionLift,
   ConflictRecord,
   Exercise,
   ExerciseAddition,
+  Interval,
+  IsoDate,
+  Load,
+  LoadPrescription,
+  LoadUnit,
   ManualRecord,
   OneRmEntry,
+  PerformedSet,
+  PrescribedSet,
+  ProgramLabel,
   Session,
+  SetState,
   TableRow,
   Template,
+  WeightPrescription,
 } from '../model';
-import type { TableKind } from './paths';
+import { FormatError } from './errors';
+import { sha1Hex } from './hash';
+import { classify, TABLE_PATHS, type TableKind } from './paths';
 
 /**
  * How every log-repo file is written and read (docs/STORAGE.md 1.4; columns and
@@ -19,12 +34,10 @@ import type { TableKind } from './paths';
  * compares content by hash. Every parser throws `FormatError` (errors.ts) for
  * content that is not a valid file of its kind.
  *
- * STUB — implemented by the formats work package.
+ * The writers throw a plain `Error` for a record they cannot write faithfully (a
+ * NaN weight, a missing column). That is a bug in the caller, and failing the
+ * write is better than committing a file no device can read back.
  */
-
-const todo = (): never => {
-  throw new Error('not implemented: storage/formats');
-};
 
 export interface FormatMarker {
   format: number;
@@ -55,91 +68,6 @@ export interface Tables {
 
 export type RecordOf<K extends TableKind> = Tables[K] extends TableSchema<infer R> ? R : never;
 
-export const TABLES: Tables = new Proxy({} as Tables, { get: todo });
-
-// --- tables --------------------------------------------------------------------
-
-/** A row's key, as one string: equal keys give equal strings, different keys different ones. */
-export function rowKey(_schema: TableSchema<unknown>, _row: TableRow): string {
-  return todo();
-}
-
-/** One row as its CSV line, without the newline. Rows are equal when their lines are. */
-export function rowLine(_schema: TableSchema<unknown>, _row: TableRow): string {
-  return todo();
-}
-
-/** The whole file: header, rows sorted by key (1.4), trailing newline. */
-export function tableText(_schema: TableSchema<unknown>, _rows: TableRow[]): string {
-  return todo();
-}
-
-/** Parses a table file. Throws FormatError: wrong header, bad quoting, wrong cell count, duplicate key. */
-export function tableRows(_schema: TableSchema<unknown>, _text: string): TableRow[] {
-  return todo();
-}
-
-/**
- * A table file as the decision sees it: row key to row line. Null (no file) is
- * an empty map. Throws FormatError like `tableRows`.
- */
-export function tableUnits(
-  _schema: TableSchema<unknown>,
-  _text: string | null,
-): Map<string, string> {
-  return todo();
-}
-
-/** The inverse of `tableUnits`: the file holding exactly these rows, sorted. */
-export function unitsText(_schema: TableSchema<unknown>, _units: Map<string, string>): string {
-  return todo();
-}
-
-/** Parses one row line back to cells (for conflict records and resolution). */
-export function lineRow(_schema: TableSchema<unknown>, _line: string): TableRow {
-  return todo();
-}
-
-// --- JSON files ------------------------------------------------------------------
-
-export function serializeSession(_session: Session): string {
-  return todo();
-}
-export function parseSession(_text: string): Session {
-  return todo();
-}
-
-export function serializeTemplate(_template: Template): string {
-  return todo();
-}
-export function parseTemplate(_text: string): Template {
-  return todo();
-}
-
-export function serializeConflict(_conflict: ConflictRecord): string {
-  return todo();
-}
-export function parseConflict(_text: string): ConflictRecord {
-  return todo();
-}
-
-export function serializeFormatMarker(_marker: FormatMarker): string {
-  return todo();
-}
-export function parseFormatMarker(_text: string): FormatMarker {
-  return todo();
-}
-
-// --- the exercise library ------------------------------------------------------
-
-/**
- * `based_on` (9.1): the first 12 hex characters of the SHA-1 of the exercise's
- * row as the app serialises it, shipped columns only.
- */
-export function exerciseRowHash(_exercise: Exercise): string {
-  return todo();
-}
-
 /** The shipped columns of `src/library/exercises.csv`, in order. */
 export const SHIPPED_EXERCISE_COLUMNS: readonly string[] = [
   'id',
@@ -152,3 +80,778 @@ export const SHIPPED_EXERCISE_COLUMNS: readonly string[] = [
   'primary',
   'aux',
 ];
+
+// --- vocabularies ----------------------------------------------------------------
+
+/** Every member of a string union, which the compiler checks is complete. */
+function members<T extends string>(all: Record<T, true>): readonly T[] {
+  return Object.keys(all) as T[];
+}
+
+const LIFTS = members<CompetitionLift>({ squat: true, bench: true, deadlift: true });
+const LOAD_UNITS = members<LoadUnit>({ kg: true, lb: true, pins: true });
+const LOAD_KINDS = members<Load['kind']>({ weight: true, time: true, distance: true });
+const WEIGHT_MODES = members<WeightPrescription['mode']>({
+  absolute: true,
+  pct_1rm: true,
+  rpe_driven: true,
+  bw_plus: true,
+});
+const SET_STATES = members<SetState>({ pending: true, done: true, skipped: true });
+const TIME_PRECISIONS = members<Session['time_precision']>({ instant: true, date_only: true });
+const BODYWEIGHT_SOURCES = members<BodyweightEntry['source']>({ manual: true, import: true });
+
+const ISO_DATE = /^\d{4}-\d{2}-\d{2}$/;
+
+// --- cells ---------------------------------------------------------------------
+
+/** A number as its cell: JavaScript's shortest round-trip form (1.4). */
+function numberCell(n: number): string {
+  if (!Number.isFinite(n)) throw new Error(`cannot write ${n} as a number`);
+  return String(n);
+}
+
+function optionalNumberCell(n: number | null): string {
+  return n == null ? '' : numberCell(n);
+}
+
+function readDate(row: TableRow, column: string): IsoDate {
+  const cell = row[column];
+  if (!ISO_DATE.test(cell)) throw new FormatError(`${column}: expected a date, got "${cell}"`);
+  return cell;
+}
+
+function readNumber(row: TableRow, column: string): number {
+  const n = parseNumber(row[column]);
+  if (n === null) throw new FormatError(`${column}: expected a number, got "${row[column]}"`);
+  return n;
+}
+
+/** An empty cell is null; that is also how an empty string is written, so both read as null. */
+function readOptionalNumber(row: TableRow, column: string): number | null {
+  return row[column] === '' ? null : readNumber(row, column);
+}
+
+function readOptionalText(row: TableRow, column: string): string | null {
+  return row[column] === '' ? null : row[column];
+}
+
+function readText(row: TableRow, column: string): string {
+  if (row[column] === '') throw new FormatError(`${column}: must not be empty`);
+  return row[column];
+}
+
+function readOneOf<T extends string>(row: TableRow, column: string, allowed: readonly T[]): T {
+  const cell = row[column] as T;
+  if (!allowed.includes(cell)) {
+    throw new FormatError(`${column}: expected one of ${allowed.join(', ')}, got "${cell}"`);
+  }
+  return cell;
+}
+
+/**
+ * An exercise's shipped columns as the app writes them. Defaults the shipped
+ * file leaves blank (`external`, `kg`) are written out, so every exercise has
+ * exactly one serialisation whichever file it came from.
+ */
+function exerciseRow(exercise: Exercise): TableRow {
+  return {
+    id: exercise.id,
+    name: exercise.name,
+    base_lift: exercise.base_lift ?? '',
+    tier: exercise.tier,
+    unilateral: exercise.unilateral ? 'true' : '',
+    load_type: exercise.load_type,
+    default_unit: exercise.default_unit,
+    primary: exercise.muscles.primary.join('/'),
+    aux: exercise.muscles.aux.join('/'),
+  };
+}
+
+// --- tables --------------------------------------------------------------------
+
+export const TABLES: Tables = {
+  bodyweight: {
+    kind: 'bodyweight',
+    path: TABLE_PATHS.bodyweight,
+    columns: ['date', 'weight_kg', 'source'],
+    key: ['date'],
+    numeric: [],
+    toRow: (entry) => ({
+      date: entry.date,
+      weight_kg: numberCell(entry.weight_kg),
+      source: entry.source,
+    }),
+    fromRow: (row) => ({
+      date: readDate(row, 'date'),
+      weight_kg: readNumber(row, 'weight_kg'),
+      source: readOneOf(row, 'source', BODYWEIGHT_SOURCES),
+    }),
+  },
+
+  oneRm: {
+    kind: 'oneRm',
+    path: TABLE_PATHS.oneRm,
+    columns: ['date', 'lift', 'weight_kg', 'note'],
+    key: ['date', 'lift'],
+    numeric: [],
+    toRow: (entry) => ({
+      date: entry.date,
+      lift: entry.lift,
+      weight_kg: numberCell(entry.weight_kg),
+      note: entry.note ?? '',
+    }),
+    fromRow: (row) => ({
+      date: readDate(row, 'date'),
+      lift: readOneOf(row, 'lift', LIFTS),
+      weight_kg: readNumber(row, 'weight_kg'),
+      note: readOptionalText(row, 'note'),
+    }),
+  },
+
+  manualRecords: {
+    kind: 'manualRecords',
+    path: TABLE_PATHS.manualRecords,
+    columns: ['date', 'exercise_id', 'reps', 'weight_kg', 'rpe', 'context'],
+    key: ['date', 'exercise_id', 'reps'],
+    // So a 10-rep record sorts after a 2-rep one.
+    numeric: ['reps'],
+    toRow: (record) => ({
+      date: record.date,
+      exercise_id: record.exercise_id,
+      reps: numberCell(record.reps),
+      weight_kg: numberCell(record.weight_kg),
+      rpe: optionalNumberCell(record.rpe),
+      context: record.context ?? '',
+    }),
+    fromRow: (row) => ({
+      source: 'manual',
+      date: readDate(row, 'date'),
+      exercise_id: readText(row, 'exercise_id'),
+      reps: readNumber(row, 'reps'),
+      weight_kg: readNumber(row, 'weight_kg'),
+      rpe: readOptionalNumber(row, 'rpe'),
+      context: readOptionalText(row, 'context'),
+    }),
+  },
+
+  additions: {
+    kind: 'additions',
+    path: TABLE_PATHS.additions,
+    columns: [...SHIPPED_EXERCISE_COLUMNS, 'based_on'],
+    key: ['id'],
+    numeric: [],
+    toRow: (addition) => ({ ...exerciseRow(addition), based_on: addition.based_on ?? '' }),
+    fromRow: (row) => {
+      // The shipped library's own rules, so an addition and the shipped row it
+      // repeats read as the same exercise.
+      let exercise: Exercise;
+      try {
+        exercise = exerciseFromRow(row);
+      } catch (e) {
+        throw new FormatError(e instanceof Error ? e.message : String(e));
+      }
+      return { ...exercise, based_on: readOptionalText(row, 'based_on') };
+    },
+  },
+};
+
+/** The given columns' cells, in that order. A missing column is a caller's bug. */
+function cells(row: TableRow, columns: readonly string[]): string[] {
+  return columns.map((column) => {
+    const cell = row[column];
+    if (typeof cell !== 'string') throw new Error(`row has no ${column}: ${JSON.stringify(row)}`);
+    return cell;
+  });
+}
+
+/**
+ * A row in the app's own form: read into its record and written back. Readers
+ * return rows in this form, so `2.0` and `2` are one key and one row, and a hand
+ * edited file is rewritten in the app's form by the next sync (1.4).
+ */
+function canonical(schema: TableSchema<unknown>, row: TableRow): TableRow {
+  return schema.toRow(schema.fromRow(row));
+}
+
+/** By code point, as 1.4 says. `<` on strings compares UTF-16 units, which differ above U+FFFF. */
+function byCodePoint(a: string, b: string): number {
+  const x = [...a];
+  const y = [...b];
+  for (let i = 0; i < Math.min(x.length, y.length); i++) {
+    if (x[i] !== y[i]) return x[i].codePointAt(0)! - y[i].codePointAt(0)!;
+  }
+  return x.length - y.length;
+}
+
+function compareKeys(schema: TableSchema<unknown>, a: TableRow, b: TableRow): number {
+  for (const column of schema.key) {
+    const order = schema.numeric.includes(column)
+      ? Number(a[column]) - Number(b[column])
+      : byCodePoint(a[column], b[column]);
+    if (order !== 0) return order;
+  }
+  return 0;
+}
+
+/** A row's key, as one string: equal keys give equal strings, different keys different ones. */
+export function rowKey(schema: TableSchema<unknown>, row: TableRow): string {
+  // The key cells as a CSV line: unambiguous, since the reader reverses it exactly.
+  return csvLine(cells(row, schema.key));
+}
+
+/** One row as its CSV line, without the newline. Rows are equal when their lines are. */
+export function rowLine(schema: TableSchema<unknown>, row: TableRow): string {
+  return csvLine(cells(row, schema.columns));
+}
+
+/** The whole file: header, rows sorted by key (1.4), trailing newline. */
+export function tableText(schema: TableSchema<unknown>, rows: TableRow[]): string {
+  // Only rows in the app's own form, so the file reads back as exactly these rows.
+  for (const row of rows) {
+    const line = rowLine(schema, row);
+    let written: string;
+    try {
+      written = rowLine(schema, canonical(schema, row));
+    } catch (e) {
+      throw new Error(`cannot write ${line} to ${schema.path}: ${(e as Error).message}`);
+    }
+    if (written !== line) {
+      throw new Error(`cannot write ${line} to ${schema.path}: its own form is ${written}`);
+    }
+  }
+
+  const sorted = [...rows].sort((a, b) => compareKeys(schema, a, b));
+  for (let i = 1; i < sorted.length; i++) {
+    if (compareKeys(schema, sorted[i - 1], sorted[i]) === 0) {
+      throw new Error(`two rows for ${rowKey(schema, sorted[i])} in ${schema.path}`);
+    }
+  }
+  const lines = [csvLine(schema.columns), ...sorted.map((row) => rowLine(schema, row))];
+  return lines.map((line) => `${line}\n`).join('');
+}
+
+function rowOf(schema: TableSchema<unknown>, values: string[]): TableRow {
+  const row: TableRow = {};
+  schema.columns.forEach((column, i) => {
+    row[column] = values[i];
+  });
+  return row;
+}
+
+/** Parses a table file. Throws FormatError: wrong header, bad quoting, wrong cell count, duplicate key. */
+export function tableRows(schema: TableSchema<unknown>, text: string): TableRow[] {
+  const [header, ...records] = parseCsvRecords(text, { strict: true });
+  const headerMatches =
+    header !== undefined &&
+    header.length === schema.columns.length &&
+    header.every((column, i) => column === schema.columns[i]);
+  if (!headerMatches) {
+    throw new FormatError(`the header must be ${csvLine(schema.columns)}`);
+  }
+
+  const seen = new Set<string>();
+  return records.map((values, i) => {
+    let row: TableRow;
+    try {
+      row = canonical(schema, rowOf(schema, values));
+    } catch (e) {
+      if (e instanceof FormatError) throw new FormatError(`row ${i + 1}: ${e.message}`);
+      throw e;
+    }
+    const key = rowKey(schema, row);
+    if (seen.has(key)) throw new FormatError(`row ${i + 1}: a second row for ${key}`);
+    seen.add(key);
+    return row;
+  });
+}
+
+/**
+ * A table file as the decision sees it: row key to row line. Null (no file) is
+ * an empty map. Throws FormatError like `tableRows`.
+ */
+export function tableUnits(schema: TableSchema<unknown>, text: string | null): Map<string, string> {
+  const units = new Map<string, string>();
+  if (text === null) return units;
+  for (const row of tableRows(schema, text)) units.set(rowKey(schema, row), rowLine(schema, row));
+  return units;
+}
+
+/** The inverse of `tableUnits`: the file holding exactly these rows, sorted. */
+export function unitsText(schema: TableSchema<unknown>, units: Map<string, string>): string {
+  const rows = [...units].map(([key, line]) => {
+    const row = lineRow(schema, line);
+    if (rowKey(schema, row) !== key) throw new Error(`row ${line} is filed under key ${key}`);
+    return row;
+  });
+  return tableText(schema, rows);
+}
+
+/** Parses one row line back to cells (for conflict records and resolution). */
+export function lineRow(schema: TableSchema<unknown>, line: string): TableRow {
+  const records = parseCsvRecords(line, { strict: true });
+  if (records.length !== 1 || records[0].length !== schema.columns.length) {
+    throw new FormatError(`not one row of ${schema.columns.length} cells: ${line}`);
+  }
+  return canonical(schema, rowOf(schema, records[0]));
+}
+
+// --- JSON files: writing -----------------------------------------------------------
+//
+// Each record is rebuilt key by key before stringifying, so the key order is the
+// one written here, never the order the object happened to be built in, and a
+// property the type does not have is never written.
+
+function json(value: unknown): string {
+  const text = JSON.stringify(
+    value,
+    (_key, v: unknown) => {
+      // Absent is null, never omitted (1.4).
+      if (v === undefined) return null;
+      if (typeof v === 'number' && !Number.isFinite(v)) {
+        throw new Error(`cannot write ${v} as a number`);
+      }
+      return v;
+    },
+    2,
+  );
+  return `${text}\n`;
+}
+
+/** For a union tag the types rule out but a caller's bug can still produce. */
+function unknownTag(what: string, value: never): never {
+  throw new Error(`cannot write ${what} ${JSON.stringify(value)}`);
+}
+
+function intervalJson(interval: Interval | null) {
+  return interval == null ? null : [interval[0], interval[1]];
+}
+
+function weightJson(weight: WeightPrescription) {
+  switch (weight.mode) {
+    case 'absolute':
+      return { mode: weight.mode, kg: intervalJson(weight.kg) };
+    case 'pct_1rm':
+      return { mode: weight.mode, pct: intervalJson(weight.pct), lift: weight.lift };
+    case 'rpe_driven':
+      return { mode: weight.mode };
+    case 'bw_plus':
+      return { mode: weight.mode, added_kg: intervalJson(weight.added_kg) };
+  }
+  return unknownTag('weight prescription', weight);
+}
+
+function loadPrescriptionJson(load: LoadPrescription) {
+  switch (load.kind) {
+    case 'weight':
+      return { kind: load.kind, weight: weightJson(load.weight) };
+    case 'time':
+      return { kind: load.kind, seconds: intervalJson(load.seconds) };
+    case 'distance':
+      return { kind: load.kind, meters: intervalJson(load.meters) };
+  }
+  return unknownTag('load prescription', load);
+}
+
+function prescriptionJson(set: Omit<PrescribedSet, 'id'>) {
+  return {
+    reps: intervalJson(set.reps),
+    rpe: intervalJson(set.rpe),
+    load: loadPrescriptionJson(set.load),
+    is_warmup: set.is_warmup,
+    notes: set.notes,
+  };
+}
+
+function loadJson(load: Load | null) {
+  if (load == null) return null;
+  switch (load.kind) {
+    case 'weight':
+      return { kind: load.kind, value: load.value, unit: load.unit };
+    case 'time':
+      return { kind: load.kind, seconds: load.seconds };
+    case 'distance':
+      return { kind: load.kind, meters: load.meters };
+  }
+  return unknownTag('load', load);
+}
+
+function performedJson(set: PerformedSet) {
+  return {
+    id: set.id,
+    prescribed_id: set.prescribed_id,
+    state: set.state,
+    reps: set.reps,
+    rpe: set.rpe,
+    load: loadJson(set.load),
+    is_warmup: set.is_warmup,
+    notes: set.notes,
+  };
+}
+
+function sessionJson(session: Session) {
+  const label = session.label;
+  return {
+    id: session.id,
+    date: session.date,
+    started_at: session.started_at,
+    tz: session.tz,
+    time_precision: session.time_precision,
+    ended_at: session.ended_at,
+    label: {
+      name: label.name,
+      block: label.block,
+      week: label.week,
+      day: label.day,
+      weekday: label.weekday,
+    },
+    bodyweight_kg: session.bodyweight_kg,
+    notes: session.notes,
+    exercises: session.exercises.map((instance) => ({
+      id: instance.id,
+      exercise_id: instance.exercise_id,
+      prescribed: instance.prescribed.map((set) => ({ id: set.id, ...prescriptionJson(set) })),
+      performed: instance.performed.map(performedJson),
+      notes: instance.notes,
+    })),
+    created_at: session.created_at,
+    updated_at: session.updated_at,
+    device_id: session.device_id,
+  };
+}
+
+function templateJson(template: Template) {
+  return {
+    id: template.id,
+    name: template.name,
+    intention: template.intention,
+    exercises: template.exercises.map((exercise) => ({
+      exercise_id: exercise.exercise_id,
+      prescribed: exercise.prescribed.map(prescriptionJson),
+    })),
+    created_at: template.created_at,
+    updated_at: template.updated_at,
+  };
+}
+
+/** A table row as a JSON object, columns in the given order. */
+function rowJson(row: TableRow, columns: readonly string[]) {
+  const values = cells(row, columns);
+  return Object.fromEntries(columns.map((column, i) => [column, values[i]]));
+}
+
+// --- JSON files: reading -----------------------------------------------------------
+//
+// Enough checking that garbage is a FormatError naming where it went wrong, and
+// that everything read has the type it claims. A missing field is an error, not
+// a null: the writer never omits one. Unknown fields are dropped.
+
+/** Reads one JSON value, `path` naming it in errors (`session.exercises[2].load`). */
+type Read<T> = (value: unknown, path: string) => T;
+
+const fail = (path: string, expected: string): never => {
+  throw new FormatError(`${path}: expected ${expected}`);
+};
+
+const str: Read<string> = (v, path) => (typeof v === 'string' ? v : fail(path, 'a string'));
+const num: Read<number> = (v, path) =>
+  typeof v === 'number' && Number.isFinite(v) ? v : fail(path, 'a number');
+const bool: Read<boolean> = (v, path) => (typeof v === 'boolean' ? v : fail(path, 'a boolean'));
+const date: Read<IsoDate> = (v, path) =>
+  typeof v === 'string' && ISO_DATE.test(v) ? v : fail(path, 'a YYYY-MM-DD date');
+const nothing: Read<null> = (v, path) => (v === null ? null : fail(path, 'null'));
+
+const nullable =
+  <T>(read: Read<T>): Read<T | null> =>
+  (v, path) =>
+    v === null ? null : read(v, path);
+
+const oneOf =
+  <T extends string>(allowed: readonly T[]): Read<T> =>
+  (v, path) =>
+    allowed.includes(v as T) ? (v as T) : fail(path, `one of ${allowed.join(', ')}`);
+
+const array =
+  <T>(read: Read<T>): Read<T[]> =>
+  (v, path) =>
+    Array.isArray(v) ? v.map((item, i) => read(item, `${path}[${i}]`)) : fail(path, 'an array');
+
+const interval: Read<Interval> = (v, path) => {
+  if (!Array.isArray(v) || v.length !== 2) return fail(path, 'an interval [low, high]');
+  return [nullable(num)(v[0], `${path}[0]`), nullable(num)(v[1], `${path}[1]`)];
+};
+
+/** An object's fields, each read by the reader given for it. */
+function fields(v: unknown, path: string) {
+  if (typeof v !== 'object' || v === null || Array.isArray(v)) fail(path, 'an object');
+  const object = v as Record<string, unknown>;
+  return <T>(key: string, read: Read<T>): T => {
+    if (!Object.hasOwn(object, key)) throw new FormatError(`${path}.${key}: missing`);
+    return read(object[key], `${path}.${key}`);
+  };
+}
+
+const weightPrescription: Read<WeightPrescription> = (v, path) => {
+  const field = fields(v, path);
+  const mode = field('mode', oneOf(WEIGHT_MODES));
+  switch (mode) {
+    case 'absolute':
+      return { mode, kg: field('kg', interval) };
+    case 'pct_1rm':
+      return { mode, pct: field('pct', interval), lift: field('lift', oneOf(LIFTS)) };
+    case 'rpe_driven':
+      return { mode };
+    case 'bw_plus':
+      return { mode, added_kg: field('added_kg', interval) };
+  }
+};
+
+const loadPrescription: Read<LoadPrescription> = (v, path) => {
+  const field = fields(v, path);
+  const kind = field('kind', oneOf(LOAD_KINDS));
+  switch (kind) {
+    case 'weight':
+      return { kind, weight: field('weight', weightPrescription) };
+    case 'time':
+      return { kind, seconds: field('seconds', interval) };
+    case 'distance':
+      return { kind, meters: field('meters', interval) };
+  }
+};
+
+const prescription: Read<Omit<PrescribedSet, 'id'>> = (v, path) => {
+  const field = fields(v, path);
+  return {
+    reps: field('reps', nullable(interval)),
+    rpe: field('rpe', nullable(interval)),
+    load: field('load', loadPrescription),
+    is_warmup: field('is_warmup', bool),
+    notes: field('notes', nullable(str)),
+  };
+};
+
+const prescribedSet: Read<PrescribedSet> = (v, path) => ({
+  id: fields(v, path)('id', str),
+  ...prescription(v, path),
+});
+
+const load: Read<Load> = (v, path) => {
+  const field = fields(v, path);
+  const kind = field('kind', oneOf(LOAD_KINDS));
+  switch (kind) {
+    case 'weight':
+      return { kind, value: field('value', num), unit: field('unit', oneOf(LOAD_UNITS)) };
+    case 'time':
+      return { kind, seconds: field('seconds', num) };
+    case 'distance':
+      return { kind, meters: field('meters', num) };
+  }
+};
+
+const performedSet: Read<PerformedSet> = (v, path) => {
+  const field = fields(v, path);
+  return {
+    id: field('id', str),
+    prescribed_id: field('prescribed_id', nullable(str)),
+    state: field('state', oneOf(SET_STATES)),
+    reps: field('reps', nullable(num)),
+    rpe: field('rpe', nullable(num)),
+    load: field('load', nullable(load)),
+    is_warmup: field('is_warmup', bool),
+    notes: field('notes', nullable(str)),
+  };
+};
+
+const programLabel: Read<ProgramLabel> = (v, path) => {
+  const field = fields(v, path);
+  return {
+    name: field('name', nullable(str)),
+    block: field('block', nullable(num)),
+    week: field('week', nullable(num)),
+    day: field('day', nullable(num)),
+    weekday: field('weekday', nullable(str)),
+  };
+};
+
+const session: Read<Session> = (v, path) => {
+  const field = fields(v, path);
+  return {
+    id: field('id', str),
+    date: field('date', date),
+    started_at: field('started_at', str),
+    tz: field('tz', str),
+    time_precision: field('time_precision', oneOf(TIME_PRECISIONS)),
+    ended_at: field('ended_at', nullable(str)),
+    label: field('label', programLabel),
+    bodyweight_kg: field('bodyweight_kg', nullable(num)),
+    notes: field('notes', nullable(str)),
+    exercises: field(
+      'exercises',
+      array((x, p) => {
+        const f = fields(x, p);
+        return {
+          id: f('id', str),
+          exercise_id: f('exercise_id', str),
+          prescribed: f('prescribed', array(prescribedSet)),
+          performed: f('performed', array(performedSet)),
+          notes: f('notes', nullable(str)),
+        };
+      }),
+    ),
+    created_at: field('created_at', str),
+    updated_at: field('updated_at', str),
+    device_id: field('device_id', str),
+  };
+};
+
+const template: Read<Template> = (v, path) => {
+  const field = fields(v, path);
+  return {
+    id: field('id', str),
+    name: field('name', str),
+    intention: field('intention', nullable(str)),
+    exercises: field(
+      'exercises',
+      array((x, p) => {
+        const f = fields(x, p);
+        return {
+          exercise_id: f('exercise_id', str),
+          prescribed: f('prescribed', array(prescription)),
+        };
+      }),
+    ),
+    created_at: field('created_at', str),
+    updated_at: field('updated_at', str),
+  };
+};
+
+/** A table row as a JSON object: exactly these columns, each a string. */
+const row =
+  (columns: readonly string[]): Read<TableRow> =>
+  (v, path) => {
+    const field = fields(v, path);
+    return Object.fromEntries(columns.map((column) => [column, field(column, str)]));
+  };
+
+function parseJson(text: string): unknown {
+  try {
+    return JSON.parse(text);
+  } catch (e) {
+    throw new FormatError(`not JSON: ${(e as Error).message}`);
+  }
+}
+
+// --- JSON files --------------------------------------------------------------------
+
+export function serializeSession(session: Session): string {
+  return json(sessionJson(session));
+}
+export function parseSession(text: string): Session {
+  return session(parseJson(text), 'session');
+}
+
+export function serializeTemplate(template: Template): string {
+  return json(templateJson(template));
+}
+export function parseTemplate(text: string): Template {
+  return template(parseJson(text), 'template');
+}
+
+/**
+ * The saved version is written in its own file's form: a session or template
+ * as its file would hold it, a table row with its columns in the table's order.
+ * What it is follows from `path`.
+ */
+export function serializeConflict(conflict: ConflictRecord): string {
+  const target = classify(conflict.path);
+  let key: Record<string, string> | null = null;
+  let version: unknown = null;
+
+  if (target.kind === 'table') {
+    const schema = TABLES[target.table];
+    if (conflict.key == null) throw new Error(`a conflict on ${conflict.path} needs the row's key`);
+    key = rowJson(conflict.key, schema.key);
+    version =
+      conflict.version == null ? null : rowJson(conflict.version as TableRow, schema.columns);
+  } else if (target.kind === 'session' || target.kind === 'template') {
+    if (conflict.key != null) throw new Error(`a conflict on ${conflict.path} has no row key`);
+    if (conflict.version != null) {
+      version =
+        target.kind === 'session'
+          ? sessionJson(conflict.version as Session)
+          : templateJson(conflict.version as Template);
+    }
+  } else {
+    throw new Error(`cannot record a conflict on ${conflict.path}`);
+  }
+
+  return json({
+    id: conflict.id,
+    path: conflict.path,
+    key,
+    found_at: conflict.found_at,
+    device_id: conflict.device_id,
+    version,
+  });
+}
+export function parseConflict(text: string): ConflictRecord {
+  const field = fields(parseJson(text), 'conflict');
+  const path = field('path', str);
+  const target = classify(path);
+
+  let key: TableRow | null;
+  let version: Session | Template | TableRow | null;
+  if (target.kind === 'table') {
+    const schema = TABLES[target.table];
+    key = field('key', row(schema.key));
+    version = field('version', nullable(row(schema.columns)));
+    // The saved row is written back into the table on resolution; it must be one.
+    if (version !== null) {
+      try {
+        schema.fromRow(version);
+      } catch (e) {
+        throw new FormatError(`conflict.version: ${(e as Error).message}`);
+      }
+    }
+  } else if (target.kind === 'session') {
+    key = field('key', nothing);
+    version = field('version', nullable(session));
+  } else if (target.kind === 'template') {
+    key = field('key', nothing);
+    version = field('version', nullable(template));
+  } else {
+    return fail('conflict.path', 'a session, template or table path');
+  }
+
+  return {
+    id: field('id', str),
+    path,
+    key,
+    found_at: field('found_at', str),
+    device_id: field('device_id', str),
+    version,
+  };
+}
+
+export function serializeFormatMarker(marker: FormatMarker): string {
+  return json({ format: marker.format });
+}
+export function parseFormatMarker(text: string): FormatMarker {
+  const field = fields(parseJson(text), 'sisyphos.json');
+  const format = field('format', num);
+  if (!Number.isInteger(format) || format < 1) fail('sisyphos.json.format', 'a format number');
+  return { format };
+}
+
+// --- the exercise library ------------------------------------------------------
+
+const encoder = new TextEncoder();
+
+/**
+ * `based_on` (9.1): the first 12 hex characters of the SHA-1 of the exercise's
+ * row as the app serialises it, shipped columns only.
+ */
+export function exerciseRowHash(exercise: Exercise): string {
+  const line = csvLine(cells(exerciseRow(exercise), SHIPPED_EXERCISE_COLUMNS));
+  return sha1Hex(encoder.encode(line)).slice(0, 12);
+}
