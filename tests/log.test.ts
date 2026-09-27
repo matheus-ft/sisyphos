@@ -485,7 +485,8 @@ describe.each(BACKENDS)('Log over %s', (_name, backend) => {
 
       await log.deleteRow('bodyweight', weighIn('2026-09-15', 83));
       expect(await log.getRows('bodyweight')).toEqual([]);
-      expect(await store.content(TABLES.bodyweight.path)).toBe('date,weight_kg,source\n');
+      // An empty table is no file, as the sync writes it.
+      expect(await store.content(TABLES.bodyweight.path)).toBeNull();
       expect(applies()).toBe(4);
 
       await log.deleteRow('bodyweight', weighIn('2026-09-15', 83));

@@ -168,7 +168,10 @@ class FakeLocks implements Locks {
 }
 
 const network = () =>
-  new SyncError('retryable', 'Could not reach GitHub', { cause: new TypeError('Failed to fetch') });
+  new SyncError('retryable', 'Could not reach GitHub', {
+    cause: new TypeError('Failed to fetch'),
+    network: true,
+  });
 const serverError = () => new SyncError('retryable', 'GitHub failed (HTTP 502)');
 
 function conflict(id: string): ConflictRecord {

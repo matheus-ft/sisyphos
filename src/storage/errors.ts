@@ -23,16 +23,24 @@ export class SyncError extends Error {
   readonly kind: SyncErrorKind;
   /** For `rate_limit`: when GitHub says to try again. */
   readonly retryAt: Date | null;
+  /**
+   * For `retryable`: the request never got a proper answer (no connection, a
+   * timeout, a body cut off on the way), so the lifter is told they are offline.
+   * Said explicitly by the remote adapter rather than guessed from `cause`, which
+   * a storage failure carries too.
+   */
+  readonly network: boolean;
 
   constructor(
     kind: SyncErrorKind,
     message: string,
-    options: { retryAt?: Date | null; cause?: unknown } = {},
+    options: { retryAt?: Date | null; cause?: unknown; network?: boolean } = {},
   ) {
     super(message, { cause: options.cause });
     this.name = 'SyncError';
     this.kind = kind;
     this.retryAt = options.retryAt ?? null;
+    this.network = options.network ?? false;
   }
 }
 

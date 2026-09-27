@@ -258,9 +258,7 @@ export class GitHubRemote implements Remote {
       throw this.error(
         'retryable',
         timedOut ? 'GitHub did not answer in time' : 'Could not reach GitHub',
-        {
-          cause,
-        },
+        { cause, network: true },
       );
     }
   }
@@ -270,7 +268,10 @@ export class GitHubRemote implements Remote {
     try {
       return await res.json();
     } catch (cause) {
-      throw this.error('retryable', "GitHub's answer arrived incomplete or unreadable", { cause });
+      throw this.error('retryable', "GitHub's answer arrived incomplete or unreadable", {
+        cause,
+        network: true,
+      });
     }
   }
 
@@ -314,7 +315,7 @@ export class GitHubRemote implements Remote {
   private error(
     kind: SyncErrorKind,
     message: string,
-    options: { retryAt?: Date; cause?: unknown } = {},
+    options: { retryAt?: Date; cause?: unknown; network?: boolean } = {},
   ): SyncError {
     const { token } = this.options;
     const safe = token ? message.split(token).join('[token]') : message;

@@ -84,9 +84,12 @@ export class MemoryStore implements LocalStore {
   }
 
   async entries(): Promise<SyncEntry[]> {
-    return [...this.state.entries.values()]
-      .map((e) => ({ ...e }))
-      .sort((a, b) => a.path.localeCompare(b.path));
+    return (
+      [...this.state.entries.values()]
+        .map((e) => ({ ...e }))
+        // Plain code-unit order, the same as `paths()` and IndexedDB's key order.
+        .sort((a, b) => (a.path < b.path ? -1 : a.path > b.path ? 1 : 0))
+    );
   }
 
   async meta(): Promise<SyncMeta> {

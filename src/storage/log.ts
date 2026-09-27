@@ -390,8 +390,9 @@ async function readTable(
 
 /** The op writing a table with exactly these rows; none when that would change nothing. */
 function tableOps(schema: TableSchema<unknown>, text: string | null, rows: TableRow[]): StoreOp[] {
-  if (text === null && rows.length === 0) return [];
-  const next = tableText(schema, rows);
+  // A table with no rows is no file, the form the sync writes too (sync.ts), so
+  // emptying a table here and syncing it never disagree about which it is.
+  const next = rows.length === 0 ? null : tableText(schema, rows);
   return next === text ? [] : [{ op: 'content', path: schema.path, text: next }];
 }
 

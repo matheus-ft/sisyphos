@@ -629,5 +629,6 @@ describe('GitHubRemote: a request that never answers', () => {
     });
     const error = await failure(remote.head(), 'retryable');
     expect(error.message).toContain('did not answer in time');
+    expect(error.network).toBe(true);
   });
 });

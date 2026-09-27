@@ -17,7 +17,10 @@ function state(overrides: Partial<SyncState>): SyncState {
 
 /** How the GitHub adapter reports a request that never got an answer. */
 const noConnection = () =>
-  new SyncError('retryable', 'Could not reach GitHub', { cause: new TypeError('Failed to fetch') });
+  new SyncError('retryable', 'Could not reach GitHub', {
+    cause: new TypeError('Failed to fetch'),
+    network: true,
+  });
 
 describe('describeSync', () => {
   it('says not set up whatever else is going on', () => {
@@ -51,8 +54,18 @@ describe('describeSync', () => {
   it('counts a timeout, or an answer cut off on the way, as the network', () => {
     const timeout = new SyncError('retryable', 'GitHub did not answer in time', {
       cause: new DOMException('signal timed out', 'TimeoutError'),
+      network: true,
     });
     expect(describeSync(state({ failure: timeout })).status).toBe('offline');
+  });
+
+  it('does not call the device’s own storage failing a lost connection', () => {
+    // The sync wraps a storage failure as retryable with its cause kept; only
+    // the remote adapter says a failure was the network.
+    const storage = new SyncError('retryable', "The device's storage failed: QuotaExceededError", {
+      cause: new DOMException('quota', 'QuotaExceededError'),
+    });
+    expect(describeSync(state({ failure: storage })).status).toBe('retrying');
   });
 
   it('says retrying for a failure that had a connection: GitHub failing, rounds lost', () => {

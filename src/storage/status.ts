@@ -114,13 +114,13 @@ export function describeSync(
 
 /**
  * A retryable failure is a network one (`offline`) when the request never got a
- * proper answer: the remote adapter keeps the browser's own failure (no
- * connection, a timeout, a body cut off on the way) as the error's `cause`.
- * GitHub's 5xx answers and rounds lost to other devices carry none; those are
- * `retrying`, since there is a connection and the next attempt may well work.
+ * proper answer (no connection, a timeout, a body cut off on the way), which the
+ * remote adapter says with `network`. GitHub's 5xx answers, rounds lost to other
+ * devices and the device's own storage failing are `retrying`: telling the
+ * lifter they are offline would send them looking in the wrong place.
  */
 function isNetworkFailure(error: SyncError): boolean {
-  return error.cause !== undefined;
+  return error.network;
 }
 
 /** An error's message as a sentence to put in front of more words. */
