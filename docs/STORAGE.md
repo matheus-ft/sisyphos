@@ -130,16 +130,25 @@ settles. A remote file that does not parse is **unreadable** (section 6).
 
 IndexedDB holds, per install:
 
-| Store                     | Contents                                                                                                                      |
-| ------------------------- | ----------------------------------------------------------------------------------------------------------------------------- |
-| One store per record type | Sessions, templates, conflict records, and the rows of each table. Sessions are indexed by `date`                             |
-| `sync`                    | One entry per log-repo path: `base_sha`, `local_sha`, `unsynced_since`, and for tables `base_body`                            |
-| `sync_meta`               | `last_synced_head` and `last_synced_tree`: the commit, and its tree, that every base agreed with when the last sync completed |
-| `inflight`                | At most one entry: the commit this device is trying to land (4.5)                                                             |
-| `settings`                | Repo owner and name, branch, token, device id. Never synced                                                                   |
+| Store       | Contents                                                                                                                      |
+| ----------- | ----------------------------------------------------------------------------------------------------------------------------- |
+| `content`   | Every log-repo file the device holds, keyed by path, as the exact text it would push                                          |
+| `sync`      | One entry per log-repo path: `base_sha`, `local_sha`, `unsynced_since`, and for tables `base_body`                            |
+| `sync_meta` | `last_synced_head` and `last_synced_tree`: the commit, and its tree, that every base agreed with when the last sync completed |
+| `inflight`  | At most one entry: the commit this device is trying to land (4.5)                                                             |
+| `settings`  | Repo owner and name, branch, token, device id. Never synced                                                                   |
+
+The store keeps files, not records, and knows nothing about what they mean. That
+is what lets the sync treat every path the same way. Sessions, rows and the rest
+are parsed from the content by the log layer (`storage/log.ts`), which caches
+each parsed file by its sha, so listing sessions reparses only what changed.
 
 The device id is random, generated once per install and never copied between
 devices. A restored device gets a new one.
+
+Every write, from any tab, runs one at a time: the write queue (2.2) holds a Web
+Lock across tabs where the browser has one, so another tab cannot write between
+a sync's read and its write.
 
 The IndexedDB schema is versioned. Opening an older version migrates it in the
 upgrade transaction, and a migration never drops data.
