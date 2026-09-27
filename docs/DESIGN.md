@@ -142,6 +142,18 @@ lifter submits signed in on github.com. Rejected: filing it with the log token.
 A fine-grained token cannot write to a repository its owner does not own, so
 that would work for the app's author and nobody else.
 
+**Your change to a shipped exercise wins until the shipped exercise changes.**
+Disagreeing with the library is ordinary: you fix a row locally and it applies
+at once, and a submission proposing the fix opens by itself. Each addition
+records which shipped row it was made against, so the library gets the same
+three-way rule as sync. A shipped row that has not moved since your change
+loses to it. One that now matches yours means your fix was merged, and nothing
+is flagged. One that changed differently is a conflict, flagged like any other,
+because a reviewer's correction should neither silently override you nor be
+silently ignored. Rejected: the addition always winning, which ignores every
+later correction. Rejected: the shipped row always winning, which would undo
+your fix at the next app update.
+
 **Seventeen flat muscle groups, no finer level.** Exercises credit groups like
 `hamstrings` and `front_delts` directly; `docs/MUSCLES.md` defines each one.
 The provisional vocabulary had 37 anatomical leaves with overlapping tags rolled

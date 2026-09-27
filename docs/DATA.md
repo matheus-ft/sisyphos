@@ -14,7 +14,7 @@ sisyphos-log/                      ← your own PRIVATE repo. Your training.
 ├── lifter/bodyweight.csv
 ├── lifter/one-rm-history.csv
 ├── lifter/manual-records.csv
-├── library/additions.csv          exercises you made
+├── library/additions.csv          exercises you made or changed
 └── conflicts/                     versions waiting for you to choose
 ```
 
@@ -47,12 +47,19 @@ than one repository.
 ## The exercise library
 
 The exercises you can pick from are the shipped `src/library/exercises.csv` plus
-your own additions in `library/additions.csv` in the log repo. The two are
-combined when read, never copied into each other.
+your own additions in `library/additions.csv` in the log repo: exercises you
+created, and shipped ones you changed. The two are combined when read, never
+copied into each other.
 
-An exercise you create goes into your additions at once, so it works offline.
-Proposing it for everyone opens a prefilled issue on github.com; a workflow
-validates it and opens a pull request adding the row to the shipped file.
+An exercise you create or change goes into your additions at once, so it works
+offline, and the app opens a prefilled issue proposing it for everyone. You tap
+Submit on github.com; a workflow validates it and opens a pull request adding
+or replacing the row in the shipped file.
+
+Your change to a shipped exercise wins until the shipped exercise itself
+changes. If it then matches yours, your submission was merged and nothing
+happens. If it doesn't, the app flags a conflict and you choose. `STORAGE.md`
+section 9 has the exact rule.
 
 ## The log repo's files
 
@@ -94,9 +101,11 @@ fall out of agreement with the set that produced it.
 Note this is a different thing again from the 1RM history. The 1RM history drives
 prescriptions and is a decision you make; records are observations.
 
-`library/additions.csv` — exactly the columns of the shipped
-`src/library/exercises.csv`. Key: `id`. The same parser reads both files, and an
-addition is the very row the shipped library would hold.
+`library/additions.csv` — the columns of the shipped `src/library/exercises.csv`,
+then `based_on`: empty for an exercise the shipped library didn't have, or a
+short hash of the shipped row you changed. Key: `id`. The same parser reads both
+files, and apart from `based_on` an addition is the very row the shipped library
+would hold.
 
 `conflicts/<id>.json` — one per unresolved conflict: which file (and for a
 table, which row), when it was found, which device's version it is, and that

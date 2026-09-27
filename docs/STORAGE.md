@@ -33,7 +33,7 @@ templates/<id>.json                one file per template
 lifter/bodyweight.csv              one table per kind of lifter data
 lifter/one-rm-history.csv
 lifter/manual-records.csv
-library/additions.csv              exercises the lifter created
+library/additions.csv              exercises the lifter created or changed, see 9
 conflicts/<id>.json                one file per unresolved conflict, see 5
 ```
 
@@ -388,6 +388,8 @@ The resolution screen shows the two versions side by side (the one in the log
 and the saved one) with the device and time of each, differences highlighted.
 Resolving is one tap.
 
+Library conflicts (9.1) are announced and listed the same way, alongside these.
+
 ### 5.3 Resolving
 
 | Choice                 | Effect                                                                                                     |
@@ -523,14 +525,64 @@ exposure is then `unprotected` until it is done.
 The token is stored in `settings` on the device only. It is sent only as an
 `Authorization` header to `api.github.com`, and never logged or synced.
 
-## 9. Exercise submissions
+## 9. The exercise library
 
-Creating an exercise writes it to `library/additions.csv` so it works
-immediately, offline. Proposing it for the shared library opens GitHub's
-new-issue page for the `new-exercise` form, with every field filled in through
-the URL's query string. The lifter submits it signed in on github.com. The log
-token is not involved: a fine-grained token cannot write to a repository its
-owner does not own.
+The **shipped library** is `src/library/exercises.csv` in the app's repository:
+built into the app, the same for everyone, and changed only by merging a pull
+request there. A lifter's **additions** are rows in `library/additions.csv` in
+their log repo: exercises they created, and shipped exercises they changed.
+Both work immediately and offline. An id never leaves the shipped library once
+it is in it, since logs reference it permanently.
+
+### 9.1 Which version of an exercise the app uses
+
+Every addition records, in its `based_on` cell, which shipped row it was made
+against: empty for an exercise the shipped library did not have, otherwise the
+first 12 hex characters of the SHA-1 of that shipped row as the app serialises
+it (1.4, shipped columns only). Editing an addition sets `based_on` to the
+shipped row current at that moment.
+
+Whenever the app assembles the library (at launch, which is when a new shipped
+library arrives, and whenever `additions.csv` changes), each addition is
+decided with the rule of 4.3. **B** is the shipped row it was based on, **L**
+the addition, **R** the shipped row now; rows are equal when their hashes are.
+
+| Case      | Meaning                                                              | Result                                                                               |
+| --------- | -------------------------------------------------------------------- | ------------------------------------------------------------------------------------ |
+| L = R     | The shipped library now holds exactly this row (a merged submission) | The shipped row is used; `based_on` is moved to it                                   |
+| L = B     | The addition carries no change of its own, and the shipped row moved | The shipped row is used; the addition is deleted                                     |
+| R = B     | The shipped row has not changed since the addition was made          | **The addition is used.** A brand-new exercise is this case too (both absent)        |
+| Otherwise | The shipped row changed after the addition was made                  | **Conflict**, flagged like every other (5.2). The shipped row is used until resolved |
+
+The first two results are ordinary writes and sync like any other. A library
+conflict is not written to `conflicts/`: both versions already persist, one in
+the app and one in the log, so the conflict is derived afresh every time the
+library is assembled, identically on every device.
+
+Resolving it:
+
+| Choice               | Effect                                                                                                 |
+| -------------------- | ------------------------------------------------------------------------------------------------------ |
+| Use the official one | Delete the addition                                                                                    |
+| Keep mine            | Set `based_on` to the current shipped row, so the addition wins from now on, and open a new submission |
+
+A format change that alters how rows serialise must recompute every `based_on`
+in the same migration, or every override becomes a false conflict.
+
+### 9.2 Submissions
+
+Saving an addition that differs from the shipped row with its id (a new
+exercise, or a change to a shipped one) opens its submission automatically:
+GitHub's new-issue page for the `new-exercise` form, every field filled in
+through the URL's query string, marked as a new exercise or as a change to an
+existing id. The lifter only taps Submit, signed in on github.com. It cannot be
+filed without that tap: the log token is scoped to the log repo, and a
+fine-grained token cannot write to a repository its owner does not own.
+
+The workflow validates the row as it does now, except that an id already in the
+shipped library is accepted when the submission says it is a change: the pull
+request then replaces that row instead of adding one. Only the shipped columns
+are submitted; `based_on` never leaves the log.
 
 The submission workflow runs with write access to the app's repository and reads
 text anyone can type. Every value from the issue (title, body, or anything
@@ -556,6 +608,8 @@ review found cases none of them covered. This one is tested against properties.
   already held.
 - The decision (4.3): every combination of absent, equal and different B, L and
   R, for files and for table rows, in both full syncs and pulls.
+- The library rule (9.1): the same combinations, plus a submission merged as
+  sent, one merged with corrections, and a shipped row changed by someone else.
 
 **The sync, simulated:** two or three simulated devices share the in-memory
 remote. A seeded random schedule makes edits, deletes, conflicting edits and
@@ -587,7 +641,8 @@ rate-limit response.
 ## 11. Build order
 
 1. Model changes: readable ids for sessions and templates (1.2); manual records
-   keyed by date, exercise and reps instead of an id; the conflict record type.
+   keyed by date, exercise and reps instead of an id; `based_on` on additions
+   (9.1); the conflict record type.
 2. Formats: serialisers, the CSV reader with quoting, the blob hash, id
    generation.
 3. The decision (4.3, 4.4), as pure functions.
@@ -596,18 +651,14 @@ rate-limit response.
 6. The GitHub adapter and the error classes.
 7. Setup, status, triggers and scheduling.
 8. The conflict notice, banner and resolution screen (5.2, 5.3).
-9. The submission workflow fix and the prefilled-issue link.
+9. The library rule (9.1), the submission workflow fix, and the automatic
+   prefilled-issue link (9.2).
 
 The current `src/storage/` is replaced, not adapted: its interfaces are built
 around a dirty queue that this design does not have.
 
 ## Not decided yet
 
-- **Which exercise wins when upstream adopts an addition.** Today a local
-  addition overrides a shipped exercise with the same id, so an accepted
-  submission changes nothing. If a reviewer corrected the row before merging,
-  the device keeps the uncorrected version forever. The alternative is that the
-  shipped row wins once it exists and the addition is dropped.
 - **Where the app is hosted.** Every Pages site under `matheus-ft.github.io`
   shares one origin, so any of them can read the tokens stored by this one. A
   custom domain, or a Pages site under a separate account or organisation, would
