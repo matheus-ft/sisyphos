@@ -1,4 +1,4 @@
-import { SyncError, type SyncErrorKind } from '../errors';
+import { FormatError, SyncError, type SyncErrorKind } from '../errors';
 import { blobSha } from '../hash';
 import type { NewCommit, Remote, RemoteChange, RemoteTree, RepoInfo } from './remote';
 
@@ -148,7 +148,10 @@ export class GitHubRemote implements Remote {
     try {
       text = utf8.decode(bytes);
     } catch {
-      throw this.error('repo', `A file in ${this.name()} (blob ${sha}) is not UTF-8 text`);
+      // No log file can be anything but UTF-8 text, so this is a file that does
+      // not parse, not a broken repo: the sync leaves that one path alone and
+      // syncs the rest (section 6), as it does for any unreadable file.
+      throw new FormatError(`A file in ${this.name()} (blob ${sha}) is not UTF-8 text`);
     }
     const actual = blobSha(text);
     if (actual !== sha) {

@@ -102,7 +102,18 @@ async function prepare(remote: Remote, name: string): Promise<SetupResult> {
 
     const tree = await remote.tree(head);
     const found = tree.files.find((file) => file.path === FORMAT_PATH);
-    if (found) return checkFormat(await remote.blob(found.sha), name);
+    if (found) {
+      let text: string;
+      try {
+        text = await remote.blob(found.sha);
+      } catch (error) {
+        // A marker that is not even text reads no better than one that does not
+        // parse (`checkFormat`).
+        if (!(error instanceof FormatError)) throw error;
+        return unreadableMarker(name);
+      }
+      return checkFormat(text, name);
+    }
 
     if (tree.files.some((file) => !SCAFFOLDING.test(file.path))) {
       return refuse(
@@ -129,6 +140,13 @@ async function prepare(remote: Remote, name: string): Promise<SetupResult> {
   return refuse('network', `${name} kept changing while it was being set up. Try again.`);
 }
 
+function unreadableMarker(name: string): SetupResult {
+  return refuse(
+    'not_a_log',
+    `${FORMAT_PATH} in ${name} cannot be read, so this is not a log the app can use.`,
+  );
+}
+
 /** Section 1.3. An older format is not setup's business: the first sync migrates it. */
 function checkFormat(text: string, name: string): SetupResult {
   let format: number;
@@ -136,10 +154,7 @@ function checkFormat(text: string, name: string): SetupResult {
     format = parseFormatMarker(text).format;
   } catch (error) {
     if (!(error instanceof FormatError)) throw error;
-    return refuse(
-      'not_a_log',
-      `${FORMAT_PATH} in ${name} cannot be read, so this is not a log the app can use.`,
-    );
+    return unreadableMarker(name);
   }
   if (format > FORMAT_VERSION) {
     return refuse(

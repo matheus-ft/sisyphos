@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from 'vitest';
 import type { ConflictRecord } from '../src/model';
-import { SyncError } from '../src/storage/errors';
+import { FormatError, SyncError } from '../src/storage/errors';
 import {
   serializeConflict,
   serializeSession,
@@ -632,6 +632,30 @@ describe('an unreadable remote file', () => {
     });
     await b.sync();
     await expectConverged(remote, a, b);
+  });
+
+  it('treats a file that is not UTF-8 text as unreadable, not as a broken repo', async () => {
+    const { remote, a } = await synced();
+    const S3 = session('2026-09-20-cccc', 'b');
+    // Stands in for bytes the GitHub adapter could not decode as UTF-8 (a table
+    // saved from a spreadsheet in another encoding): the in-memory remote holds
+    // strings, so the adapter's FormatError is injected for this one blob.
+    const garbled = bodyweight({ ...ROWS, '2026-09-06': 85 })!;
+    remote.externalCommit([[BODYWEIGHT, garbled] as [string, string], sessionFile(S3)].map(change));
+    const read = remote.blob.bind(remote);
+    remote.blob = async (sha) => {
+      if (sha === blobSha(garbled)) throw new FormatError(`blob ${sha} is not UTF-8 text`);
+      return read(sha);
+    };
+    const before = await a.disk.entry(BODYWEIGHT);
+
+    expect(await a.sync()).toMatchObject({
+      unreadable: [BODYWEIGHT],
+      taken: [sessionPath(S3.id)],
+      conflicts: [],
+    });
+    expect(await a.disk.entry(BODYWEIGHT)).toEqual(before);
+    expect((await a.disk.meta()).last_synced_head).not.toBe(await remote.head());
   });
 });
 

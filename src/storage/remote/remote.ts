@@ -7,7 +7,8 @@
  * and the simulation are tested against.
  *
  * Every method either returns or throws a `SyncError` whose kind says what to do
- * next (section 6). Nothing else may escape.
+ * next (section 6). Nothing else may escape, with one exception: `blob` throws a
+ * `FormatError` for content that is not UTF-8 text.
  */
 
 export interface RemoteFile {
@@ -58,7 +59,10 @@ export interface Remote {
 
   /**
    * One file's content. The adapter must check that the content hashes to `sha`
-   * (`blobSha`) and throw a `bug` error if not.
+   * (`blobSha`) and throw a `bug` error if not. Content that is not UTF-8 text is
+   * a `FormatError`, not a `SyncError`: no log file can be anything else, so it is
+   * a file that does not parse, which the sync leaves alone while it syncs every
+   * other path (section 6).
    */
   blob(sha: string): Promise<string>;
 

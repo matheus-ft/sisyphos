@@ -1,6 +1,6 @@
 import { afterEach, describe, it, expect, vi } from 'vitest';
 import { GitHubRemote } from '../src/storage/remote/github';
-import { SyncError, type SyncErrorKind } from '../src/storage/errors';
+import { FormatError, SyncError, type SyncErrorKind } from '../src/storage/errors';
 import { blobSha } from '../src/storage/hash';
 
 // Responses as GitHub sends them (API version 2022-11-28), trimmed of fields
@@ -587,7 +587,14 @@ describe('GitHubRemote: failures', () => {
         reply: { ...blobJson, sha: OTHER, content: wrapped(base64(bytes)) },
       },
     ]);
-    expect((await failure(remote.blob(OTHER), 'repo')).notFound).toBe(false);
+    // Not a SyncError: a file that is not text is one file that does not parse,
+    // which the sync leaves alone while syncing the rest (section 6).
+    const error = await remote.blob(OTHER).then(
+      () => null,
+      (e: unknown) => e,
+    );
+    expect(error).toBeInstanceOf(FormatError);
+    expect(String((error as Error).message)).not.toContain(TOKEN);
   });
 
   it('stops on an answer that lacks what the request is for', async () => {

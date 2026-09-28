@@ -1,5 +1,5 @@
 import { describe, it, expect, vi } from 'vitest';
-import { SyncError } from '../src/storage/errors';
+import { FormatError, SyncError } from '../src/storage/errors';
 import { serializeFormatMarker } from '../src/storage/formats';
 import { blobSha } from '../src/storage/hash';
 import { FORMAT_PATH, FORMAT_VERSION } from '../src/storage/paths';
@@ -68,7 +68,7 @@ describe('setUp: reading the repo', () => {
     expect(await h.store.settings()).toMatchObject(untouched);
   });
 
-  it.each<[string, 'moveBranch' | 'tree' | 'blob', string]>([
+  it.each<[string, 'moveBranch' | 'tree', string]>([
     [
       'a protected branch refusing the first commit',
       'moveBranch',
@@ -79,16 +79,19 @@ describe('setUp: reading the repo', () => {
       'tree',
       'me/sisyphos-log holds more files than GitHub will list at once, so it cannot be synced safely',
     ],
-    [
-      'a sisyphos.json that is not text',
-      'blob',
-      'A file in me/sisyphos-log (blob 00517d70de6db1e19725caa81a52566a6f9011a8) is not UTF-8 text',
-    ],
   ])('reports %s as a problem with the repo it found, not as not found', async (_, op, message) => {
     const h = harness();
-    if (op === 'blob') h.remote.externalCommit([{ path: FORMAT_PATH, content: MARKER }]);
     h.remote.failNext(op, new SyncError('repo', message));
     expect(await h.run()).toEqual({ ok: false, reason: 'repo_problem', message });
+    expect(await h.store.settings()).toMatchObject(untouched);
+  });
+
+  it('refuses a sisyphos.json that is not text, as one that does not parse', async () => {
+    const h = harness();
+    h.remote.externalCommit([{ path: FORMAT_PATH, content: MARKER }]);
+    // What the GitHub adapter throws for bytes that are not UTF-8.
+    h.remote.failNext('blob', new FormatError('A file in me/sisyphos-log is not UTF-8 text'));
+    expect(await h.run()).toMatchObject({ ok: false, reason: 'not_a_log' });
     expect(await h.store.settings()).toMatchObject(untouched);
   });
 

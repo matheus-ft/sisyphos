@@ -216,7 +216,8 @@ async function syncRound(
     if (sha !== (entry?.base_sha ?? null) && sha !== (entry?.local_sha ?? null)) wanted.add(sha);
   }
   for (const sha of fetched.keys()) wanted.delete(sha);
-  await fetchAll(remote, [...wanted].sort(), context.concurrency, fetched);
+  const notText = new Set<string>();
+  await fetchAll(remote, [...wanted].sort(), context.concurrency, fetched, notText);
 
   // Where the device held the remote's version as the round began, and its base
   // is older, the two agreed on that version at this head (4.2 step 5).
@@ -264,6 +265,7 @@ async function syncRound(
           random: context.random,
           remote: remoteShas,
           fetched,
+          notText,
           agreed,
           entries,
           local,
@@ -377,13 +379,14 @@ async function checkFormat(
   if (known.get(FORMAT_PATH)?.local_sha === sha) {
     text = await onDevice(() => context.store.content(FORMAT_PATH));
   }
-  if (text === null) {
-    text = await context.remote.blob(sha);
-    fetched.set(sha, text);
-  }
-
   let format: number;
   try {
+    // Inside the try: a marker that is not even text is as unreadable as one
+    // that does not parse, and that is a problem with the repo (section 6).
+    if (text === null) {
+      text = await context.remote.blob(sha);
+      fetched.set(sha, text);
+    }
     format = parseFormatMarker(text).format;
   } catch (e) {
     if (!(e instanceof FormatError)) throw e;
@@ -409,6 +412,7 @@ async function fetchAll(
   shas: string[],
   limit: number,
   into: Map<string, string>,
+  notText: Set<string>,
 ): Promise<void> {
   let next = 0;
   let failed = false;
@@ -418,6 +422,12 @@ async function fetchAll(
       try {
         into.set(sha, await remote.blob(sha));
       } catch (e) {
+        // A file that is not text is one file that does not parse: its paths are
+        // unreadable, and every other path still syncs (section 6).
+        if (e instanceof FormatError) {
+          notText.add(sha);
+          continue;
+        }
         failed = true;
         throw e;
       }
@@ -464,6 +474,8 @@ interface PlanInput {
   remote: Map<string, string>;
   /** Remote content by blob sha, as fetched. */
   fetched: Map<string, string>;
+  /** Blobs step 4 fetched that are not UTF-8 text: their paths are unreadable. */
+  notText: Set<string>;
   /** Paths whose remote version the device held as the round began: the base, and a table's body. */
   agreed: Map<string, { sha: string; body: string | null }>;
   entries: Map<string, SyncEntry>;
@@ -570,8 +582,8 @@ class Planner {
       remoteText = sha === null ? null : localText;
     } else if (sha === base) {
       remote = sha;
-    } else if (this.input.fetched.has(sha)) {
-      const record = this.readRemote(path, () => parseFile(kind, this.input.fetched.get(sha)!));
+    } else if (this.fetchedOrNotText(sha)) {
+      const record = this.readRemote(path, () => parseFile(kind, this.remoteText(sha)));
       if (record === UNREADABLE) return 'left';
       remoteText = serializeFile(kind, record);
       remote = blobSha(remoteText);
@@ -618,8 +630,8 @@ class Planner {
     if (sha === null) remoteUnits = new Map();
     else if (sha === local) remoteUnits = localUnits;
     else if (sha === base) remoteUnits = baseUnits;
-    else if (this.input.fetched.has(sha)) {
-      const units = this.readRemote(path, () => tableUnits(schema, this.input.fetched.get(sha)!));
+    else if (this.fetchedOrNotText(sha)) {
+      const units = this.readRemote(path, () => tableUnits(schema, this.remoteText(sha)));
       if (units === UNREADABLE) return 'left';
       remoteUnits = units;
     } else {
@@ -736,6 +748,17 @@ class Planner {
       throw new SyncError('bug', `The recorded base of ${path} does not match its hash`);
     }
     return tableUnits(schema, entry.base_body);
+  }
+
+  /** True when step 4 fetched this blob, or found it was not text: either way, it was looked at. */
+  private fetchedOrNotText(sha: string): boolean {
+    return this.input.fetched.has(sha) || this.input.notText.has(sha);
+  }
+
+  /** A fetched blob's text; one that is not UTF-8 is a file that does not parse. */
+  private remoteText(sha: string): string {
+    if (this.input.notText.has(sha)) throw new FormatError('not UTF-8 text');
+    return this.input.fetched.get(sha)!;
   }
 
   /** Reads a remote file; one that does not parse is unreadable and left alone (section 6). */
