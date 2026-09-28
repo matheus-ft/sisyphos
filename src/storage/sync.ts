@@ -603,7 +603,7 @@ class Planner {
     } else if (sha === base) {
       remote = sha;
     } else if (this.fetchedOrNotText(sha)) {
-      const record = this.readRemote(path, () => parseFile(kind, this.remoteText(sha)));
+      const record = this.readRemote(path, () => remoteRecord(kind, path, this.remoteText(sha)));
       if (record === UNREADABLE) return 'left';
       remoteText = serializeFile(kind, record);
       remote = blobSha(remoteText);
@@ -799,6 +799,24 @@ class Planner {
   private push(path: string, content: string | null, body: string | null): void {
     this.plan.pushes.push({ path, content, body });
   }
+}
+
+/**
+ * A remote file as the record it holds, which must be the record its path
+ * names. A session copied on github.com to start another, with the id inside
+ * left unchanged, would otherwise give the device two records with one id:
+ * editing the copy would overwrite the original, and a conflict over it would
+ * write a record no device can read. So it is a file that does not parse, left
+ * alone and reported (section 6).
+ */
+function remoteRecord(kind: FileKind, path: string, text: string): FileRecord {
+  const record = parseFile(kind, text);
+  const named = classify(path);
+  const id = 'id' in named ? named.id : null;
+  if (record.id !== id) {
+    throw new FormatError(`holds the record ${record.id}, but its name says ${id}`);
+  }
+  return record;
 }
 
 function parseFile(kind: FileKind, text: string): FileRecord {

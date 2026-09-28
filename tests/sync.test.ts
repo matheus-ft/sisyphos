@@ -635,6 +635,18 @@ describe('an unreadable remote file', () => {
     await expectConverged(remote, a, b);
   });
 
+  it('leaves alone a session copied on github.com with the id inside unchanged', async () => {
+    const { remote, a } = await synced();
+    // Named as a new session, holding S1 as it is: the lifter copied the file.
+    const copy = 'sessions/2026/2026-09-21-wxyz.json';
+    remote.externalCommit([{ path: copy, content: serializeSession(S1) }]);
+
+    const result = await a.sync();
+    expect(result.unreadable).toEqual([copy]);
+    expect((await a.files()).has(copy)).toBe(false);
+    expect((await a.files()).get(sessionPath(S1.id))).toBe(serializeSession(S1));
+  });
+
   it('treats a file that is not UTF-8 text as unreadable, not as a broken repo', async () => {
     const { remote, a } = await synced();
     const S3 = session('2026-09-20-cccc', 'b');
