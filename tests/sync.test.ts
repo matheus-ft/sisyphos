@@ -269,7 +269,8 @@ describe('normal operation', () => {
     const { remote, a, b } = await synced();
     await b.put(sessionFile(session(S1.id, 'v1')));
     await b.sync();
-    expect(await callsDuring(remote, () => a.sync())).toEqual(['head', 'tree', 'blob']);
+    // The head moved, so the sync first checks it still holds the last synced one.
+    expect(await callsDuring(remote, () => a.sync())).toEqual(['head', 'contains', 'tree', 'blob']);
     await expectConverged(remote, a, b);
   });
 
@@ -288,7 +289,7 @@ describe('normal operation', () => {
     await a.write(sessionPath(S2.id), null);
 
     const calls = await callsDuring(remote, () => a.sync());
-    expect(calls).toEqual(['head', 'tree', 'commit', 'moveBranch']);
+    expect(calls).toEqual(['head', 'contains', 'tree', 'commit', 'moveBranch']);
     for (const [path, content] of foreign) expect(remote.files().get(path)).toBe(content);
     await b.sync();
     for (const device of [a, b]) {
@@ -528,7 +529,7 @@ describe('a pull', () => {
     const calls = await callsDuring(remote, async () => {
       result = await a.sync('pull');
     });
-    expect(calls).toEqual(['head', 'tree', 'blob', 'blob', 'blob']);
+    expect(calls).toEqual(['head', 'contains', 'tree', 'blob', 'blob', 'blob']);
     expect(result).toEqual({
       head: await remote.head(),
       committed: null,
@@ -910,5 +911,30 @@ describe('errors', () => {
     const head = await remote.head();
     expect(await failure(a.sync())).toBe('bug');
     expect(await remote.head()).toBe(head);
+  });
+});
+
+describe('a rewritten history', () => {
+  it('forgets its bases rather than reading its own records as deleted', async () => {
+    const remote = newLog();
+    const early = (await remote.head())!;
+    const a = new Device(remote, 'dev-a', { seed: 1 });
+    await a.put(sessionFile(S1));
+    await a.sync();
+    // The log's branch is forced back to before S1 existed, and moves on from
+    // there: the history A last synced with is gone.
+    remote.forceBranch(early);
+    remote.externalCommit([change(sessionFile(S2))]);
+
+    const result = await a.sync();
+    // Against its old base, S1 would read as deleted in the log and be deleted
+    // here. As a first sync it is pushed back, and S2 is taken.
+    expect(result).toMatchObject({
+      taken: [sessionPath(S2.id)],
+      pushed: [sessionPath(S1.id)],
+      conflicts: [],
+    });
+    expect((await a.files()).get(sessionPath(S1.id))).toBe(serializeSession(S1));
+    expect(remote.files().get(sessionPath(S1.id))).toBe(serializeSession(S1));
   });
 });

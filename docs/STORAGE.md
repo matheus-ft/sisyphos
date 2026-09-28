@@ -254,6 +254,16 @@ A sync runs under the lock described in 7.2. In outline:
 1. **Recover** an unfinished commit, if `inflight` holds one (4.5).
 2. **Read the head.** If it equals `last_synced_head` and no path needs syncing,
    stop. The common case therefore costs one request.
+   - **History check.** If the head moved, ask whether its history still
+     contains `last_synced_head`. If it does not, the history was rewritten, or
+     this is not the repo the device last synced with. The bases then describe
+     files this remote never held, so the device forgets them all (as setup
+     does, section 8), and the sync goes on as a first sync, which can take,
+     push or conflict but never delete.
+   - **Snapshot.** Read the sync entries, and the content of each table the
+     device has changed, in one operation on the write queue, so that no write
+     can land between the two reads. Step 5's "agreed" bases depend on the two
+     describing the same moment.
 3. **Read the remote tree**, recursively. When the head has not moved, no
    request is needed: the remote's files are exactly the bases, and the tree is
    `last_synced_tree`.

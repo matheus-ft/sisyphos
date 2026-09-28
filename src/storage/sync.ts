@@ -173,20 +173,40 @@ async function syncRound(
   // 2. The head. Unmoved and nothing changed here: one request, and done.
   const head = await remote.head();
   if (head === null) throw noCommits();
-  const [meta, entries] = await onDevice(() => Promise.all([store.meta(), store.entries()]));
+
+  // The bases describe the history this device last agreed with. If the head
+  // has moved to a history that no longer contains that point (rewritten, or not
+  // the repo it was synced with), those bases describe files this remote never
+  // held, and deciding against them would read the device's records as deleted
+  // there. Forgetting them makes this a first sync, which can take, push or
+  // conflict but never delete (section 8's reset, reached from the other side).
+  const last = (await onDevice(() => store.meta())).last_synced_head;
+  if (last !== null && head !== last && !(await remote.contains(last, head))) {
+    await onDevice(() => store.resetSync());
+  }
+
+  // One snapshot of the device, taken in the write queue so that no write can
+  // land inside it: the entries, and each table the device has changed as it
+  // stands with them. If the remote holds exactly such a table, it is a base the
+  // two agree on, whatever the lifter writes before step 5 (`Planner.left`). Read
+  // apart, a write landing between the two reads would hide that agreement and
+  // leave a stale base behind.
+  const { meta, entries, began } = await onDevice(() =>
+    store.exclusive(async (s) => {
+      const [meta, entries] = await Promise.all([s.meta(), s.entries()]);
+      const began = new Map<string, string>();
+      for (const e of entries) {
+        if (e.local_sha === null || e.local_sha === e.base_sha) continue;
+        if (classify(e.path).kind !== 'table') continue;
+        const text = await s.content(e.path);
+        if (text !== null && blobSha(text) === e.local_sha) began.set(e.path, text);
+      }
+      return { meta, entries, began };
+    }),
+  );
   const unmoved = head === meta.last_synced_head && meta.last_synced_tree !== null;
   if (unmoved && entries.every((e) => e.local_sha === e.base_sha)) {
     return result(head, null, [], found, []);
-  }
-  // Each table the device has changed, as it stands now, before any request
-  // lets a write in: if the remote holds exactly this, it is a base the two
-  // agree on, whatever the lifter writes before step 5 (`Planner.left`).
-  const began = new Map<string, string>();
-  for (const e of entries) {
-    if (e.local_sha === null || e.local_sha === e.base_sha) continue;
-    if (classify(e.path).kind !== 'table') continue;
-    const text = await onDevice(() => store.content(e.path));
-    if (text !== null && blobSha(text) === e.local_sha) began.set(e.path, text);
   }
 
   // 3. The tree. A recorded head means every base agreed with it, so when it has

@@ -75,6 +75,22 @@ async function diverged() {
  * its own commit as someone else's would show as a conflict. B logs a session
  * and syncs. Then both sync until quiet.
  */
+/**
+ * What recovery (4.5) was told about this device's recorded commit. It must ask
+ * exactly once; the sync's other `contains` calls are history checks (4.2 step
+ * 2), about the last synced head, never about a recorded commit.
+ */
+async function recoveryAnswer(
+  contains: { mock: { calls: unknown[][]; results: Array<{ value: unknown }> } },
+  commit: string,
+): Promise<boolean> {
+  const asked = contains.mock.calls.flatMap((args, i) =>
+    args[0] === commit ? [contains.mock.results[i].value] : [],
+  );
+  expect(asked).toHaveLength(1);
+  return (await asked[0]) as boolean;
+}
+
 async function carryOn(remote: MemoryRemote, a: Device, b: Device): Promise<void> {
   a.restart();
   await a.put(sessionFile(S1_A2));
@@ -201,9 +217,10 @@ describe('killed at every step of a sync', () => {
     // Applies: 1 decide, 2 record, 3 forget after the race.
     a.crashAtApply(3);
     await expect(a.sync()).rejects.toThrow('killed');
+    const commit = (await a.disk.inflight())!.commit;
     const contains = vi.spyOn(remote, 'contains');
     await carryOn(remote, a, b);
-    await expect(contains.mock.results[0].value).resolves.toBe(false);
+    await expect(recoveryAnswer(contains, commit)).resolves.toBe(false);
     await expectEverything(remote, a, b, new Map([sessionFile(S6)]));
   });
 
@@ -252,7 +269,8 @@ describe('racing another device', () => {
     });
     expect(calls).toEqual([
       ...['head', 'commit', 'moveBranch'],
-      ...['head', 'tree', 'blob', 'commit', 'moveBranch'],
+      // The head moved, so the round first checks it still holds the last synced one.
+      ...['head', 'contains', 'tree', 'blob', 'commit', 'moveBranch'],
     ]);
     expect(remote.commitCount()).toBe(commits + 2);
     expect(result).toEqual({
@@ -343,10 +361,10 @@ describe('racing another device', () => {
     // Whether the branch moved is not known, so the commit stays recorded for 4.5.
     expect(await a.disk.inflight()).not.toBeNull();
 
+    const commit = (await a.disk.inflight())!.commit;
     const contains = vi.spyOn(remote, 'contains');
     await carryOn(remote, a, b);
-    expect(contains).toHaveBeenCalledTimes(1);
-    await expect(contains.mock.results[0].value).resolves.toBe(false);
+    await expect(recoveryAnswer(contains, commit)).resolves.toBe(false);
     await expectEverything(remote, a, b);
   });
 });
