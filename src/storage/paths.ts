@@ -46,17 +46,25 @@ export type PathKind =
   /** Not the app's: a README, the lifter's notes. Never read, written or deleted. */
   | { kind: 'foreign' };
 
-const SESSION = /^sessions\/(\d{4})\/([^/]+)\.json$/;
-const TEMPLATE = /^templates\/([^/]+)\.json$/;
-const CONFLICT = /^conflicts\/([^/]+)\.json$/;
+/*
+ * The exact id grammar of 1.2, so only names the app itself could have
+ * generated are the app's. A looser match would claim the lifter's own files
+ * (`templates/notes.json`, `sessions/2026/2026 plan.json`): one that does not
+ * parse would then be reported unreadable forever, and one that does would
+ * appear as a second record.
+ */
+const SUFFIX = '[0-9a-hjkmnp-tv-z]{4}';
+const SESSION = new RegExp(`^sessions/(\\d{4})/(\\1-\\d{2}-\\d{2}-${SUFFIX})\\.json$`);
+const TEMPLATE = new RegExp(`^templates/([a-z0-9]+(?:-[a-z0-9]+)*-${SUFFIX})\\.json$`);
+const CONFLICT = new RegExp(`^conflicts/(\\d{4}-\\d{2}-\\d{2}-${SUFFIX})\\.json$`);
 
 /** What a log-repo path holds. Anything the app did not name is foreign. */
 export function classify(path: string): PathKind {
   if (path === FORMAT_PATH) return { kind: 'format' };
 
+  // The year folder must be the id's own year: `\1` in the pattern.
   const session = SESSION.exec(path);
-  // A session filed under a year its id does not start with is not one of ours.
-  if (session && session[2].startsWith(session[1])) return { kind: 'session', id: session[2] };
+  if (session) return { kind: 'session', id: session[2] };
 
   const template = TEMPLATE.exec(path);
   if (template) return { kind: 'template', id: template[1] };
