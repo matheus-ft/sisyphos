@@ -317,6 +317,24 @@ takes what the remote has, pushes what it has, and records a conflict where both
 have different content. That is exactly right for a first sync onto an existing
 log.
 
+**A known limit: a deletion can be undone by a concurrent write.** Comparing
+three versions sees where a unit ended up, not the way it got there. When a
+device creates a record and deletes it again between syncs, or restores one and
+deletes it, its content ends where its base was. It then has no change to
+offer. The same holds on the remote side. If another device wrote that same
+record without having seen the deletion, its write simply stands: the deletion
+is not honoured, and no conflict is raised.
+
+Nothing is lost in this case: the record comes back, and deleting it again
+works. Catching it would take state this design deliberately does not keep:
+
+- a per-record marker that the device changed it since the last sync;
+- deletion markers (tombstones) kept in the files, which would never shrink
+  without a purge rule.
+
+Neither is worth it for a race this narrow in a single lifter's log. The
+simulation checks this limit exactly, and nothing wider (section 10).
+
 For a table, the file's result is the combination of every key's result, and it
 is pushed if it differs from R. A table's result is computed from the device's
 current rows at step 5, so an edit made while step 4 was fetching is included,
@@ -640,7 +658,11 @@ until nothing changes. After every schedule:
 1. **Convergence.** Every device and the remote hold identical content.
 2. **Nothing lost.** Every version a device wrote survives, in the data or in a
    conflict record, unless it was replaced or deleted by a write made on a
-   device that had already seen it.
+   device that had already seen it. A deletion counts as a version too, with
+   exactly one exception: the known limit in 4.3. A deletion may be undone by
+   a write made without seeing it, when the deleting side's content returned to
+   its base in between. The simulation reports those cases separately and
+   fails on any other.
 3. **Nothing comes back.** A record deleted on a device that had seen all its
    versions stays deleted.
 4. **Conflicts only when concurrent.** A conflict record appears only where two
