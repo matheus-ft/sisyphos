@@ -1,5 +1,6 @@
 import exercisesCsv from '../library/exercises.csv?raw';
 import musclesCsv from '../library/muscles.csv?raw';
+import type { LibraryConflict } from '../library/assemble';
 import { parseExercises, parseMuscles } from '../library/parse';
 import type { ConflictRecord, Exercise } from '../model';
 import { requestPersistence } from './durability';
@@ -87,7 +88,10 @@ export interface StartOptions {
   /** Where leaving the app and a returning connection are heard (7.1). */
   target: Window;
   onStatus?: (status: StatusSnapshot) => void;
+  /** Conflicts a sync found or pulled, to announce (5.2). */
   onConflicts?: (conflicts: ConflictRecord[]) => void;
+  /** Library conflicts (9.1) a sync brought, announced the same way (5.2). */
+  onLibraryConflicts?: (conflicts: LibraryConflict[]) => void;
   /** Injectable for tests; default: parsed from `src/library/exercises.csv`. */
   shipped?: Exercise[];
   /** Injectable for tests; default: the GitHub adapter. */
@@ -104,7 +108,8 @@ export interface AppStorage {
   /** Whether the browser agreed not to evict this app's storage under disk pressure. */
   persisted: Promise<boolean>;
   /**
-   * Points the device at a log repo (section 8). Once that succeeds, the first
+   * Points the device at a log repo (section 8). It waits for any sync running
+   * first, and no sync starts until it is done. Once that succeeds, the first
    * full sync starts, which `status` follows; the result does not wait for it.
    */
   connect(input: SetupInput): Promise<SetupResult>;
@@ -126,6 +131,7 @@ export async function startStorage(options: StartOptions): Promise<AppStorage> {
     remote: async () => remoteFromSettings(await store.settings(), makeRemote),
     onStatus: options.onStatus,
     onConflicts: options.onConflicts,
+    onLibraryConflicts: options.onLibraryConflicts,
   });
 
   // Not awaited: a browser may ask the lifter first, and the launch sync need not wait for that.
@@ -140,7 +146,11 @@ export async function startStorage(options: StartOptions): Promise<AppStorage> {
     shipped,
     persisted,
     async connect(input) {
-      const result = await setUp(input, { store, makeRemote });
+      // Never while a sync runs, in this tab or another: one that started
+      // against the old repo and finished after the reset would write that
+      // repo's history back as the new one's bases, and the first sync with the
+      // new repo would then delete from the device every record it lacks.
+      const result = await scheduler.whileNotSyncing(() => setUp(input, { store, makeRemote }));
       if (result.ok) void scheduler.trigger('manual');
       return result;
     },

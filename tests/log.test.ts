@@ -500,6 +500,42 @@ describe.each(BACKENDS)('Log over %s', (_name, backend) => {
       await log.putRow('bodyweight', weighIn('2026-09-14', 82.5));
       expect(applies()).toBe(1);
     });
+
+    it('keeps every change of several made to a table at once', async () => {
+      // Each write reads the table in the write queue (2.2). One that read it
+      // before its turn would write back rows as they were then, undoing every
+      // write that landed in between.
+      const { log } = await setup();
+      await log.putRow('bodyweight', weighIn('2026-09-10', 81));
+      await log.putRow('bodyweight', weighIn('2026-09-11', 81.5));
+      await Promise.all([
+        log.putRow('bodyweight', weighIn('2026-09-14', 82.5)),
+        log.deleteRow('bodyweight', weighIn('2026-09-10', 0)),
+        log.putRow('bodyweight', weighIn('2026-09-15', 83)),
+        log.putRow('bodyweight', weighIn('2026-09-16', 83.2)),
+        log.deleteRow('bodyweight', weighIn('2026-09-11', 0)),
+        log.putRow('bodyweight', weighIn('2026-09-17', 83.4)),
+      ]);
+      expect(await log.getRows('bodyweight')).toEqual([
+        weighIn('2026-09-14', 82.5),
+        weighIn('2026-09-15', 83),
+        weighIn('2026-09-16', 83.2),
+        weighIn('2026-09-17', 83.4),
+      ]);
+
+      const beltSquat = exercise('belt_squat', { name: 'Belt squat' });
+      const mine = { ...pulldown, name: 'Pulldown' };
+      await Promise.all([
+        log.saveExercise(sealRow),
+        log.saveExercise(mine),
+        log.saveExercise(beltSquat),
+      ]);
+      expect(await log.getRows('additions')).toEqual([
+        { ...beltSquat, based_on: null },
+        { ...mine, based_on: exerciseRowHash(pulldown) },
+        { ...sealRow, based_on: null },
+      ]);
+    });
   });
 
   // --- the exercise library -----------------------------------------------------------

@@ -1,5 +1,5 @@
 import { describe, it, expect, vi } from 'vitest';
-import type { ConflictRecord } from '../src/model';
+import type { ConflictRecord, Session } from '../src/model';
 import {
   githubRemote,
   maskToken,
@@ -7,11 +7,13 @@ import {
   remoteFromSettings,
   startStorage,
   type ClosableStore,
+  type MakeRemote,
   type RemoteConfig,
 } from '../src/storage/app';
-import { FORMAT_PATH } from '../src/storage/paths';
+import { FORMAT_PATH, sessionPath } from '../src/storage/paths';
 import { GitHubRemote } from '../src/storage/remote/github';
 import { MemoryRemote } from '../src/storage/remote/memory';
+import type { Remote } from '../src/storage/remote/remote';
 import type { StatusSnapshot } from '../src/storage/status';
 import { MemoryStore } from '../src/storage/store/memory';
 import type { Settings } from '../src/storage/store/store';
@@ -102,7 +104,7 @@ function fakeWindow() {
   return Object.assign(new EventTarget(), { document });
 }
 
-async function start(remote = new MemoryRemote()) {
+async function start(remote = new MemoryRemote(), makeRemote: MakeRemote = () => remote) {
   const store = Object.assign(new MemoryStore(), { closed: false, close: () => {} });
   store.close = () => {
     store.closed = true;
@@ -113,7 +115,7 @@ async function start(remote = new MemoryRemote()) {
   const storage = await startStorage({
     target: target as unknown as Window,
     openStore: async (): Promise<ClosableStore> => store,
-    makeRemote: () => remote,
+    makeRemote,
     shipped: [],
     onStatus: (status) => statuses.push(status),
     onConflicts: (conflicts) => announced.push(conflicts),
@@ -193,5 +195,123 @@ describe('startStorage', () => {
     target.dispatchEvent(new Event('pagehide'));
     await new Promise((resolve) => setTimeout(resolve, 0));
     expect(remote.calls.length).toBe(after);
+  });
+});
+
+// --- pointing the device at another repo (section 8) ------------------------------------
+
+/** A remote whose next `head` waits until the test lets it answer: a sync caught partway. */
+class GatedRemote extends MemoryRemote {
+  private gate: { reached: () => void; opened: Promise<void> } | null = null;
+
+  /** Holds the next `head`. `reached` resolves once a caller is waiting on it. */
+  holdHead(): { reached: Promise<void>; release: () => void } {
+    let reached!: () => void;
+    let release!: () => void;
+    const waiting = new Promise<void>((resolve) => (reached = resolve));
+    const opened = new Promise<void>((resolve) => (release = resolve));
+    this.gate = { reached, opened };
+    return { reached: waiting, release };
+  }
+
+  override async head(): Promise<string | null> {
+    const gate = this.gate;
+    this.gate = null;
+    if (gate) {
+      gate.reached();
+      await gate.opened;
+    }
+    return super.head();
+  }
+}
+
+/** A session the lifter has finished, so none is in progress. */
+function finished(id: string): Session {
+  return {
+    id,
+    date: '2026-09-27',
+    started_at: '2026-09-27T07:00:00.000Z',
+    tz: 'UTC',
+    time_precision: 'instant',
+    ended_at: '2026-09-27T08:00:00.000Z',
+    label: { name: null, block: null, week: null, day: null, weekday: null },
+    bodyweight_kg: null,
+    notes: null,
+    exercises: [],
+    created_at: '2026-09-27T07:00:00.000Z',
+    updated_at: '2026-09-27T07:00:00.000Z',
+    device_id: 'ignored',
+  };
+}
+
+/**
+ * A device set up with the log repo `old`, holding one session synced to it,
+ * ready to be pointed at the repo `new`.
+ */
+async function syncedToOld() {
+  const old = new GatedRemote();
+  const next = new MemoryRemote();
+  const remotes: Record<string, Remote> = { old, new: next };
+  const started = await start(old, (config) => remotes[config.repo]);
+  const { storage } = started;
+  expect(await storage.connect({ owner: 'me', repo: 'old', token: 'github_pat_x' })).toMatchObject({
+    ok: true,
+  });
+  const id = await storage.log.newSessionId('2026-09-27');
+  await storage.log.putSession(finished(id));
+  await storage.scheduler.trigger('manual');
+  expect(old.files().has(sessionPath(id))).toBe(true);
+  return { ...started, old, next, id };
+}
+
+describe('startStorage: pointing the device at another repo while a sync runs', () => {
+  it('keeps every record, and the new repo receives them', async () => {
+    const { storage, old, next, id } = await syncedToOld();
+
+    // A sync against the old repo is partway through when the lifter points
+    // the device at the new one.
+    const held = old.holdHead();
+    const running = storage.scheduler.trigger('manual');
+    await held.reached;
+    const connecting = storage.connect({ owner: 'me', repo: 'new', token: 'github_pat_x' });
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    held.release();
+    await running;
+    expect(await connecting).toEqual({ ok: true, initialised: true });
+
+    // The first sync with the new repo is a first sync: nothing of the old
+    // repo's history is compared against it, so nothing reads as deleted.
+    await storage.scheduler.trigger('manual');
+    expect(await storage.log.getSession(id)).not.toBeNull();
+    expect(next.files().has(sessionPath(id))).toBe(true);
+    expect((await storage.scheduler.status()).exposure.level).toBe('safe');
+    storage.dispose();
+  });
+
+  it('waits for the sync before reading the new repo or changing anything', async () => {
+    const { storage, store, old, next } = await syncedToOld();
+    const before = { settings: await store.settings(), entries: await store.entries() };
+
+    const held = old.holdHead();
+    const running = storage.scheduler.trigger('manual');
+    await held.reached;
+    let settled = false;
+    const connecting = storage
+      .connect({ owner: 'me', repo: 'new', token: 'github_pat_x' })
+      .finally(() => (settled = true));
+    try {
+      await new Promise((resolve) => setTimeout(resolve, 0));
+      expect(settled).toBe(false);
+      expect(next.calls).toEqual([]);
+      expect(await store.settings()).toEqual(before.settings);
+      expect(await store.entries()).toEqual(before.entries);
+    } finally {
+      held.release();
+    }
+    await running;
+    expect(await connecting).toMatchObject({ ok: true });
+    expect(next.calls[0]).toBe('repoInfo');
+    expect(await store.settings()).toMatchObject({ repo: 'new' });
+    storage.dispose();
   });
 });

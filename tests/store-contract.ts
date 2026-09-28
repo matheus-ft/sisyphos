@@ -61,6 +61,32 @@ export function storeContract(name: string, make: StoreFactory): void {
       expect((await store.entry('a.json'))?.unsynced_since).toBe(T0);
     });
 
+    it('keeps the first divergence time when the base moves and the path stays unsynced', async () => {
+      // A sync that takes some of the remote's rows moves the base, but the
+      // device's own change is still unsynced: it is as old as it was, and
+      // exposure must not report it as new.
+      const c = clock();
+      const store = await make({ now: c.now });
+      await store.exclusive((s) =>
+        s.apply([
+          { op: 'content', path: 'a.json', text: 'one\n' },
+          { op: 'base', path: 'a.json', sha: blobSha('one\n') },
+        ]),
+      );
+      await store.exclusive((s) => s.apply([{ op: 'content', path: 'a.json', text: 'mine\n' }]));
+      expect((await store.entry('a.json'))?.unsynced_since).toBe(T0);
+
+      c.advance(60_000);
+      await store.exclusive((s) =>
+        s.apply([{ op: 'base', path: 'a.json', sha: blobSha('theirs\n') }]),
+      );
+      expect(await store.entry('a.json')).toMatchObject({
+        base_sha: blobSha('theirs\n'),
+        local_sha: blobSha('mine\n'),
+        unsynced_since: T0,
+      });
+    });
+
     it('clears the divergence time when content returns to its base, and restarts it after', async () => {
       const c = clock();
       const store = await make({ now: c.now });

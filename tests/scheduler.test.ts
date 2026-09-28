@@ -185,6 +185,14 @@ function conflict(id: string): ConflictRecord {
   };
 }
 
+/** A library conflict (9.1) on the exercise with this id; only the id matters here. */
+function libraryConflict(id: string): LibraryConflict {
+  return { id } as LibraryConflict;
+}
+
+const rateLimited = (retryAt: number) =>
+  new SyncError('rate_limit', 'Rate limited', { retryAt: new Date(retryAt) });
+
 /** A session written `ago` ms before the clock's now; open unless `ended`. */
 function session(timers: Timers, ago: number, ended = false): Session {
   const at = new Date(timers.now - ago).toISOString();
@@ -212,6 +220,7 @@ function setup(options: { setUp?: boolean; locks?: Locks | null; sync?: Scripted
   const sync = options.sync ?? new ScriptedSync();
   const statuses: StatusSnapshot[] = [];
   const announced: ConflictRecord[][] = [];
+  const announcedLibrary: LibraryConflict[][] = [];
   let remote: Remote | null = options.setUp === false ? null : new MemoryRemote();
   const scheduler = new Scheduler({
     store,
@@ -224,6 +233,7 @@ function setup(options: { setUp?: boolean; locks?: Locks | null; sync?: Scripted
     clearTimer: timers.clear,
     onStatus: (status) => statuses.push(status),
     onConflicts: (conflicts) => announced.push(conflicts),
+    onLibraryConflicts: (conflicts) => announcedLibrary.push(conflicts),
     sync: sync.run,
   });
   return {
@@ -234,6 +244,7 @@ function setup(options: { setUp?: boolean; locks?: Locks | null; sync?: Scripted
     sync,
     statuses,
     announced,
+    announcedLibrary,
     setRemote: (next: Remote | null) => (remote = next),
     /** Puts a session in progress: open, written a minute ago. */
     startSession: () => (log.open = [session(timers, MINUTE)]),
@@ -525,6 +536,133 @@ describe('Scheduler: the sync lock', () => {
   );
 });
 
+// --- what must not overlap a sync (section 8) -------------------------------------------
+
+/** A promise the test settles by hand. */
+function gate() {
+  let open!: () => void;
+  const opened = new Promise<void>((resolve) => (open = resolve));
+  return { opened, open };
+}
+
+describe('Scheduler: whileNotSyncing', () => {
+  it('runs what it is given holding sisyphos-sync, and resolves with what that returns', async () => {
+    const locks = new FakeLocks();
+    const h = setup({ locks });
+    const value = await h.scheduler.whileNotSyncing(async () => {
+      expect(locks.held).toBe(true);
+      return 'set up';
+    });
+    expect(value).toBe('set up');
+    expect(locks.requested).toEqual(['sisyphos-sync']);
+  });
+
+  /** A sync step that waits for `until`, then notes in `order` that it has ended. */
+  const syncUntil = (until: Promise<void>, order: string[], name: string) => async () => {
+    await until;
+    order.push(name);
+    return result();
+  };
+
+  it('waits for the syncs of other tabs, running or waiting for the lock', async () => {
+    const locks = new FakeLocks();
+    const order: string[] = [];
+    const running = gate();
+    const otherTab = setup({
+      locks,
+      sync: new ScriptedSync().then(syncUntil(running.opened, order, 'other tab')),
+    });
+    const h = setup({
+      locks,
+      sync: new ScriptedSync().then(syncUntil(Promise.resolve(), order, 'this tab')),
+    });
+    const syncs = [otherTab.scheduler.trigger('manual')];
+    await flush();
+    // This tab's sync has asked for the lock, and waits for the other's.
+    syncs.push(h.scheduler.trigger('manual'));
+    await flush();
+
+    const done = h.scheduler.whileNotSyncing(async () => void order.push('fn'));
+    await flush();
+    expect(order).toEqual([]);
+
+    running.open();
+    await Promise.all([...syncs, done]);
+    expect(order).toEqual(['other tab', 'this tab', 'fn']);
+  });
+
+  const lockModes: Array<[string, () => Locks | null]> = [
+    ['with Web Locks', () => new FakeLocks()],
+    ['without Web Locks (one tab)', () => null],
+  ];
+
+  describe.each(lockModes)('%s', (_name, locks) => {
+    it('waits for the sync running in this tab', async () => {
+      const order: string[] = [];
+      const running = gate();
+      const sync = new ScriptedSync().then(syncUntil(running.opened, order, 'sync'));
+      const h = setup({ locks: locks(), sync });
+      const syncing = h.scheduler.trigger('manual');
+      await flush();
+
+      const done = h.scheduler.whileNotSyncing(async () => void order.push('fn'));
+      await flush();
+      expect(order).toEqual([]);
+
+      running.open();
+      await Promise.all([syncing, done]);
+      expect(order).toEqual(['sync', 'fn']);
+    });
+
+    it('waits for a sync that asked for the lock before it', async () => {
+      const order: string[] = [];
+      const sync = new ScriptedSync().then(syncUntil(Promise.resolve(), order, 'sync'));
+      const h = setup({ locks: locks(), sync });
+      const first = gate();
+      const firstDone = h.scheduler.whileNotSyncing(async () => {
+        await first.opened;
+        order.push('first');
+      });
+      await flush();
+      // Asks for the lock, and waits behind the first.
+      const syncing = h.scheduler.trigger('manual');
+      await flush();
+
+      const second = h.scheduler.whileNotSyncing(async () => void order.push('second'));
+      first.open();
+      await Promise.all([firstDone, syncing, second]);
+      expect(order).toEqual(['first', 'sync', 'second']);
+    });
+
+    it('holds back a sync asked for meanwhile until it is done', async () => {
+      const h = setup({ locks: locks() });
+      const inside = gate();
+      const done = h.scheduler.whileNotSyncing(() => inside.opened);
+      await flush();
+
+      const syncing = h.scheduler.trigger('manual');
+      await flush();
+      expect(h.sync.modes).toEqual([]);
+
+      inside.open();
+      await Promise.all([done, syncing]);
+      expect(h.sync.modes).toEqual(['full']);
+    });
+
+    it('passes on what it throws, and syncing carries on', async () => {
+      const h = setup({ locks: locks() });
+      await expect(
+        h.scheduler.whileNotSyncing(async () => {
+          throw new Error('setup failed');
+        }),
+      ).rejects.toThrow('setup failed');
+      await h.scheduler.trigger('manual');
+      expect(h.sync.modes).toEqual(['full']);
+      expect(h.last().status).toBe('idle');
+    });
+  });
+});
+
 // --- retries (7.2) ----------------------------------------------------------------------
 
 describe('Scheduler: retrying a failed full sync', () => {
@@ -690,6 +828,96 @@ describe('Scheduler: what each failure does', () => {
     expect(h.sync.modes).toEqual(['full', 'full']);
   });
 
+  it('rate limit during a session: the session ending syncs once GitHub allows', async () => {
+    const h = setup();
+    h.startSession();
+    h.sync.then(rateLimited(T0 + 30 * MINUTE));
+    await h.scheduler.trigger('manual');
+    // No retries during a session (7.2): nothing is armed, and the lifter is told so.
+    expect(h.timers.due()).toBeNull();
+    expect(h.last()).toMatchObject({ status: 'retrying', nextRetryAt: null });
+    expect(h.last().message).toMatch(/when you end the session/);
+
+    await h.timers.advance(10 * MINUTE);
+    h.endSession();
+    await h.scheduler.trigger('session_ended');
+    await h.scheduler.trigger('left');
+    // Still GitHub's wait, so nothing runs yet; the sync waits for it, not dropped.
+    expect(h.sync.modes).toEqual(['full']);
+    expect(h.timers.pending).toHaveLength(1);
+    expect(h.timers.due()).toBe(20 * MINUTE);
+    expect(h.last()).toMatchObject({
+      status: 'retrying',
+      nextRetryAt: new Date(T0 + 30 * MINUTE),
+    });
+
+    await h.timers.advance(4 * 60 * MINUTE);
+    expect(h.sync.modes).toEqual(['full', 'full']);
+    expect(h.last().status).toBe('idle');
+  });
+
+  it('rate limit on the launch pull: the session ending syncs once GitHub allows', async () => {
+    const h = setup();
+    h.startSession();
+    h.sync.then(rateLimited(T0 + 30 * MINUTE));
+    await h.scheduler.trigger('launch');
+    expect(h.sync.modes).toEqual(['pull']);
+    expect(h.timers.due()).toBeNull();
+
+    await h.timers.advance(10 * MINUTE);
+    h.endSession();
+    await h.scheduler.trigger('session_ended');
+    expect(h.sync.modes).toEqual(['pull']);
+    expect(h.timers.due()).toBe(20 * MINUTE);
+
+    await h.timers.advance(4 * 60 * MINUTE);
+    expect(h.sync.modes).toEqual(['pull', 'full']);
+    expect(h.last().status).toBe('idle');
+  });
+
+  it('rate limit on a pull: retried in full at the time given, once no session is in progress', async () => {
+    const h = setup();
+    h.startSession();
+    const held = h.sync.hold();
+    const pulling = h.scheduler.trigger('launch');
+    await flush();
+    // The session is over by the time GitHub refuses the pull.
+    h.endSession();
+    held.reject(rateLimited(T0 + 30 * MINUTE));
+    await pulling;
+    expect(h.timers.due()).toBe(30 * MINUTE);
+
+    await h.timers.advance(30 * MINUTE);
+    expect(h.sync.modes).toEqual(['pull', 'full']);
+  });
+
+  it('rate limit: every automatic sync held back waits on one retry', async () => {
+    const h = setup();
+    h.sync.then(rateLimited(T0 + 30 * MINUTE));
+    await h.scheduler.trigger('manual');
+    for (const trigger of ['left', 'launch', 'session_ended', 'left'] as const) {
+      await h.timers.advance(MINUTE);
+      await h.scheduler.trigger(trigger);
+    }
+    expect(h.timers.pending).toHaveLength(1);
+    expect(h.timers.due()).toBe(26 * MINUTE);
+
+    await h.timers.advance(60 * MINUTE);
+    expect(h.sync.modes).toEqual(['full', 'full']);
+  });
+
+  it('rate limit: a sync asked for after the time given runs at once', async () => {
+    const h = setup();
+    h.startSession();
+    h.sync.then(rateLimited(T0 + 30 * MINUTE));
+    await h.scheduler.trigger('manual');
+    await h.timers.advance(40 * MINUTE);
+    h.endSession();
+    await h.scheduler.trigger('session_ended');
+    expect(h.sync.modes).toEqual(['full', 'full']);
+    expect(h.timers.due()).toBeNull();
+  });
+
   const stops = [
     ['token', 'needs_token', /^A token failure\. Paste a new token/],
     ['repo', 'repo_problem', /^A repo failure\. Syncing is paused/],
@@ -799,6 +1027,33 @@ describe('Scheduler: dispose', () => {
     await flush();
     await h.scheduler.trigger('manual');
     await h.scheduler.trigger('launch');
+    expect(h.sync.modes).toEqual(['full']);
+  });
+
+  it('settles a retry that fell due just before teardown and asks just after', async () => {
+    const h = setup();
+    h.sync.then(serverError());
+    await h.scheduler.trigger('manual');
+    expect(h.timers.due()).toBe(30 * SECOND);
+
+    // The retry asks whether a session is in progress; teardown comes before the answer.
+    const retries = vi.spyOn(h.scheduler as unknown as { retryNow(): Promise<void> }, 'retryNow');
+    const answer = gate();
+    vi.spyOn(h.log, 'listOpenSessions').mockImplementationOnce(async () => {
+      await answer.opened;
+      return [];
+    });
+    await h.timers.advance(30 * SECOND);
+    expect(retries).toHaveBeenCalledTimes(1);
+    h.scheduler.dispose();
+    answer.open();
+
+    const [retry] = retries.mock.results;
+    const settled = await Promise.race([
+      (retry.value as Promise<void>).then(() => true),
+      new Promise<boolean>((resolve) => setTimeout(() => resolve(false), 20)),
+    ]);
+    expect(settled).toBe(true);
     expect(h.sync.modes).toEqual(['full']);
   });
 
@@ -949,6 +1204,62 @@ describe('Scheduler: telling the lifter about conflicts', () => {
     await h.scheduler.trigger('manual');
     expect(h.announced).toEqual([[found]]);
     expect(h.last().conflicts).toBe(1);
+  });
+
+  it('announces library conflicts a sync brings, and none it found there already', async () => {
+    const h = setup();
+    const squat = libraryConflict('low_bar_squat');
+    h.log.libraryConflicts = [squat];
+    await h.scheduler.trigger('manual');
+    expect(h.announcedLibrary).toEqual([]);
+
+    const pulldown = libraryConflict('lat_pulldown');
+    h.sync.then(async () => {
+      // Another device's additions, pulled, disagree with the shipped library.
+      h.log.libraryConflicts = [squat, pulldown];
+      return result({ taken: ['library/additions.csv'] });
+    });
+    await h.scheduler.trigger('manual');
+    expect(h.announcedLibrary).toEqual([[pulldown]]);
+    // Library conflicts are not conflict records.
+    expect(h.announced).toEqual([]);
+  });
+
+  it('announces a library conflict a sync brings while settling another, the count unchanged', async () => {
+    const h = setup();
+    h.log.libraryConflicts = [libraryConflict('low_bar_squat')];
+    const pulldown = libraryConflict('lat_pulldown');
+    h.sync.then(async () => {
+      h.log.libraryConflicts = [pulldown];
+      return result({ taken: ['library/additions.csv'] });
+    });
+    await h.scheduler.trigger('manual');
+    expect(h.last().libraryConflicts).toBe(1);
+    expect(h.announcedLibrary).toEqual([[pulldown]]);
+  });
+
+  it('announces library conflicts a sync pulled before failing further on', async () => {
+    const h = setup();
+    const pulldown = libraryConflict('lat_pulldown');
+    h.sync.then(async () => {
+      h.log.libraryConflicts = [pulldown];
+      throw network();
+    });
+    await h.scheduler.trigger('manual');
+    expect(h.announcedLibrary).toEqual([[pulldown]]);
+  });
+
+  it('still syncs when the library cannot be read first, and announces none from it', async () => {
+    const h = setup();
+    vi.spyOn(h.log, 'library').mockRejectedValueOnce(new Error('disk'));
+    h.sync.then(async () => {
+      h.log.libraryConflicts = [libraryConflict('lat_pulldown')];
+      return result();
+    });
+    await h.scheduler.trigger('manual');
+    expect(h.sync.modes).toEqual(['full']);
+    expect(h.last().status).toBe('idle');
+    expect(h.announcedLibrary).toEqual([]);
   });
 });
 

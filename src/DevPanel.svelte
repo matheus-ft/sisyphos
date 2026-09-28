@@ -104,20 +104,22 @@
     let started: AppStorage | null = null;
     let timer: ReturnType<typeof setInterval> | undefined;
 
+    /** A sync found or pulled conflicts: the full-screen notice, listing every one (5.2). */
+    const announce = () => {
+      openNotice();
+      if (started) void loadData(started);
+    };
+
     startStorage({
       target: window,
       onStatus: (next) => {
-        const previous = status;
         status = next;
-        // Library conflicts are announced like sync ones (5.2); they only show here.
-        if (previous !== null && next.libraryConflicts > previous.libraryConflicts) openNotice();
         // A sync that finished may have taken changes from other devices.
         if (started) void loadData(started);
       },
-      onConflicts: () => {
-        openNotice();
-        if (started) void loadData(started);
-      },
+      onConflicts: announce,
+      // Library conflicts are announced like sync ones (5.2).
+      onLibraryConflicts: announce,
     }).then(
       async (s) => {
         if (disposed) {

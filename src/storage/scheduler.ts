@@ -1,3 +1,4 @@
+import type { LibraryConflict } from '../library/assemble';
 import type { ConflictRecord, Session } from '../model';
 import type { Mode } from './decide';
 import { exposure } from './durability';
@@ -26,7 +27,8 @@ import { runSync } from './sync';
  * How a sync ended decides what happens next (section 6): a retryable failure
  * is retried on the backoff, a rate limit when GitHub said, and a token, repo,
  * update or bug failure stops automatic syncing until the lifter taps sync or
- * the settings change (a new token, another repo).
+ * the settings change (a new token, another repo). An automatic sync asked for
+ * during a rate limit waits for GitHub's time instead of being dropped.
  */
 
 export type Trigger =
@@ -81,6 +83,13 @@ export interface SchedulerDeps {
    * `log.getConflicts()` gives.
    */
   onConflicts?: (conflicts: ConflictRecord[]) => void;
+  /**
+   * Called whenever a sync leaves library conflicts (9.1) that were not there
+   * before it, with those, so they are announced like the others (5.2). They
+   * are derived, not records, so comparing their ids is the only way to tell;
+   * a count would miss a sync that settled one and brought another.
+   */
+  onLibraryConflicts?: (conflicts: LibraryConflict[]) => void;
   /** Runs one sync. Defaults to `runSync`; injectable so tests can script outcomes. */
   sync?: typeof runSync;
 }
@@ -90,6 +99,17 @@ interface Job {
   mode: Mode;
   done: Promise<void>;
   resolve: () => void;
+}
+
+/**
+ * The conflicts the device held when a sync started, by id, so the ones it
+ * leaves behind can be told apart (5.2). `library` is null when the library
+ * could not be read then; its conflicts are not announced for that sync, and
+ * the next launch shows them anyway.
+ */
+interface Known {
+  records: Set<string>;
+  library: Set<string> | null;
 }
 
 interface Failure {
@@ -119,6 +139,11 @@ export class Scheduler {
   private draining = false;
   private syncing = false;
   private disposed = false;
+  /**
+   * Without Web Locks, `sisyphos-sync` is held through this tab's own queue:
+   * the last holder's turn, which the next one waits for.
+   */
+  private lockTail: Promise<unknown> = Promise.resolve();
 
   /** How the last finished sync failed; null after a success. */
   private failure: Failure | null = null;
@@ -143,12 +168,31 @@ export class Scheduler {
 
   /**
    * Asks for whatever the trigger calls for; resolves when that sync (or the one it folded into) ends.
-   * It resolves however the sync ended: the outcome is in `status()`.
+   * It resolves however the sync ended: the outcome is in `status()`. A sync
+   * that must wait for a rate limit to pass is left armed for then, and this
+   * resolves at once.
    */
   async trigger(trigger: Trigger): Promise<void> {
     const mode = await this.modeFor(trigger);
     if (mode === null || this.disposed) return;
     return this.request(mode);
+  }
+
+  /**
+   * Runs `fn` while no sync runs, in this tab or any other, and resolves with
+   * what it returns. It holds `sisyphos-sync`, the lock every sync holds (7.2),
+   * so it waits for the sync running now and for any already waiting for the
+   * lock, and a sync asked for meanwhile waits for it.
+   *
+   * Pointing the device at another repo (section 8) must run this way. A sync
+   * keeps the remote it started with, so one that started against the old repo
+   * and finished after the reset would write the old repo's shas back as bases,
+   * and its head as `last_synced_head`. The first sync with the new repo would
+   * then read every record the new repo lacks as deleted there, and delete it
+   * from the device.
+   */
+  whileNotSyncing<T>(fn: () => Promise<T>): Promise<T> {
+    return this.withLock(fn);
   }
 
   /**
@@ -228,21 +272,45 @@ export class Scheduler {
       // `online` retries a sync that failed for want of it, at once (7.2).
       else mode = !inProgress && this.failure?.error.kind === 'retryable' ? 'full' : null;
     }
-    if (mode === null || (await this.held())) return null;
+    if (mode === null) return null;
+
+    const held = await this.held();
+    if (held === 'stopped') return null;
+    if (held !== null) {
+      await this.defer(held);
+      return null;
+    }
     return mode;
   }
 
   /**
-   * Whether automatic syncing is held back (section 6): after a stopping failure,
-   * until the settings change; after a rate limit, until the time GitHub gave.
+   * What holds automatic syncing back (section 6): after a stopping failure,
+   * 'stopped' until the settings change; after a rate limit, the time GitHub
+   * gave, until it has passed. Null when nothing does.
    */
-  private async held(): Promise<boolean> {
+  private async held(): Promise<'stopped' | Date | null> {
     const failure = this.failure;
-    if (failure === null) return false;
+    if (failure === null) return null;
     const { error } = failure;
-    if (error.kind === 'rate_limit') return error.retryAt !== null && error.retryAt > this.now();
-    if (!STOPS.has(error.kind)) return false;
-    return sameSettings(failure.settings, await this.deps.store.settings());
+    if (error.kind === 'rate_limit') {
+      return error.retryAt !== null && error.retryAt > this.now() ? error.retryAt : null;
+    }
+    if (!STOPS.has(error.kind)) return null;
+    return sameSettings(failure.settings, await this.deps.store.settings()) ? 'stopped' : null;
+  }
+
+  /**
+   * A sync a rate limit holds back is put off until the time GitHub gave, not
+   * dropped (section 6): the trigger may be the session ending, and nothing
+   * else would sync that session (7.2). One retry serves every trigger held
+   * back, so one already armed is kept. A session in progress arms none, as
+   * for any retry; ending it comes back here.
+   */
+  private async defer(until: Date): Promise<void> {
+    if (this.retry !== null) return;
+    await this.armRetry(until);
+    // The status now says when it will try again.
+    if (this.retry !== null) await this.refresh();
   }
 
   private inProgress(): Promise<boolean> {
@@ -252,6 +320,9 @@ export class Scheduler {
   // --- one at a time ------------------------------------------------------------
 
   private request(mode: Mode): Promise<void> {
+    // After teardown no sync starts, so none would ever resolve this. A retry
+    // that fell due just before teardown and asked just after is one way here.
+    if (this.disposed) return Promise.resolve();
     if (this.queued) {
       // Exactly one sync waits however many ask, and a full sync serves a pull
       // too, so the waiting one becomes full if anyone wants that (7.2).
@@ -287,15 +358,25 @@ export class Scheduler {
     this.draining = false;
   }
 
-  /** Runs `fn` holding `sisyphos-sync`, so two tabs never sync at once (7.2). */
-  private withLock(fn: () => Promise<void>): Promise<void> {
-    return this.locks ? this.locks.request('sisyphos-sync', fn) : fn();
+  /**
+   * Runs `fn` holding `sisyphos-sync`, so two tabs never sync at once (7.2), and
+   * nothing that must not overlap a sync runs during one (`whileNotSyncing`).
+   * Without Web Locks the scheduler assumes one tab, and queues this tab's
+   * holders itself: the drain runs one sync at a time anyway, but whatever
+   * waits for syncing to stop must wait for that sync too.
+   */
+  private withLock<T>(fn: () => Promise<T>): Promise<T> {
+    if (this.locks) return this.locks.request('sisyphos-sync', fn);
+    const turn = this.lockTail.then(fn);
+    // The next holder waits for this one to finish, however it finishes.
+    this.lockTail = turn.catch(() => undefined);
+    return turn;
   }
 
   /** One sync, from finding the remote to telling the lifter how it went. */
   private async runOne(mode: Mode): Promise<void> {
-    const { store, log, deviceId } = this.deps;
-    let before: Set<string> | null = null;
+    const { store, deviceId } = this.deps;
+    let before: Known | null = null;
     let created: ConflictRecord[] = [];
     let settings: Settings | null = null;
     let error: SyncError | null = null;
@@ -312,7 +393,7 @@ export class Scheduler {
       if (mode === 'full') this.cancelRetry();
       this.syncing = true;
       void this.refresh();
-      before = new Set((await log.getConflicts()).map((conflict) => conflict.id));
+      before = await this.known();
       const result = await this.sync({ store, remote, deviceId, now: this.now }, mode);
       created = result.conflicts;
       this.unreadable = result.unreadable;
@@ -340,15 +421,17 @@ export class Scheduler {
       return;
     }
     this.failure = { error, mode, settings: STOPS.has(error.kind) ? settings : null };
-    // Only a full sync is retried (7.1). A pull runs during a session, and
-    // ending the session syncs anyway.
-    if (mode !== 'full') return;
-    if (error.kind === 'retryable') {
+    if (error.kind === 'rate_limit') {
+      // Waited out, then a full sync, whichever mode ran into it (section 6).
+      // A pull too: until then every automatic sync is put off to this retry
+      // (`defer`), so it is the one that syncs, once no session is in progress.
+      await this.armRetry(error.retryAt ?? new Date(this.now().getTime() + FIRST_RETRY_MS));
+    } else if (error.kind === 'retryable' && mode === 'full') {
+      // Only a full sync is backed off and retried (7.1). A pull runs during a
+      // session, and ending the session syncs anyway.
       this.attempts++;
       const delay = Math.min(FIRST_RETRY_MS * 2 ** (this.attempts - 1), MAX_RETRY_MS);
       await this.armRetry(new Date(this.now().getTime() + delay));
-    } else if (error.kind === 'rate_limit') {
-      await this.armRetry(error.retryAt ?? new Date(this.now().getTime() + FIRST_RETRY_MS));
     }
   }
 
@@ -357,6 +440,9 @@ export class Scheduler {
     // Retries stop while a session is in progress; ending it syncs anyway (7.2).
     const inProgress = await this.inProgress();
     if (inProgress || this.disposed) return;
+    // Two asking at once (a sync settling, a trigger it holds back) leave one
+    // timer, not one that nothing can cancel.
+    this.cancelRetry();
     const delay = Math.max(0, at.getTime() - this.now().getTime());
     this.retry = { at, handle: this.setTimer(() => void this.retryNow(), delay) };
   }
@@ -377,23 +463,45 @@ export class Scheduler {
     this.retry = null;
   }
 
+  /** The conflicts the device holds now, before a sync changes them. */
+  private async known(): Promise<Known> {
+    const { log } = this.deps;
+    const [records, library] = await Promise.all([
+      log.getConflicts(),
+      // Only there to tell what a sync adds: not being able to read it now is
+      // no reason not to sync.
+      log.library().catch(() => null),
+    ]);
+    return {
+      records: new Set(records.map((conflict) => conflict.id)),
+      library: library && new Set(library.conflicts.map((conflict) => conflict.id)),
+    };
+  }
+
   /**
    * Tells the lifter about conflicts this sync created, and ones it pulled that
    * another device found (5.2). Pulled ones show as records the log did not hold
    * before; comparing also catches records a sync wrote before failing further on.
+   * Library conflicts (9.1) are derived from what the sync pulled, so they are
+   * found the same way, by comparing ids.
    */
-  private async announce(before: Set<string>, created: ConflictRecord[]): Promise<void> {
-    let after: ConflictRecord[];
-    try {
-      after = await this.deps.log.getConflicts();
-    } catch {
-      // The records are on the device whatever happens here, and every launch
-      // puts them in front of the lifter again (5.2).
-      after = [];
-    }
+  private async announce(before: Known, created: ConflictRecord[]): Promise<void> {
+    // The conflicts are on the device whatever happens here, and every launch
+    // puts them in front of the lifter again (5.2), so failing to read them
+    // now only means this sync announces fewer.
+    const { log } = this.deps;
+    const after = await log.getConflicts().catch((): ConflictRecord[] => []);
     const fresh = new Map(created.map((conflict) => [conflict.id, conflict]));
-    for (const conflict of after) if (!before.has(conflict.id)) fresh.set(conflict.id, conflict);
+    for (const conflict of after) {
+      if (!before.records.has(conflict.id)) fresh.set(conflict.id, conflict);
+    }
     if (fresh.size > 0 && !this.disposed) this.deps.onConflicts?.([...fresh.values()]);
+
+    const known = before.library;
+    if (known === null) return;
+    const library = await log.library().catch(() => null);
+    const added = library?.conflicts.filter((conflict) => !known.has(conflict.id)) ?? [];
+    if (added.length > 0 && !this.disposed) this.deps.onLibraryConflicts?.(added);
   }
 
   // --- status -------------------------------------------------------------------
