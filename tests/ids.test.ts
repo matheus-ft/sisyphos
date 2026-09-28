@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { ID_ALPHABET, newConflictId, newSessionId, newTemplateId, slug } from '../src/storage/ids';
-import { classify, sessionPath } from '../src/storage/paths';
+import { classify, sessionPath, templatePath } from '../src/storage/paths';
 
 /** Mulberry32: a small seeded PRNG, so every generated case is reproducible. */
 function prng(seed: number): () => number {
@@ -86,6 +86,14 @@ describe('template ids', () => {
       new RegExp(`^squat-day-a-${SUFFIX}$`),
     );
     expect(newTemplateId('', none, prng(6))).toMatch(new RegExp(`^template-${SUFFIX}$`));
+  });
+
+  it('name a file sync recognises as a template, even where the slug needed its extra rules', () => {
+    // The cut at 40 ends on a hyphen; a name with nothing left; an ordinary name.
+    for (const name of [`${'a'.repeat(39)} b`, '💪💪', 'Squat Day A']) {
+      const id = newTemplateId(name, none, prng(9));
+      expect(classify(templatePath(id)), name).toEqual({ kind: 'template', id });
+    }
   });
 });
 

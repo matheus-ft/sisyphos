@@ -141,14 +141,32 @@ export function parseCsv(text: string, options: CsvOptions = {}): Row[] {
 }
 
 /**
+ * The text as UTF-8 carries it: every lone UTF-16 surrogate replaced by U+FFFD.
+ *
+ * A JavaScript string can hold half of a surrogate pair (a note cut in the
+ * middle of an emoji), which UTF-8 cannot. `TextEncoder` replaces it with U+FFFD
+ * when a file is hashed or uploaded, so a file written with the half kept would
+ * differ on the device from the remote's copy while their shas agree. The
+ * writer replaces it first, so the text the device holds is exactly the text
+ * every other copy holds. JSON needs none of this: `JSON.stringify` escapes a
+ * lone surrogate as `\udxxx`, which is plain ASCII.
+ */
+export function wellFormed(value: string): string {
+  // With the `u` flag a surrogate pair is one code point, so only lone halves match.
+  return value.replace(/\p{Surrogate}/gu, '\uFFFD');
+}
+
+/**
  * One cell as the writer emits it: quoted exactly when the value holds a comma,
  * a double quote, CR or LF, starts with `#`, or has whitespace at either end
  * (1.4). "Whitespace" is whatever `trim` removes, since that is what the reader
- * would strip from an unquoted cell.
+ * would strip from an unquoted cell. Lone surrogates are written as U+FFFD
+ * (`wellFormed`).
  */
 export function csvCell(value: string): string {
-  const quote = /[",\r\n]/.test(value) || value.startsWith('#') || value.trim() !== value;
-  return quote ? `"${value.replaceAll('"', '""')}"` : value;
+  const text = wellFormed(value);
+  const quote = /[",\r\n]/.test(text) || text.startsWith('#') || text.trim() !== text;
+  return quote ? `"${text.replaceAll('"', '""')}"` : text;
 }
 
 /**

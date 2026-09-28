@@ -82,8 +82,18 @@ const AWKWARD = [
   'null',
   'true',
   '0',
+  // Halves of a surrogate pair, as a note cut in the middle of an emoji holds.
+  'a\uD83Db',
+  '\uDCAA',
+  '\uDCAA\uD83D',
 ];
-const CHARS = ['a', 'Z', '0', ' ', ',', '"', '\r', '\n', '#', 'é', '💪', '\t', '{', '}'];
+// With the two halves of 💪 on their own: drawn apart they are lone, in order a pair.
+const CHARS = [
+  ...['a', 'Z', '0', ' ', ',', '"', '\r', '\n', '#', 'é', '💪', '\t', '{', '}'],
+  ...['\uD83D', '\uDCAA'],
+];
+/** What an exercise id may hold: the submission workflow's rule. */
+const ID_CHARS = [...'abcxyz0189_'];
 const NUMBERS = [0, 1, 2, 5, 10, 82.5, 102.5, 0.1 + 0.2, -2.5, 1e21, 5e-7, 1234567.891];
 const LIFTS: CompetitionLift[] = ['squat', 'bench', 'deadlift'];
 
@@ -111,6 +121,9 @@ class Gen {
   /** Non-empty: an empty cell is how null is written, so '' is not a value of its own there. */
   text(): string {
     return this.string() || 'x';
+  }
+  exerciseId(): string {
+    return Array.from({ length: this.int(1, 10) }, () => this.pick(ID_CHARS)).join('');
   }
   number(): number {
     if (this.bool()) return this.pick(NUMBERS);
@@ -264,8 +277,8 @@ const records: { [K in TableKind]: (g: Gen) => RecordOf<K> } = {
     context: g.maybe(() => g.text()),
   }),
   additions: (g): ExerciseAddition => ({
-    id: g.string(),
-    name: g.string(),
+    id: g.pick(['bench', 'low_bar_squat', g.exerciseId()]),
+    name: g.text(),
     base_lift: g.maybe(() => g.pick(LIFTS)),
     tier: g.pick(['comp', 'high_spec', 'low_spec', 'acc'] as const),
     unilateral: g.bool(),
@@ -293,6 +306,19 @@ function shuffled<T>(items: T[], g: Gen): T[] {
     [out[i], out[j]] = [out[j], out[i]];
   }
   return out;
+}
+
+/** Text as UTF-8 carries it, which is what every other copy of a file holds. */
+const utf8 = (text: string) => new TextDecoder().decode(new TextEncoder().encode(text));
+
+/** A record as a CSV file gives it back: every string through UTF-8, lone surrogates as U+FFFD. */
+function viaUtf8<T>(value: T): T {
+  if (typeof value === 'string') return utf8(value) as T;
+  if (Array.isArray(value)) return value.map(viaUtf8) as T;
+  if (value !== null && typeof value === 'object') {
+    return Object.fromEntries(Object.entries(value).map(([k, v]) => [k, viaUtf8(v)])) as T;
+  }
+  return value;
 }
 
 /** The same value with every object's keys in reverse order. */
@@ -390,14 +416,17 @@ describe.each(TABLE_KINDS)('the %s table', (kind) => {
         schema,
         written.map((r) => schema.toRow(r)),
       );
+      // The device holds exactly what UTF-8 carries to the remote.
+      expect(utf8(text)).toBe(text);
       const rows = tableRows(schema, text);
 
+      // Exactly the records written, but for lone surrogates, which UTF-8 cannot carry.
       expect(
         keyed(
           schema,
           rows.map((r) => schema.fromRow(r)),
         ),
-      ).toEqual(keyed(schema, written));
+      ).toEqual(keyed(schema, written.map(viaUtf8)));
       expect(tableText(schema, rows)).toBe(text);
       expect(unitsText(schema, tableUnits(schema, text))).toBe(text);
       for (const row of rows) expect(lineRow(schema, rowLine(schema, row))).toEqual(row);
@@ -424,6 +453,16 @@ describe.each(TABLE_KINDS)('the %s table', (kind) => {
 
   it('reads no file as no rows', () => {
     expect(tableUnits(schema, null)).toEqual(new Map());
+  });
+
+  it('reads a key alone as it reads the key cells of a whole row', () => {
+    const g = new Gen(prng(200 + TABLE_KINDS.indexOf(kind)));
+    for (let run = 0; run < 100; run++) {
+      const row = schema.toRow(make(g));
+      const key = Object.fromEntries(schema.key.map((column) => [column, row[column]]));
+      expect(schema.readKey(key)).toEqual(key);
+      expect(schema.readKey(row)).toEqual(key);
+    }
   });
 });
 
@@ -493,14 +532,48 @@ describe('table files', () => {
 
   it('sort text by code point, not by UTF-16 unit', () => {
     // U+FF5A sorts before U+1F4AA by code point, after it by UTF-16 unit.
-    const additions = TABLES.additions;
-    const shipped = parseExercises(exercisesCsv)[0];
     const ids = ['💪', 'ｚ', 'b', 'B', 'a'];
     const text = tableText(
-      additions,
-      ids.map((id) => additions.toRow({ ...shipped, id, based_on: null })),
+      manual,
+      ids.map((id) => manual.toRow(record(1, '2026-09-14', id))),
     );
-    expect(tableRows(additions, text).map((r) => r.id)).toEqual(['B', 'a', 'b', 'ｚ', '💪']);
+    expect(tableRows(manual, text).map((r) => r.exercise_id)).toEqual(['B', 'a', 'b', 'ｚ', '💪']);
+  });
+
+  it('write a lone surrogate as U+FFFD, so the device holds what UTF-8 carries', () => {
+    const one = TABLES.oneRm;
+    const entry: OneRmEntry = {
+      date: '2026-09-14',
+      lift: 'squat',
+      weight_kg: 200,
+      note: 'PR \uD83D',
+    };
+    const text = tableText(one, [one.toRow(entry)]);
+    expect(text).toBe('date,lift,weight_kg,note\n2026-09-14,squat,200,PR \uFFFD\n');
+    expect(utf8(text)).toBe(text);
+    expect(one.fromRow(tableRows(one, text)[0]).note).toBe('PR \uFFFD');
+    // A whole pair is a character like any other.
+    const whole = tableText(one, [one.toRow({ ...entry, note: 'PR 💪' })]);
+    expect(whole).toContain(',PR 💪\n');
+  });
+
+  it('sort and key rows as they are written, lone surrogates as U+FFFD', () => {
+    // U+D83D sorts before U+FF5A, but the U+FFFD written for it sorts after.
+    const text = tableText(manual, [
+      manual.toRow(record(1, '2026-09-14', '\uD83D')),
+      manual.toRow(record(1, '2026-09-14', 'ｚ')),
+    ]);
+    expect(tableRows(manual, text).map((r) => r.exercise_id)).toEqual(['ｚ', '\uFFFD']);
+    expect(tableText(manual, tableRows(manual, text))).toBe(text);
+
+    // Two halves that each become U+FFFD are one key in the file.
+    const twice = [
+      manual.toRow(record(1, '2026-09-14', 'a\uD83D')),
+      manual.toRow(record(1, '2026-09-14', 'a\uDCAA')),
+    ];
+    expect(rowKey(manual, twice[0])).toBe(rowKey(manual, twice[1]));
+    expect(() => tableText(manual, twice)).toThrow(/two rows/);
+    expect(() => tableText(manual, twice)).not.toThrow(FormatError);
   });
 
   it('quote awkward cells and read them back', () => {
@@ -524,6 +597,26 @@ describe('table files', () => {
     const units = tableUnits(manual, text);
     expect([...units.values()]).toEqual(['2026-09-14,bench,2,100,,']);
     expect(unitsText(manual, units)).not.toBe(text);
+  });
+
+  it('read every decimal spelling of a number in the app’s own form', () => {
+    const spellings = [
+      ['82', '82'],
+      ['+82', '82'],
+      ['082', '82'],
+      ['82.', '82'],
+      ['82.50', '82.5'],
+      ['.5', '0.5'],
+      ['-2.5', '-2.5'],
+      ['-0', '0'],
+      ['8.25e1', '82.5'],
+      ['825E-1', '82.5'],
+      ['1e+2', '100'],
+    ];
+    for (const [cell, written] of spellings) {
+      const text = `date,weight_kg,source\n2026-09-14,${cell},manual\n`;
+      expect(tableRows(bw, text)[0].weight_kg, cell).toBe(written);
+    }
   });
 
   it('give equal keys equal strings and different keys different ones', () => {
@@ -562,6 +655,16 @@ describe('reading a table file fails with FormatError', () => {
     ['a bad date', 'date,weight_kg,source\n14/09/2026,82,manual\n', /row 1: date/],
     ['a bad number', 'date,weight_kg,source\n2026-09-14,heavy,manual\n', /weight_kg/],
     ['a missing number', 'date,weight_kg,source\n2026-09-14,,manual\n', /weight_kg/],
+    // `Number` reads all three; none is how a person writes a weight.
+    ['a hexadecimal number', 'date,weight_kg,source\n2026-09-14,0x52,manual\n', /got "0x52"/],
+    ['a binary number', 'date,weight_kg,source\n2026-09-14,0b101,manual\n', /got "0b101"/],
+    ['an octal number', 'date,weight_kg,source\n2026-09-14,0o7,manual\n', /got "0o7"/],
+    ['a number too large', 'date,weight_kg,source\n2026-09-14,1e999,manual\n', /got "1e999"/],
+    [
+      'a quoted number with blanks',
+      'date,weight_kg,source\n2026-09-14," 82",manual\n',
+      /got " 82"/,
+    ],
     ['a bad source', 'date,weight_kg,source\n2026-09-14,82,scale\n', /source/],
   ];
   it.each(cases)('%s', (_name, text, message) => {
@@ -584,6 +687,22 @@ describe('reading a table file fails with FormatError', () => {
     expect(() => tableRows(TABLES.additions, `${header}\nx,X,,nonsense,,,,lats,,\n`)).toThrow(
       /tier must be one of/,
     );
+  });
+
+  // A lifter's additions are read strictly, where the shipped library is not.
+  it.each([
+    ['garbage', ',,,acc,banana,,,not_a_muscle,,', /row 1: id: must not be empty/],
+    ['an addition with no name', 'seal_row,,,acc,,,,lats,,', /row 1: name: must not be empty/],
+    ['an id with capitals', 'Seal_Row,Seal row,,acc,,,,lats,,', /id: expected lowercase/],
+    ['an id with a hyphen', 'seal-row,Seal row,,acc,,,,lats,,', /got "seal-row"/],
+    ['an id with a space', '"seal row",Seal row,,acc,,,,lats,,', /got "seal row"/],
+    ['an id beyond ASCII', 'remada_cavalinho_é,Remada,,acc,,,,lats,,', /id: expected lowercase/],
+    ['unilateral as a word it is not', 'seal_row,Seal row,,acc,banana,,,lats,,', /got "banana"/],
+    ['unilateral typed as Y', 'seal_row,Seal row,,acc,Y,,,lats,,', /unilateral: .* got "Y"/],
+  ])('%s in the additions', (_name, line, message) => {
+    const text = `${TABLES.additions.columns.join(',')}\n${line}\n`;
+    expect(() => tableRows(TABLES.additions, text)).toThrow(FormatError);
+    expect(() => tableRows(TABLES.additions, text)).toThrow(message);
   });
 
   it('a row line that is not one row of the table', () => {
@@ -682,6 +801,27 @@ describe('additions and the shipped library', () => {
     const addition = { ...shipped[0], based_on: '7351de705f4a' };
     expect(additions.toRow(addition).based_on).toBe('7351de705f4a');
     expect(additions.fromRow(additions.toRow(addition))).toEqual(addition);
+  });
+
+  it('read unilateral in every spelling the library takes, and write it as true or empty', () => {
+    const header = additions.columns.join(',');
+    const unilateral = (cell: string) =>
+      tableRows(additions, `${header}\nseal_row,Seal row,,acc,${cell},,,lats,,\n`)[0].unilateral;
+    for (const cell of ['true', 'TRUE', 'True', '1', 'yes', 'Yes']) {
+      expect(unilateral(cell), cell).toBe('true');
+    }
+    expect(unilateral('')).toBe('');
+  });
+
+  it('keep a muscle this build does not know, which a newer one may have added', () => {
+    const header = additions.columns.join(',');
+    const [row] = tableRows(additions, `${header}\nseal_row,Seal row,,acc,,,,new_muscle,lats,\n`);
+    expect(additions.fromRow(row).muscles).toEqual({ primary: ['new_muscle'], aux: ['lats'] });
+  });
+
+  it('leave the shipped library read leniently', () => {
+    const csv = `${SHIPPED_EXERCISE_COLUMNS.join(',')}\nSeal Row,,,acc,Y,,,lats,\n`;
+    expect(parseExercises(csv)).toMatchObject([{ id: 'Seal Row', name: '', unilateral: false }]);
   });
 });
 
@@ -1105,6 +1245,94 @@ describe('conflict records', () => {
       expect(() => parseConflict(JSON.stringify(value))).toThrow(message);
     }
   });
+
+  describe('on a table', () => {
+    const manual = TABLES.manualRecords;
+    const key = { date: '2026-09-14', exercise_id: 'bench', reps: '2' };
+    const version = { ...key, weight_kg: '100', rpe: '', context: '' };
+    const text = (path: string, key: object, version: object | null) =>
+      JSON.stringify({
+        id: '2026-09-27-7xq2',
+        path,
+        key,
+        found_at: '2026-09-27T10:00:00.000Z',
+        device_id: 'phone',
+        version,
+      });
+
+    it('read the key and the saved row in the app’s own form, so resolving finds the row', () => {
+      const saved = parseConflict(
+        text(manual.path, { ...key, reps: '2.0' }, { ...version, reps: '2.0', weight_kg: '1e2' }),
+      );
+      expect(saved.key).toEqual(key);
+      expect(saved.version).toEqual(version);
+      // A deletion: the key is all there is.
+      expect(parseConflict(text(manual.path, { ...key, reps: '+2' }, null)).key).toEqual(key);
+    });
+
+    it.each<[string, string, object, object | null, RegExp]>([
+      [
+        'a key that is not a key, beside a valid row',
+        TABLES.bodyweight.path,
+        { date: 'not a date' },
+        { date: '2026-09-14', weight_kg: '82', source: 'manual' },
+        /conflict.key: date: expected a date, got "not a date"/,
+      ],
+      ['a key that is not a key, deleted', manual.path, { ...key, reps: 'two' }, null, /key: reps/],
+      ['a key that is not a number', manual.path, { ...key, reps: '0x2' }, null, /conflict.key/],
+      [
+        'an addition’s key the workflow would refuse',
+        TABLES.additions.path,
+        { id: 'Seal Row' },
+        null,
+        /conflict.key: id: expected lowercase/,
+      ],
+      [
+        'a saved row that is not the row its key names',
+        manual.path,
+        { ...key, reps: '3' },
+        version,
+        /conflict.version: expected the row conflict.key names, 2026-09-14,bench,3/,
+      ],
+      [
+        'a saved row on another date',
+        TABLES.bodyweight.path,
+        { date: '2026-09-15' },
+        { date: '2026-09-14', weight_kg: '82', source: 'manual' },
+        /conflict.version: expected the row conflict.key names/,
+      ],
+    ])('fail to read %s with FormatError', (_name, path, key, version, message) => {
+      expect(() => parseConflict(text(path, key, version))).toThrow(FormatError);
+      expect(() => parseConflict(text(path, key, version))).toThrow(message);
+    });
+  });
+
+  it('fail to read a saved session or template that is not the one its path names', () => {
+    const g = new Gen(prng(42));
+    const record = (path: string, version: object) =>
+      JSON.stringify({
+        id: '2026-09-27-7xq2',
+        path,
+        key: null,
+        found_at: '2026-09-27T10:00:00.000Z',
+        device_id: 'phone',
+        version,
+      });
+    const s = JSON.parse(serializeSession({ ...session(g), id: '2026-09-14-k3f9' }));
+    const t = JSON.parse(serializeTemplate({ ...template(g), id: 'bench-k3f9' }));
+    expect(parseConflict(record(sessionPath('2026-09-14-k3f9'), s)).version).toEqual(s);
+    expect(parseConflict(record(templatePath('bench-k3f9'), t)).version).toEqual(t);
+
+    const bad: Array<[string, object, RegExp]> = [
+      [sessionPath('2026-09-14-7xq2'), s, /conflict.version.id: expected "2026-09-14-7xq2"/],
+      [sessionPath('2025-09-14-k3f9'), s, /conflict.version.id/],
+      [templatePath('squat-k3f9'), t, /conflict.version.id: expected "squat-k3f9"/],
+    ];
+    for (const [path, version, message] of bad) {
+      expect(() => parseConflict(record(path, version))).toThrow(FormatError);
+      expect(() => parseConflict(record(path, version))).toThrow(message);
+    }
+  });
 });
 
 describe('the format marker', () => {
@@ -1122,23 +1350,59 @@ describe('the format marker', () => {
   );
 });
 
+describe('a JSON file with a byte-order mark', () => {
+  const g = new Gen(prng(61));
+
+  it('is read as it would be without one, and written back without it', () => {
+    const s = session(g);
+    const text = serializeSession(s);
+    expect(parseSession(`\uFEFF${text}`)).toEqual(s);
+    expect(serializeSession(parseSession(`\uFEFF${text}`))).toBe(text);
+
+    const t = template(g);
+    expect(parseTemplate(`\uFEFF${serializeTemplate(t)}`)).toEqual(t);
+
+    const c: ConflictRecord = {
+      id: '2026-09-27-7xq2',
+      path: sessionPath(s.id),
+      key: null,
+      found_at: '2026-09-27T10:00:00.000Z',
+      device_id: 'phone',
+      version: s,
+    };
+    expect(parseConflict(`\uFEFF${serializeConflict(c)}`)).toEqual(c);
+
+    expect(parseFormatMarker('\uFEFF{"format": 1}\n')).toEqual({ format: 1 });
+  });
+
+  it('is unreadable with a second one, or one anywhere else', () => {
+    expect(() => parseFormatMarker('\uFEFF\uFEFF{"format": 1}')).toThrow(FormatError);
+    expect(() => parseFormatMarker(' \uFEFF{"format": 1}')).toThrow(FormatError);
+  });
+});
+
 describe('awkward strings survive every file', () => {
   it.each(AWKWARD)('%j', (value) => {
     const one = TABLES.oneRm;
     const entry: OneRmEntry = { date: '2026-09-14', lift: 'bench', weight_kg: 1, note: value };
     const read = one.fromRow(tableRows(one, tableText(one, [one.toRow(entry)]))[0]);
-    // An empty note is written as null is, so it reads back as null.
-    expect(read.note).toBe(value === '' ? null : value);
+    // An empty note is written as null is, so it reads back as null. A lone
+    // surrogate comes back as the U+FFFD that UTF-8 carries for it.
+    expect(read.note).toBe(value === '' ? null : utf8(value));
 
+    // JSON escapes a lone surrogate, so a session keeps it exactly.
     const s = { ...session(new Gen(prng(51))), notes: value, device_id: value };
-    expect(parseSession(serializeSession(s))).toEqual(s);
+    const text = serializeSession(s);
+    expect(utf8(text)).toBe(text);
+    expect(parseSession(text)).toEqual(s);
 
+    // A name may be anything but empty.
+    if (value === '') return;
     const row: TableRow = TABLES.additions.toRow({
       ...parseExercises(exercisesCsv)[0],
-      id: value,
       name: value,
       based_on: null,
     });
-    expect(lineRow(TABLES.additions, rowLine(TABLES.additions, row))).toEqual(row);
+    expect(lineRow(TABLES.additions, rowLine(TABLES.additions, row))).toEqual(viaUtf8(row));
   });
 });

@@ -65,8 +65,12 @@ are meant to be read.
   holds. If two devices ever did pick the same one, sync would see one file with
   two contents and treat it as a conflict (4.3), so even then nothing is lost.
 - A slug is the name lowercased, with every run of characters other than ASCII
-  letters and digits replaced by one hyphen, trimmed of hyphens, and cut to 40
-  characters.
+  letters and digits replaced by one hyphen, trimmed of hyphens, cut to 40
+  characters, and trimmed of a trailing hyphen again, since the cut can end on
+  one. A name that leaves nothing (empty, or only punctuation or letters outside
+  ASCII) has the slug `template`. Either way the id is hyphen-separated runs of
+  letters and digits: no doubled hyphen before the random characters, and none
+  leading.
 - An id never changes. A session moved to another date, or a template renamed,
   keeps its id: the file name is a label, and the record's fields are the truth.
 - Ids that never appear in a path (exercise instances, sets) stay random UUIDs.

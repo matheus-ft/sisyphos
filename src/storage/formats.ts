@@ -1,4 +1,4 @@
-import { csvLine, parseCsvRecords, parseNumber } from '../csv';
+import { csvLine, parseCsvRecords, parseNumber, wellFormed } from '../csv';
 import { exerciseFromRow } from '../library/parse';
 import type {
   BodyweightEntry,
@@ -57,6 +57,13 @@ export interface TableSchema<R> {
   toRow(record: R): TableRow;
   /** Cells to record. Throws FormatError. */
   fromRow(row: TableRow): R;
+  /**
+   * A key on its own, as a conflict record holds one, read by the same rules
+   * as the key cells of a whole row and returned in the app's own form: what
+   * `toRow(fromRow(row))` holds in those cells. Other cells are ignored. Throws
+   * FormatError.
+   */
+  readKey(key: TableRow): TableRow;
 }
 
 export interface Tables {
@@ -121,9 +128,18 @@ function readDate(row: TableRow, column: string): IsoDate {
   return cell;
 }
 
+/**
+ * A number as a person writes one, and as `String(n)` does: decimal digits,
+ * optionally signed, with a point and an exponent. `Number` alone also reads
+ * `0x52`, `0b101` and `0o7`, so a weight typed `0x52` would be taken as 82 and
+ * rewritten as such.
+ */
+const DECIMAL = /^[+-]?(\d+\.?\d*|\.\d+)([eE][+-]?\d+)?$/;
+
 function readNumber(row: TableRow, column: string): number {
-  const n = parseNumber(row[column]);
-  if (n === null) throw new FormatError(`${column}: expected a number, got "${row[column]}"`);
+  const cell = row[column];
+  const n = DECIMAL.test(cell) ? parseNumber(cell) : null;
+  if (n === null) throw new FormatError(`${column}: expected a number, got "${cell}"`);
   return n;
 }
 
@@ -147,6 +163,34 @@ function readOneOf<T extends string>(row: TableRow, column: string, allowed: rea
     throw new FormatError(`${column}: expected one of ${allowed.join(', ')}, got "${cell}"`);
   }
   return cell;
+}
+
+/**
+ * The submission workflow's rule for an exercise id. An addition with any other
+ * id could never be proposed for the shipped library, and an empty one names no
+ * exercise at all.
+ */
+const EXERCISE_ID = /^[a-z0-9_]+$/;
+
+function readExerciseId(row: TableRow): string {
+  const id = readText(row, 'id');
+  if (!EXERCISE_ID.test(id)) {
+    throw new FormatError(`id: expected lowercase letters, digits and _, got "${id}"`);
+  }
+  return id;
+}
+
+/**
+ * A boolean cell of a lifter's addition. The spellings the shipped library's
+ * reader (`parseBool`) takes as true, in any case, or empty for false. Anything
+ * else is refused rather than read as false: a hand-typed `Y` meant yes, and
+ * the next sync would otherwise rewrite it as empty, losing what was typed.
+ */
+function checkFlag(row: TableRow, column: string): void {
+  const cell = row[column];
+  if (!['true', '1', 'yes', ''].includes(cell.trim().toLowerCase())) {
+    throw new FormatError(`${column}: expected true or empty, got "${cell}"`);
+  }
 }
 
 /**
@@ -187,6 +231,7 @@ export const TABLES: Tables = {
       weight_kg: readNumber(row, 'weight_kg'),
       source: readOneOf(row, 'source', BODYWEIGHT_SOURCES),
     }),
+    readKey: (key) => ({ date: readDate(key, 'date') }),
   },
 
   oneRm: {
@@ -207,6 +252,7 @@ export const TABLES: Tables = {
       weight_kg: readNumber(row, 'weight_kg'),
       note: readOptionalText(row, 'note'),
     }),
+    readKey: (key) => ({ date: readDate(key, 'date'), lift: readOneOf(key, 'lift', LIFTS) }),
   },
 
   manualRecords: {
@@ -233,6 +279,11 @@ export const TABLES: Tables = {
       rpe: readOptionalNumber(row, 'rpe'),
       context: readOptionalText(row, 'context'),
     }),
+    readKey: (key) => ({
+      date: readDate(key, 'date'),
+      exercise_id: readText(key, 'exercise_id'),
+      reps: numberCell(readNumber(key, 'reps')),
+    }),
   },
 
   additions: {
@@ -243,8 +294,18 @@ export const TABLES: Tables = {
     numeric: [],
     toRow: (addition) => ({ ...exerciseRow(addition), based_on: addition.based_on ?? '' }),
     fromRow: (row) => {
-      // The shipped library's own rules, so an addition and the shipped row it
-      // repeats read as the same exercise.
+      // Stricter than the shipped library, which is reviewed before it ships:
+      // this file is the lifter's, may be edited by hand, and is rewritten from
+      // what is read, so a cell read as something it does not say would be
+      // silently replaced.
+      readExerciseId(row);
+      readText(row, 'name');
+      checkFlag(row, 'unilateral');
+      // Otherwise the shipped library's own rules, so an addition and the
+      // shipped row it repeats read as the same exercise. Muscle ids are not
+      // checked against `muscles.csv`: a muscle can be added to it, and an
+      // addition written by a build that has it must stay readable by one that
+      // does not yet, rather than make the whole file unreadable there.
       let exercise: Exercise;
       try {
         exercise = exerciseFromRow(row);
@@ -253,6 +314,7 @@ export const TABLES: Tables = {
       }
       return { ...exercise, based_on: readOptionalText(row, 'based_on') };
     },
+    readKey: (key) => ({ id: readExerciseId(key) }),
   },
 };
 
@@ -305,8 +367,20 @@ export function rowLine(schema: TableSchema<unknown>, row: TableRow): string {
   return csvLine(cells(row, schema.columns));
 }
 
+/** A row's cells as the file will hold them: lone surrogates as U+FFFD (`wellFormed`). */
+function wellFormedRow(row: TableRow): TableRow {
+  return Object.fromEntries(
+    Object.entries(row).map(([column, cell]) => [column, wellFormed(cell)]),
+  );
+}
+
 /** The whole file: header, rows sorted by key (1.4), trailing newline. */
-export function tableText(schema: TableSchema<unknown>, rows: TableRow[]): string {
+export function tableText(schema: TableSchema<unknown>, given: TableRow[]): string {
+  // Sorted and checked for one row per key as the file will hold them, as its
+  // reader will see them: `a\uD83D` and `a\uDCAA` are one key there, and U+FFFD
+  // sorts after U+E000 where the lone half sorted before it.
+  const rows = given.map(wellFormedRow);
+
   // Only rows in the app's own form, so the file reads back as exactly these rows.
   for (const row of rows) {
     const line = rowLine(schema, row);
@@ -725,6 +799,18 @@ const template: Read<Template> = (v, path) => {
   };
 };
 
+/**
+ * Runs a table read on part of a JSON file, naming that part in its error. Any
+ * error: what the table's readers cannot read is a file that does not parse.
+ */
+function within<T>(path: string, read: () => T): T {
+  try {
+    return read();
+  } catch (e) {
+    throw new FormatError(`${path}: ${e instanceof Error ? e.message : String(e)}`);
+  }
+}
+
 /** A table row as a JSON object: exactly these columns, each a string. */
 const row =
   (columns: readonly string[]): Read<TableRow> =>
@@ -733,9 +819,17 @@ const row =
     return Object.fromEntries(columns.map((column) => [column, field(column, str)]));
   };
 
+/**
+ * One leading byte-order mark is dropped first. The app never writes one (1.4),
+ * but an editor may, and the remote keeps it so the content still hashes to its
+ * sha. `JSON.parse` refuses it, which would make a file whose data is fine
+ * unreadable; taken without it, the file is rewritten in the app's form by the
+ * next sync, like any other file the app did not write. The CSV reader needs no
+ * such step: it trims the BOM with the whitespace of the first cell.
+ */
 function parseJson(text: string): unknown {
   try {
-    return JSON.parse(text);
+    return JSON.parse(text.startsWith('\uFEFF') ? text.slice(1) : text);
   } catch (e) {
     throw new FormatError(`not JSON: ${(e as Error).message}`);
   }
@@ -802,23 +896,36 @@ export function parseConflict(text: string): ConflictRecord {
   let key: TableRow | null;
   let version: Session | Template | TableRow | null;
   if (target.kind === 'table') {
-    const schema = TABLES[target.table];
-    key = field('key', row(schema.key));
-    version = field('version', nullable(row(schema.columns)));
-    // The saved row is written back into the table on resolution; it must be one.
-    if (version !== null) {
-      try {
-        schema.fromRow(version);
-      } catch (e) {
-        throw new FormatError(`conflict.version: ${(e as Error).message}`);
-      }
+    // Resolving finds the row to replace by `key` and writes `version` into the
+    // table (5.3), so both are read into the app's own form, as the table's rows
+    // are: a key reading `2.0` would match no row `2`, and one naming another
+    // row than its version would leave two rows, or fail, when resolved.
+    const schema: TableSchema<unknown> = TABLES[target.table];
+    const givenKey = field('key', row(schema.key));
+    const givenVersion = field('version', nullable(row(schema.columns)));
+    const own = within('conflict.key', () => schema.readKey(givenKey));
+    const saved =
+      givenVersion === null
+        ? null
+        : within('conflict.version', () => canonical(schema, givenVersion));
+    if (saved !== null && schema.key.some((column) => saved[column] !== own[column])) {
+      fail('conflict.version', `the row conflict.key names, ${rowKey(schema, own)}`);
     }
-  } else if (target.kind === 'session') {
+    key = own;
+    version = saved;
+  } else if (target.kind === 'session' || target.kind === 'template') {
     key = field('key', nothing);
-    version = field('version', nullable(session));
-  } else if (target.kind === 'template') {
-    key = field('key', nothing);
-    version = field('version', nullable(template));
+    const saved: Session | Template | null =
+      target.kind === 'session'
+        ? field('version', nullable(session))
+        : field('version', nullable(template));
+    // Resolving writes the saved record to `path`, and a file is named by the
+    // id of the record it holds (1.2): one holding another id would be a second
+    // file claiming that record.
+    if (saved !== null && saved.id !== target.id) {
+      fail('conflict.version.id', `"${target.id}", the id conflict.path names`);
+    }
+    version = saved;
   } else {
     return fail('conflict.path', 'a session, template or table path');
   }

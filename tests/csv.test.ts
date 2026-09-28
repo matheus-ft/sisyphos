@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { csvCell, csvLine, parseCsv, parseCsvRecords } from '../src/csv';
+import { csvCell, csvLine, parseCsv, parseCsvRecords, wellFormed } from '../src/csv';
 import { FormatError } from '../src/storage/errors';
 import exercisesCsv from '../src/library/exercises.csv?raw';
 import musclesCsv from '../src/library/muscles.csv?raw';
@@ -43,8 +43,38 @@ const AWKWARD = [
   '中文',
   ' ',
   'plain',
+  // Halves of a surrogate pair, as a note cut in the middle of an emoji holds.
+  'a\uD83Db',
+  '\uD83D',
+  '\uDCAA',
+  '\uDCAA\uD83D',
+  ' \uD83D',
 ];
-const CHARS = ['a', 'Z', '0', ' ', ',', '"', '\r', '\n', '#', '/', 'é', '💪', '\t', ' '];
+// With the two halves of 💪 on their own: drawn apart they are lone, in order a pair.
+const CHARS = [
+  '\uD83D',
+  '\uDCAA',
+  'a',
+  'Z',
+  '0',
+  ' ',
+  ',',
+  '"',
+  '\r',
+  '\n',
+  '#',
+  '/',
+  'é',
+  '💪',
+  '\t',
+  ' ',
+];
+
+/**
+ * Text as UTF-8 carries it, which is what every other copy of a file holds:
+ * the same, but for lone surrogates, which come back as U+FFFD.
+ */
+const utf8 = (text: string) => new TextDecoder().decode(new TextEncoder().encode(text));
 
 function awkward(random: () => number): string {
   if (random() < 0.5) return AWKWARD[Math.floor(random() * AWKWARD.length)];
@@ -172,6 +202,15 @@ describe('writing', () => {
     expect(csvCell('say "hi"')).toBe('"say ""hi"""');
     expect(csvLine(['a', 'b,c', ''])).toBe('a,"b,c",');
   });
+
+  it('writes a lone surrogate as U+FFFD, as UTF-8 would carry it, and a pair as it is', () => {
+    expect(csvCell('a\uD83Db')).toBe('a\uFFFDb');
+    expect(csvCell('\uDCAA\uD83D')).toBe('\uFFFD\uFFFD');
+    expect(csvCell(' \uD83D,')).toBe('" \uFFFD,"');
+    expect(csvCell('💪')).toBe('💪');
+    expect(csvLine(['\uD83D', '💪'])).toBe('\uFFFD,💪');
+    expect(wellFormed('a\uD83Db\uDCAA💪')).toBe('a\uFFFDb\uFFFD💪');
+  });
 });
 
 describe('round trip', () => {
@@ -184,9 +223,12 @@ describe('round trip', () => {
         Array.from({ length: width }, () => awkward(random)),
       );
       const text = records.map((r) => `${csvLine(r)}\n`).join('');
+      // The device holds exactly what UTF-8 carries to the remote.
+      expect(utf8(text)).toBe(text);
 
+      // Exactly the records written, but for lone surrogates, which UTF-8 cannot carry.
       const read = parseCsvRecords(text, strict);
-      expect(read).toEqual(records);
+      expect(read).toEqual(records.map((r) => r.map(utf8)));
       expect(read.map((r) => `${csvLine(r)}\n`).join('')).toBe(text);
     }
   });
@@ -198,7 +240,7 @@ describe('round trip', () => {
         ['x', value],
         [value, value, value],
       ]) {
-        expect(parseCsvRecords(csvLine(record), strict)).toEqual([record]);
+        expect(parseCsvRecords(csvLine(record), strict)).toEqual([record.map(utf8)]);
       }
     }
   });
