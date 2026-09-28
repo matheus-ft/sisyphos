@@ -82,11 +82,26 @@ export interface IndexedDbStoreOptions {
   now?: () => Date;
 }
 
+/**
+ * The connection is gone for good: a newer build in another tab upgraded the
+ * database, and this build cannot open the new version. Reloading runs the new
+ * build.
+ */
+export class SupersededError extends Error {
+  constructor() {
+    super('Sisyphos was updated in another tab. Reload to keep going.');
+    this.name = 'SupersededError';
+  }
+}
+
 export class IndexedDbStore implements LocalStore {
   private queue: Promise<unknown> = Promise.resolve();
+  /** Null once the connection is lost; the next use opens a new one. */
+  private db: IDBPDatabase<Schema> | null = null;
+  private opening: Promise<IDBPDatabase<Schema>> | null = null;
+  private superseded = false;
 
   private constructor(
-    private readonly db: IDBPDatabase<Schema>,
     private readonly name: string,
     private readonly now: () => Date,
   ) {}
@@ -95,61 +110,110 @@ export class IndexedDbStore implements LocalStore {
     name: string = DB_NAME,
     options: IndexedDbStoreOptions = {},
   ): Promise<IndexedDbStore> {
-    const db = await openDB<Schema>(name, VERSION, {
+    const store = new IndexedDbStore(name, options.now ?? (() => new Date()));
+    await store.connection();
+    return store;
+  }
+
+  close(): void {
+    this.db?.close();
+    this.db = null;
+  }
+
+  /**
+   * The open connection, opening one if it was lost. The browser can close a
+   * connection on its own (older iOS Safari does after the app sits in the
+   * background, and so does clearing site data); without this, every read and
+   * write would fail until the app was reloaded.
+   */
+  private connection(): Promise<IDBPDatabase<Schema>> {
+    if (this.superseded) return Promise.reject(new SupersededError());
+    if (this.db) return Promise.resolve(this.db);
+    this.opening ??= openDB<Schema>(this.name, VERSION, {
       upgrade(database, oldVersion, _newVersion, tx) {
         for (let version = oldVersion; version < VERSION; version++) {
           MIGRATIONS[version](database, tx);
         }
       },
       // A newer build, opened in another tab, is waiting to upgrade. This
-      // connection would block it for as long as this tab lives, so it lets go;
-      // this tab's later reads and writes fail until it reloads as that build.
-      blocking() {
-        db.close();
+      // connection would block it for as long as this tab lives, so it lets go,
+      // and from then on says so instead of reopening a version it cannot read.
+      blocking: () => {
+        this.superseded = true;
+        this.close();
       },
-    });
-    return new IndexedDbStore(db, name, options.now ?? (() => new Date()));
+      // The browser closed the connection abnormally: forget it, so the next
+      // use opens a fresh one.
+      terminated: () => {
+        this.db = null;
+      },
+    })
+      .then((db) => {
+        this.db = db;
+        return db;
+      })
+      .finally(() => {
+        this.opening = null;
+      });
+    return this.opening;
   }
 
-  close(): void {
-    this.db.close();
+  /**
+   * Runs `fn` on the connection. If the connection turns out to be closed (a
+   * transaction refused with InvalidStateError, before any request was made),
+   * opens a new one and runs `fn` once more. Retrying is safe because a refused
+   * transaction wrote nothing.
+   */
+  private async withDb<T>(fn: (db: IDBPDatabase<Schema>) => Promise<T>): Promise<T> {
+    const db = await this.connection();
+    try {
+      return await fn(db);
+    } catch (e) {
+      if (!(e instanceof DOMException && e.name === 'InvalidStateError') || this.superseded) {
+        throw e;
+      }
+      if (this.db === db) this.db = null;
+      return fn(await this.connection());
+    }
   }
 
   // --- reads -------------------------------------------------------------------
 
   async content(path: string): Promise<string | null> {
-    return (await this.db.get('content', path))?.text ?? null;
+    return this.withDb(async (db) => (await db.get('content', path))?.text ?? null);
   }
 
   async paths(): Promise<string[]> {
-    const tx = this.db.transaction(['content', 'sync']);
-    const [content, entries] = await Promise.all([
-      tx.objectStore('content').getAllKeys(),
-      tx.objectStore('sync').getAllKeys(),
-    ]);
-    return [...new Set([...content, ...entries])].sort();
+    return this.withDb(async (db) => {
+      const tx = db.transaction(['content', 'sync']);
+      const [content, entries] = await Promise.all([
+        tx.objectStore('content').getAllKeys(),
+        tx.objectStore('sync').getAllKeys(),
+      ]);
+      return [...new Set([...content, ...entries])].sort();
+    });
   }
 
   async entry(path: string): Promise<SyncEntry | null> {
-    return (await this.db.get('sync', path)) ?? null;
+    return this.withDb(async (db) => (await db.get('sync', path)) ?? null);
   }
 
   async entries(): Promise<SyncEntry[]> {
     // IndexedDB returns string keys in code-unit order, the order `paths()` and
     // `MemoryStore` use: the same on every device, which `localeCompare` is not.
-    return this.db.getAll('sync');
+    return this.withDb((db) => db.getAll('sync'));
   }
 
   async meta(): Promise<SyncMeta> {
-    return (await this.db.get('sync_meta', ONLY)) ?? { ...NO_META };
+    return this.withDb(async (db) => (await db.get('sync_meta', ONLY)) ?? { ...NO_META });
   }
 
   async inflight(): Promise<Inflight | null> {
-    return (await this.db.get('inflight', ONLY)) ?? null;
+    return this.withDb(async (db) => (await db.get('inflight', ONLY)) ?? null);
   }
 
   async settings(): Promise<Settings> {
-    const settings = await this.db.get('settings', ONLY);
+    const settings = await this.withDb((db) => db.get('settings', ONLY));
     if (!settings) throw new Error(`${this.name} has no settings record`);
     return settings;
   }
@@ -183,7 +247,8 @@ export class IndexedDbStore implements LocalStore {
   async resetSync(): Promise<void> {
     await this.exclusive(async () => {
       const now = this.now().toISOString();
-      const entries = (await this.db.getAll('content')).map(({ path, text }): SyncEntry => {
+      const content = await this.withDb((db) => db.getAll('content'));
+      const entries = content.map(({ path, text }): SyncEntry => {
         const local_sha = blobSha(text);
         return {
           path,
@@ -226,8 +291,10 @@ export class IndexedDbStore implements LocalStore {
     const touched = [
       ...new Set(ops.flatMap((op) => (op.op === 'content' || op.op === 'base' ? [op.path] : []))),
     ];
-    const tx = this.db.transaction('sync');
-    const found = await Promise.all(touched.map((path) => tx.store.get(path)));
+    const found = await this.withDb((db) => {
+      const tx = db.transaction('sync');
+      return Promise.all(touched.map((path) => tx.store.get(path)));
+    });
     // Null: the path has no entry, or will have none once the ops are applied.
     const entries = new Map(touched.map((path, i) => [path, found[i] ?? null]));
 
@@ -304,7 +371,9 @@ export class IndexedDbStore implements LocalStore {
    * of leaving a promise to reject unhandled. Resolves once it has committed.
    */
   private async write(issue: (tx: IDBTransaction) => void): Promise<void> {
-    const tx = this.db.transaction(STORES, 'readwrite');
+    // Only opening the transaction is retried on a lost connection: once a
+    // request is made, a failure is the write's own and is reported as it is.
+    const tx = await this.withDb(async (db) => db.transaction(STORES, 'readwrite'));
     try {
       issue(unwrap(tx));
     } catch (e) {

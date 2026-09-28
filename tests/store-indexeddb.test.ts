@@ -2,7 +2,7 @@ import 'fake-indexeddb/auto';
 import { openDB } from 'idb';
 import { afterEach, describe, it, expect, vi } from 'vitest';
 import { blobSha } from '../src/storage/hash';
-import { IndexedDbStore } from '../src/storage/store/indexeddb';
+import { IndexedDbStore, SupersededError } from '../src/storage/store/indexeddb';
 import type { Inflight } from '../src/storage/store/store';
 import { clock, storeContract } from './store-contract';
 
@@ -154,6 +154,27 @@ describe('IndexedDbStore', () => {
     expect([...newer.objectStoreNames]).toContain('content');
     expect((await newer.get('content', 'a.json'))?.text).toBe('x\n');
     newer.close();
-    await expect(store.content('a.json')).rejects.toThrow();
+    // Not reopened at the old version it can no longer read: told to reload.
+    await expect(store.content('a.json')).rejects.toThrow(SupersededError);
+    await expect(
+      store.exclusive((s) => s.apply([{ op: 'content', path: 'b.json', text: 'y\n' }])),
+    ).rejects.toThrow(SupersededError);
+  });
+
+  it('reopens a connection the browser closed, for reads and for writes', async () => {
+    const name = fresh();
+    const store = await IndexedDbStore.open(name);
+    await store.exclusive((s) => s.apply([{ op: 'content', path: 'a.json', text: 'x\n' }]));
+
+    // What older iOS Safari does to a backgrounded app: the connection is closed
+    // under the store, and every transaction on it is refused.
+    const underneath = (store as unknown as { db: { close(): void } }).db;
+    underneath.close();
+    expect(await store.content('a.json')).toBe('x\n');
+
+    (store as unknown as { db: { close(): void } }).db.close();
+    await store.exclusive((s) => s.apply([{ op: 'content', path: 'b.json', text: 'y\n' }]));
+    expect(await store.content('b.json')).toBe('y\n');
+    expect((await store.entry('b.json'))?.local_sha).toBe(blobSha('y\n'));
   });
 });
