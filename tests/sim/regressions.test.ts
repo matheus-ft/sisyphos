@@ -2,6 +2,15 @@ import { describe, expect, it } from 'vitest';
 import type { Session } from '../../src/model';
 import { parseConflict, parseSession } from '../../src/storage/formats';
 import { classify } from '../../src/storage/paths';
+import {
+  BODYWEIGHT,
+  bodyweight,
+  expectConverged,
+  ROWS,
+  session,
+  sessionFile,
+  synced,
+} from '../sync-harness';
 import type { Schedule } from './schedule';
 import { play, type World } from './world';
 
@@ -282,6 +291,99 @@ describe('a value is seen as its content, whichever write put it there', () => {
     });
 
     expect(parseSession(world.remote.files().get(SESSION)!).notes).toBe('v12');
+    expect(conflictRecords(world)).toEqual([]);
+    expect(world.oracle.undone).toEqual([]);
+  });
+});
+
+describe('a table written while the sync fetched, which the device held as the log does', () => {
+  it('moves its base to that version, though the table is left for the next sync', async () => {
+    const { remote, a, b } = await synced();
+    // Both devices make the same change to one weigh-in, and A logs a session.
+    await a.weigh('2026-09-01', 79);
+    await b.weigh('2026-09-01', 79);
+    await a.put(sessionFile(session('2026-09-20-cccc', 'a')));
+    await a.sync();
+    // B holds the log's table exactly, so it fetches only the session; the
+    // lifter logs another weigh-in meanwhile, and the table is left for later.
+    const blob = remote.blob.bind(remote);
+    remote.blob = async (sha) => {
+      remote.blob = blob;
+      await b.weigh('2026-09-04', 83);
+      return blob(sha);
+    };
+    expect(await b.sync()).toMatchObject({ committed: null, conflicts: [] });
+    // A, having seen 79, changes it again.
+    await a.weigh('2026-09-01', 78);
+    await a.sync();
+
+    // B's 79 is the version A replaced knowingly: B takes 78 and pushes its own
+    // weigh-in, and nothing is a conflict.
+    expect((await b.sync()).conflicts).toEqual([]);
+    expect(remote.files().get(BODYWEIGHT)).toBe(
+      bodyweight({ ...ROWS, '2026-09-01': 78, '2026-09-04': 83 }),
+    );
+    await a.sync();
+    await expectConverged(remote, a, b);
+  });
+
+  it('keeps no stale base to make a conflict of later (seed 110289)', async () => {
+    // A and B both use A's saved weigh-in (52) for 2026-09-22, and A pushes it.
+    // B's next sync reads the log's head, and before it reads the tree the
+    // lifter deletes that weigh-in on github.com and B logs another date. B held
+    // the log's table exactly when its sync began; with a stale base, its next
+    // sync saved its 52 as a conflict against the deletion, made with it in view.
+    const world = await played({
+      devices: 2,
+      seeds: [882312, 882313],
+      steps: [
+        // A creates a weigh-in (2)
+        { do: 'write', device: 0, write: { op: 'create', kind: 'bodyweight', pick: 2 } },
+        // A syncs
+        { do: 'sync', device: 0, mode: 'full', faults: [] },
+        // B syncs
+        { do: 'sync', device: 1, mode: 'full', faults: [] },
+        // A edits and B edits the same record (4)
+        { do: 'clash', devices: [0, 1], pick: 4, deletes: [false, false] },
+        // A syncs, before its 1st request: B syncs
+        {
+          do: 'sync',
+          device: 0,
+          mode: 'full',
+          faults: [
+            { kind: 'race', at: 1, steps: [{ do: 'sync', device: 1, mode: 'full', faults: [] }] },
+          ],
+        },
+        // B syncs
+        { do: 'sync', device: 1, mode: 'full', faults: [] },
+        // B uses the saved one and A uses the saved one for the same conflict (2)
+        { do: 'resolve', devices: [1, 0], pick: 2, choices: ['use_saved', 'use_saved'] },
+        // A syncs
+        { do: 'sync', device: 0, mode: 'full', faults: [] },
+        // B syncs, before its 2nd request: the lifter deletes a record on
+        // github.com, by hand (1); B creates a weigh-in (9)
+        {
+          do: 'sync',
+          device: 1,
+          mode: 'full',
+          faults: [
+            {
+              kind: 'race',
+              at: 2,
+              steps: [
+                { do: 'web', op: 'delete', pick: 1, hand: true },
+                { do: 'write', device: 1, write: { op: 'create', kind: 'bodyweight', pick: 9 } },
+              ],
+            },
+          ],
+        },
+      ],
+    });
+
+    // The deletion stands and B's other weigh-in is in, with no conflict.
+    expect(world.remote.files().get(WEIGH_INS)).toBe(
+      'date,weight_kg,source\n2026-09-20,55,manual\n',
+    );
     expect(conflictRecords(world)).toEqual([]);
     expect(world.oracle.undone).toEqual([]);
   });

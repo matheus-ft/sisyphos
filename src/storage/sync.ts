@@ -178,6 +178,16 @@ async function syncRound(
   if (unmoved && entries.every((e) => e.local_sha === e.base_sha)) {
     return result(head, null, [], found, []);
   }
+  // Each table the device has changed, as it stands now, before any request
+  // lets a write in: if the remote holds exactly this, it is a base the two
+  // agree on, whatever the lifter writes before step 5 (`Planner.left`).
+  const began = new Map<string, string>();
+  for (const e of entries) {
+    if (e.local_sha === null || e.local_sha === e.base_sha) continue;
+    if (classify(e.path).kind !== 'table') continue;
+    const text = await onDevice(() => store.content(e.path));
+    if (text !== null && blobSha(text) === e.local_sha) began.set(e.path, text);
+  }
 
   // 3. The tree. A recorded head means every base agreed with it, so when it has
   // not moved the bases are the remote's files and nothing needs asking. Foreign
@@ -207,6 +217,16 @@ async function syncRound(
   }
   for (const sha of fetched.keys()) wanted.delete(sha);
   await fetchAll(remote, [...wanted].sort(), context.concurrency, fetched);
+
+  // Where the device held the remote's version as the round began, and its base
+  // is older, the two agreed on that version at this head (4.2 step 5).
+  const agreed = new Map<string, { sha: string; body: string | null }>();
+  for (const [path, sha] of remoteShas) {
+    const entry = known.get(path);
+    if (entry?.local_sha !== sha || entry.base_sha === sha) continue;
+    if (classify(path).kind !== 'table') agreed.set(path, { sha, body: null });
+    else if (began.has(path)) agreed.set(path, { sha, body: began.get(path)! });
+  }
 
   // 5. Decide, on the write queue, against the device as it is now: a write that
   // landed while step 4 was fetching is decided too, never overwritten. The
@@ -244,6 +264,7 @@ async function syncRound(
           random: context.random,
           remote: remoteShas,
           fetched,
+          agreed,
           entries,
           local,
           held,
@@ -443,6 +464,8 @@ interface PlanInput {
   remote: Map<string, string>;
   /** Remote content by blob sha, as fetched. */
   fetched: Map<string, string>;
+  /** Paths whose remote version the device held as the round began: the base, and a table's body. */
+  agreed: Map<string, { sha: string; body: string | null }>;
   entries: Map<string, SyncEntry>;
   /** The device's current content of every path being decided. */
   local: Map<string, string | null>;
@@ -554,9 +577,8 @@ class Planner {
       remote = blobSha(remoteText);
     } else {
       // Not fetched because it was the device's version when step 4 looked, and
-      // the device has written this path since. Left for the next sync, which
-      // fetches it; the head is not recorded, so that sync reads the tree.
-      return 'left';
+      // the device has written this path since.
+      return this.left(path);
     }
 
     const decision = decideFile({ base, local, remote }, mode);
@@ -601,8 +623,8 @@ class Planner {
       if (units === UNREADABLE) return 'left';
       remoteUnits = units;
     } else {
-      // As for files: written on the device during step 4. Left for the next sync.
-      return 'left';
+      // As for files: written on the device during step 4.
+      return this.left(path);
     }
 
     const decision = decideTable({ base: baseUnits, local: localUnits, remote: remoteUnits }, mode);
@@ -671,6 +693,21 @@ class Planner {
       device_id: this.input.deviceId,
       version: version as Session | Template | null,
     });
+  }
+
+  /**
+   * A path the device wrote while step 4 fetched, whose remote version was not
+   * fetched because the device held it then: left for the next sync, which
+   * fetches it; the head is not recorded, so that sync reads the tree. The
+   * device held the remote's version as the round began, so that is its base
+   * now, as it would have been had the write come a moment later. Otherwise a
+   * version both sides held reads next time as this device's own change, and
+   * comes back as a conflict against a writer who had seen it.
+   */
+  private left(path: string): Outcome {
+    const agreed = this.input.agreed.get(path);
+    if (agreed) this.plan.ops.push({ op: 'base', path, sha: agreed.sha, body: agreed.body });
+    return 'left';
   }
 
   /** Written to the device and pushed in this same commit. */
