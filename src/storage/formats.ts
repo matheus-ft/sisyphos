@@ -186,10 +186,18 @@ function readExerciseId(row: TableRow): string {
  * else is refused rather than read as false: a hand-typed `Y` meant yes, and
  * the next sync would otherwise rewrite it as empty, losing what was typed.
  */
+/**
+ * Only unambiguous spellings. The app writes `true` or empty, but a hand edit
+ * saying `false`, `no` or `0` means false as clearly as an empty cell does, and
+ * refusing it would turn a harmless edit into an unreadable file. Anything else
+ * (`Y`, `banana`) is refused rather than guessed at.
+ */
+const FLAG_SPELLINGS = ['true', '1', 'yes', '', 'false', '0', 'no'];
+
 function checkFlag(row: TableRow, column: string): void {
   const cell = row[column];
-  if (!['true', '1', 'yes', ''].includes(cell.trim().toLowerCase())) {
-    throw new FormatError(`${column}: expected true or empty, got "${cell}"`);
+  if (!FLAG_SPELLINGS.includes(cell.trim().toLowerCase())) {
+    throw new FormatError(`${column}: expected true, false or empty, got "${cell}"`);
   }
 }
 

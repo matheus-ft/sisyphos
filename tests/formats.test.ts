@@ -810,7 +810,11 @@ describe('additions and the shipped library', () => {
     for (const cell of ['true', 'TRUE', 'True', '1', 'yes', 'Yes']) {
       expect(unilateral(cell), cell).toBe('true');
     }
-    expect(unilateral('')).toBe('');
+    // A hand edit saying false plainly is read as false and rewritten as empty,
+    // not refused as an unreadable file.
+    for (const cell of ['', 'false', 'FALSE', 'False', '0', 'no', 'No']) {
+      expect(unilateral(cell), cell).toBe('');
+    }
   });
 
   it('keep a muscle this build does not know, which a newer one may have added', () => {
