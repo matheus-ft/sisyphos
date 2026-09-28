@@ -13,7 +13,9 @@ import type { NewCommit, Remote, RemoteChange, RemoteTree, RepoInfo } from './re
  * - `tree` rejects a truncated tree;
  * - `moveBranch` returns 'raced' only when a fresh head read differs from `from`;
  * - the token is only ever sent as an `Authorization` header, and never appears
- *   in an error message.
+ *   in an error message;
+ * - a 404 is marked `notFound`, so setup can tell a wrong name or token from a
+ *   repository it found but cannot use.
  *
  * Request and response shapes follow docs.github.com/en/rest/git (refs, trees,
  * blobs, commits), /rest/commits/commits#compare-two-commits,
@@ -48,6 +50,16 @@ const API = 'https://api.github.com';
  */
 const DEFAULT_WAIT_MS = 60_000;
 
+/**
+ * What a token can hold: printable ASCII, no spaces. GitHub's tokens are letters,
+ * digits and underscores, so this refuses nothing GitHub issues. It catches a
+ * token pasted with a stray character, such as the "…" of a shortened copy:
+ * `fetch` refuses a header that is not Latin-1 with a `TypeError`, the same
+ * error it throws for no network, so without this check the lifter would be told
+ * they are offline, and a sync would retry forever.
+ */
+const TOKEN_CHARACTERS = /^[\x21-\x7e]+$/;
+
 const encoder = new TextEncoder();
 /** Fatal, so text that is not UTF-8 is refused rather than silently altered; BOM kept, so the text hashes to the bytes it came from. */
 const utf8 = new TextDecoder('utf-8', { fatal: true, ignoreBOM: true });
@@ -64,9 +76,13 @@ export class GitHubRemote implements Remote {
       );
     }
     const data = await this.read(res);
+    const id = pick(data, 'id');
+    if (typeof id !== 'number' || !Number.isSafeInteger(id))
+      throw this.unexpected('the repository', 'id');
     const visibility = pick(data, 'private');
     if (typeof visibility !== 'boolean') throw this.unexpected('the repository', 'private');
     return {
+      id,
       private: visibility,
       defaultBranch: this.string(data, 'default_branch', 'the repository'),
     };
@@ -234,6 +250,13 @@ export class GitHubRemote implements Remote {
   // --- HTTP -------------------------------------------------------------------------
 
   private async send(method: string, path: string, body?: unknown): Promise<Response> {
+    if (!TOKEN_CHARACTERS.test(this.options.token)) {
+      // Not echoed: the message says what is wrong with it, and nothing of it.
+      throw this.error(
+        'token',
+        'The token contains characters a GitHub token cannot, such as a space or "…". Paste it again exactly as GitHub showed it, or create a new one',
+      );
+    }
     const headers: Record<string, string> = {
       Accept: 'application/vnd.github+json',
       Authorization: `Bearer ${this.options.token}`,
@@ -302,12 +325,14 @@ export class GitHubRemote implements Remote {
     if (status === 403) {
       // Reading or writing, the permission a log token can lack here is
       // Contents: Metadata is granted with any access (STORAGE.md section 8).
-      return this.error(
-        'token',
-        `GitHub refused the token access to ${this.name()}: it needs the Contents permission, read and write`,
-      );
+      // But a 403 is also how GitHub refuses a write to an archived repository,
+      // a token an organisation has not approved, or one not authorised for its
+      // SAML single sign-on, where a token with more permissions changes
+      // nothing. Only GitHub's own words say which, so they go along.
+      const permission = `GitHub refused the token access to ${this.name()}: it needs the Contents permission, read and write`;
+      return this.error('token', said ? `${permission}. GitHub said: ${said}` : permission);
     }
-    if (status === 404) return this.error('repo', notFound);
+    if (status === 404) return this.error('repo', notFound, { notFound: true });
     return this.error('repo', `GitHub refused the request (HTTP ${status}): ${said}`);
   }
 
@@ -315,7 +340,7 @@ export class GitHubRemote implements Remote {
   private error(
     kind: SyncErrorKind,
     message: string,
-    options: { retryAt?: Date; cause?: unknown; network?: boolean } = {},
+    options: { retryAt?: Date; cause?: unknown; network?: boolean; notFound?: boolean } = {},
   ): SyncError {
     const { token } = this.options;
     const safe = token ? message.split(token).join('[token]') : message;

@@ -57,6 +57,7 @@ export class MemoryStore implements LocalStore {
         owner: null,
         repo: null,
         branch: null,
+        repo_id: null,
         token: null,
         device_id: options.deviceId ?? crypto.randomUUID(),
       },

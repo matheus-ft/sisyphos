@@ -189,18 +189,25 @@ describe('a change', () => {
 
 describe('validation', () => {
   it.each<[string, Record<string, string>, RegExp]>([
-    ['no kind', { kind: '' }, /^`kind` must be new or change, got ""$/],
+    ['no kind', { kind: '' }, /^`kind` must be new or change, got `""`$/],
     ['an unknown kind', { kind: 'edit' }, /^`kind` must be new or change/],
     ['no id', { id: '' }, /^`id` must be snake_case/],
-    ['an id with capitals', { id: 'Pin_Squat' }, /^`id` must be snake_case.*got "Pin_Squat"$/],
+    ['an id with capitals', { id: 'Pin_Squat' }, /^`id` must be snake_case.*got `"Pin_Squat"`$/],
     ['an id with a hyphen', { id: 'pin-squat' }, /^`id` must be snake_case/],
     ['an id with a space', { id: 'pin squat' }, /^`id` must be snake_case/],
     ['no name', { name: '' }, /^`name` is required$/],
     ['a comma in the name', { name: 'Squat, Pin' }, /^`name` cannot contain commas/],
     ['a quote in the name', { name: 'The "Pin" Squat' }, /^`name` cannot contain commas/],
-    ['a newline in the name', { name: 'Pin\nSquat' }, /^`name` cannot contain.*got "Pin\\nSquat"$/],
+    [
+      'a newline in the name',
+      { name: 'Pin\nSquat' },
+      /^`name` cannot contain.*got `"Pin\\nSquat"`$/,
+    ],
     ['a carriage return in the name', { name: 'Pin\rSquat' }, /^`name` cannot contain/],
-    ['a name starting with #', { name: '#1 Squat' }, /^`name` cannot contain.*start with #/],
+    ['a name starting with #', { name: '#1 Squat' }, /^`name` cannot contain `#` or `@`/],
+    ['a closing keyword in the name', { name: 'Fixes #12' }, /^`name` cannot contain `#` or `@`/],
+    ['a mention in the name', { name: 'Squat for @octocat' }, /^`name` cannot contain `#` or `@`/],
+    ['an @ in the name', { name: 'Squat @ 80%' }, /^`name` cannot contain `#` or `@`/],
     ['an unknown base lift', { base_lift: 'press' }, /^`base_lift` must be one of squat/],
     ['an unknown tier', { tier: 'comp_ish' }, /^`tier` must be one of comp, high_spec/],
     ['no tier', { tier: '' }, /^`tier` must be one of/],
@@ -212,12 +219,12 @@ describe('validation', () => {
     [
       'an unknown primary muscle',
       { 'primary movers': 'quads/delts' },
-      /^`primary` references unknown muscle "delts"/,
+      /^`primary` references unknown muscle `"delts"`/,
     ],
     [
       'an unknown auxiliary muscle',
       { 'auxiliary muscles': 'glutes/core' },
-      /^`aux` references unknown muscle "core"/,
+      /^`aux` references unknown muscle `"core"`/,
     ],
     [
       'a muscle listed twice',
@@ -245,6 +252,35 @@ describe('validation', () => {
     }
   });
 
+  it('rejects # and @ anywhere in any cell, whatever else is wrong with it', () => {
+    // In the commit and the pull request, "#12" links an issue ("Fixes #12"
+    // closes it on merge) and "@name" mentions someone.
+    for (const label of Object.keys(VALID).filter((l) => l !== 'kind')) {
+      for (const value of ['a#b', 'Fixes #12', 'a@b', '@octocat']) {
+        const found = problems({ [label]: value });
+        expect(found.join('\n'), `${label}: ${value}`).toMatch(/cannot contain `#` or `@`/);
+      }
+    }
+  });
+
+  it('echoes no mention or issue link into the comment that lists the problems', () => {
+    // Each problem becomes a line of the bot's comment on the issue, where
+    // GitHub reads # and @ everywhere but inside code.
+    const found = problems({
+      kind: '@octocat',
+      id: '@octocat',
+      name: 'Fixes #12 for @octocat',
+      tier: '#1',
+      'primary movers': 'quads/@octocat',
+      'auxiliary muscles': 'glutes/`@octo`cat``',
+    });
+    expect(found.length).toBeGreaterThan(4);
+    for (const problem of found) {
+      const outsideCode = problem.replace(/(`+)(?!`)[\s\S]*?(?<!`)\1(?!`)/g, '');
+      expect(outsideCode, problem).not.toMatch(/[#@]/);
+    }
+  });
+
   it('reports every problem at once', () => {
     expect(
       problems({ name: '', tier: 'x', 'primary movers': 'nope', 'auxiliary muscles': 'core' }),
@@ -253,7 +289,7 @@ describe('validation', () => {
 
   it('checks the library only once the kind and id are valid', () => {
     expect(problems({ kind: 'maybe', id: 'paused_squat' })).toEqual([
-      '`kind` must be new or change, got "maybe"',
+      '`kind` must be new or change, got `"maybe"`',
     ]);
   });
 

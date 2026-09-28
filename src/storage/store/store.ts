@@ -46,6 +46,14 @@ export interface Settings {
   owner: string | null;
   repo: string | null;
   branch: string | null;
+  /**
+   * GitHub's id for the repo (`RepoInfo.id`), saved by setup; null or absent
+   * until then. The name alone cannot say whether a repo is the one the bases
+   * describe: one deleted and created again under the same name holds another
+   * history, and gets a new id (section 8). Optional, so a settings record
+   * saved without it still reads as settings; setup treats absent as unknown.
+   */
+  repo_id?: number | null;
   token: string | null;
   /** Random, generated once per install, never copied between devices (2.1). */
   device_id: string;

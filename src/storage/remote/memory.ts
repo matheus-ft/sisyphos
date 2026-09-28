@@ -43,9 +43,10 @@ const EMPTY_TREE: Tree = new Map();
 const README = '# sisyphos-log\n';
 
 /**
- * Numbers each remote, so two remotes never share a commit sha, as two GitHub
- * repositories would not. Tests that point a device at a different repo rely
- * on that.
+ * Numbers each remote, so two remotes never share a commit sha or a repository
+ * id, as two GitHub repositories would not, even one deleted and created again
+ * under the same name. Tests that point a device at a different repo rely on
+ * that.
  */
 let remotes = 0;
 
@@ -63,6 +64,7 @@ export class MemoryRemote implements Remote {
 
   constructor(options: MemoryRemoteOptions = {}) {
     this.info = {
+      id: this.id,
       private: options.private ?? true,
       defaultBranch: options.defaultBranch ?? 'main',
     };
@@ -117,12 +119,20 @@ export class MemoryRemote implements Remote {
   async moveBranch(from: string, to: string): Promise<'moved' | 'raced'> {
     this.enter('moveBranch');
     this.beforeMove?.();
+    // GitHub's `force: false` is a fast-forward check against the head as it is,
+    // not a compare-and-swap on `from`: the move succeeds whenever `to` descends
+    // from the head, even one that is no longer `from`, such as after a
+    // force-reset to an ancestor of `from`. A stricter rule here would keep from
+    // the sync's tests a move GitHub makes.
+    if (this.branch !== null && this.descends(to, this.branch)) {
+      this.branch = to;
+      return 'moved';
+    }
+    // Refused. With the head moved, another device got there first; with the
+    // head still at `from`, the refusal is a real error (STORAGE.md 4.2).
     if (this.branch !== from) return 'raced';
-    // With the head still at `from`, GitHub's refusal of these is a real error (STORAGE.md 4.2).
     if (!this.commits.has(to)) throw refused(`Object ${to} does not exist`);
-    if (!this.descends(to, from)) throw refused('Update is not a fast forward');
-    this.branch = to;
-    return 'moved';
+    throw refused('Update is not a fast forward');
   }
 
   async contains(ancestor: string, descendant: string): Promise<boolean> {
@@ -148,6 +158,15 @@ export class MemoryRemote implements Remote {
     return this.branch;
   }
 
+  /**
+   * Points the branch at a commit it holds, whether or not that is a fast-forward,
+   * as another client's force-push or reset would. The adapter never does this.
+   */
+  forceBranch(commit: string): void {
+    if (!this.commits.has(commit)) throw new Error(`No commit ${commit} to point the branch at`);
+    this.branch = commit;
+  }
+
   /** Every file at the head, path to content. Empty for an empty repository. */
   files(): Map<string, string> {
     if (this.branch === null) return new Map();
@@ -171,7 +190,8 @@ export class MemoryRemote implements Remote {
 
   /**
    * Called at the start of every `moveBranch`, before the fast-forward check, so a
-   * test can slip another commit in (with `externalCommit`) and force a race.
+   * test can slip another commit in (with `externalCommit`) and force a race, or
+   * move the branch some other way (with `forceBranch`).
    */
   beforeMove: (() => void) | null = null;
 
@@ -245,7 +265,7 @@ export class MemoryRemote implements Remote {
 
 /** A 404 from GitHub, as the adapter reports it. */
 function notFound(what: string): SyncError {
-  return new SyncError('repo', `The log repo has no ${what}`);
+  return new SyncError('repo', `The log repo has no ${what}`, { notFound: true });
 }
 
 /** A 422 from GitHub, as the adapter reports it. */

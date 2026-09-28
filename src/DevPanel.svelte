@@ -54,6 +54,7 @@
   /** Every setup failure, in words (STORAGE.md section 8). */
   const REFUSED: Record<SetupFailure, string> = {
     not_found: 'Repository not found',
+    repo_problem: 'The repository cannot be used as it is',
     public: 'The repository is public',
     not_a_log: 'Not a Sisyphos log',
     token: 'The token was refused',

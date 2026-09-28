@@ -6,6 +6,20 @@ import { FORMAT_PATH, FORMAT_VERSION } from '../src/storage/paths';
 import { MemoryRemote } from '../src/storage/remote/memory';
 import { setUp, type SetupInput } from '../src/storage/setup';
 import { MemoryStore } from '../src/storage/store/memory';
+import { runSync } from '../src/storage/sync';
+import {
+  BODYWEIGHT,
+  bodyweight,
+  prng,
+  remoteFiles,
+  ROWS,
+  S1,
+  S2,
+  sessionFile,
+  T0,
+  T1,
+  templateFile,
+} from './sync-harness';
 
 const MARKER = serializeFormatMarker({ format: FORMAT_VERSION });
 const INPUT: SetupInput = { owner: 'me', repo: 'sisyphos-log', token: 'github_pat_1' };
@@ -49,8 +63,32 @@ describe('setUp: reading the repo', () => {
     const h = harness();
     const message =
       'me/sisyphos-log was not found. Check the name, and that the token was given access to it';
-    h.remote.failNext('repoInfo', new SyncError('repo', message));
+    h.remote.failNext('repoInfo', new SyncError('repo', message, { notFound: true }));
     expect(await h.run()).toEqual({ ok: false, reason: 'not_found', message });
+    expect(await h.store.settings()).toMatchObject(untouched);
+  });
+
+  it.each<[string, 'moveBranch' | 'tree' | 'blob', string]>([
+    [
+      'a protected branch refusing the first commit',
+      'moveBranch',
+      'GitHub refused to move the branch main of me/sisyphos-log (HTTP 422): Protected branch update failed for refs/heads/main.',
+    ],
+    [
+      'a tree too big to list',
+      'tree',
+      'me/sisyphos-log holds more files than GitHub will list at once, so it cannot be synced safely',
+    ],
+    [
+      'a sisyphos.json that is not text',
+      'blob',
+      'A file in me/sisyphos-log (blob 00517d70de6db1e19725caa81a52566a6f9011a8) is not UTF-8 text',
+    ],
+  ])('reports %s as a problem with the repo it found, not as not found', async (_, op, message) => {
+    const h = harness();
+    if (op === 'blob') h.remote.externalCommit([{ path: FORMAT_PATH, content: MARKER }]);
+    h.remote.failNext(op, new SyncError('repo', message));
+    expect(await h.run()).toEqual({ ok: false, reason: 'repo_problem', message });
     expect(await h.store.settings()).toMatchObject(untouched);
   });
 
@@ -228,10 +266,14 @@ describe('setUp: making the repo a log', () => {
 });
 
 describe('setUp: saving the settings', () => {
-  /** A device that has synced with me/sisyphos-log on main: a base, a head, an in-flight commit. */
-  async function syncedDevice(): Promise<MemoryStore> {
+  /**
+   * A device that has synced with `remote`, as me/sisyphos-log on main: a base,
+   * a head, an in-flight commit.
+   */
+  async function syncedDevice(remote: MemoryRemote): Promise<MemoryStore> {
     const store = new MemoryStore();
-    await store.saveSettings({ ...INPUT, branch: 'main' });
+    const { id } = await remote.repoInfo();
+    await store.saveSettings({ ...INPUT, branch: 'main', repo_id: id });
     await store.exclusive((s) =>
       s.apply([
         { op: 'content', path: 'lifter/bodyweight.csv', text: 'x\n' },
@@ -249,17 +291,23 @@ describe('setUp: saving the settings', () => {
     return remote;
   }
 
-  it('saves owner, repo, branch and token', async () => {
-    const h = harness(await logRepo());
+  it('saves owner, repo, branch, the repo id and token', async () => {
+    const remote = await logRepo();
+    const h = harness(remote);
     await h.run();
     const settings = await h.store.settings();
-    expect(settings).toMatchObject({ ...INPUT, branch: 'main' });
+    expect(settings).toMatchObject({
+      ...INPUT,
+      branch: 'main',
+      repo_id: (await remote.repoInfo()).id,
+    });
   });
 
   it('keeps everything but the token when a new token is pasted for the same repo', async () => {
-    const store = await syncedDevice();
+    const remote = await logRepo();
+    const store = await syncedDevice(remote);
     const reset = vi.spyOn(store, 'resetSync');
-    const h = harness(await logRepo(), store);
+    const h = harness(remote, store);
     expect(await h.run({ ...INPUT, token: 'github_pat_2' })).toEqual({
       ok: true,
       initialised: false,
@@ -272,15 +320,17 @@ describe('setUp: saving the settings', () => {
   });
 
   it('knows the same repo written with other capitals, as GitHub does', async () => {
-    const store = await syncedDevice();
+    const remote = await logRepo();
+    const store = await syncedDevice(remote);
     const reset = vi.spyOn(store, 'resetSync');
-    const h = harness(await logRepo(), store);
+    const h = harness(remote, store);
     await h.run({ ...INPUT, owner: 'Me', repo: 'Sisyphos-Log' });
     expect(reset).not.toHaveBeenCalled();
   });
 
   it('forgets the old repo before saving another, keeping every change on the device', async () => {
-    const store = await syncedDevice();
+    const remote = await logRepo();
+    const store = await syncedDevice(remote);
     const order: string[] = [];
     const reset = vi.spyOn(store, 'resetSync');
     const save = vi.spyOn(store, 'saveSettings');
@@ -292,7 +342,7 @@ describe('setUp: saving the settings', () => {
       order.push('saveSettings');
       return MemoryStore.prototype.saveSettings.call(this, patch);
     });
-    const h = harness(await logRepo(), store);
+    const h = harness(remote, store);
     await h.run({ ...INPUT, repo: 'another-log' });
 
     expect(order).toEqual(['resetSync', 'saveSettings']);
@@ -307,21 +357,51 @@ describe('setUp: saving the settings', () => {
   });
 
   it('forgets the old repo for another owner too', async () => {
-    const store = await syncedDevice();
+    const remote = await logRepo();
+    const store = await syncedDevice(remote);
     const reset = vi.spyOn(store, 'resetSync');
-    const h = harness(await logRepo(), store);
+    const h = harness(remote, store);
     await h.run({ ...INPUT, owner: 'someone-else' });
     expect(reset).toHaveBeenCalledOnce();
   });
 
   it('forgets the old history when the default branch is another', async () => {
-    const store = await syncedDevice();
+    const remote = await logRepo({ defaultBranch: 'trunk' });
+    const store = await syncedDevice(remote);
     const reset = vi.spyOn(store, 'resetSync');
-    const h = harness(await logRepo({ defaultBranch: 'trunk' }), store);
+    const h = harness(remote, store);
     await h.run();
     expect(reset).toHaveBeenCalledOnce();
     expect(await store.settings()).toMatchObject({ branch: 'trunk' });
   });
+
+  it('forgets the old history when the repo was deleted and created again under the same name', async () => {
+    const store = await syncedDevice(await logRepo());
+    const reset = vi.spyOn(store, 'resetSync');
+    // Same owner, name and default branch, but another repository: GitHub gives it another id.
+    const again = await logRepo();
+    await harness(again, store).run();
+    expect(reset).toHaveBeenCalledOnce();
+    expect(await store.settings()).toMatchObject({
+      ...INPUT,
+      branch: 'main',
+      repo_id: (await again.repoInfo()).id,
+    });
+    expect(await store.meta()).toEqual({ last_synced_head: null, last_synced_tree: null });
+  });
+
+  it.each([null, undefined])(
+    'forgets the old history when the repo id it synced with is %s, since it cannot tell',
+    async (unknown) => {
+      const remote = await logRepo();
+      const store = await syncedDevice(remote);
+      await store.saveSettings({ repo_id: unknown });
+      const reset = vi.spyOn(store, 'resetSync');
+      await harness(remote, store).run();
+      expect(reset).toHaveBeenCalledOnce();
+      expect(await store.settings()).toMatchObject({ repo_id: (await remote.repoInfo()).id });
+    },
+  );
 
   it('starts a device that logged before setup from null bases, keeping what it logged', async () => {
     const store = new MemoryStore();
@@ -337,13 +417,54 @@ describe('setUp: saving the settings', () => {
   });
 
   it('touches neither the settings nor the sync state when setup is refused', async () => {
-    const store = await syncedDevice();
+    const store = await syncedDevice(await logRepo());
+    const before = await store.settings();
     const reset = vi.spyOn(store, 'resetSync');
     const remote = new MemoryRemote({ private: false });
     const h = harness(remote, store);
     await h.run({ ...INPUT, repo: 'public-repo' });
     expect(reset).not.toHaveBeenCalled();
-    expect(await store.settings()).toMatchObject({ ...INPUT, branch: 'main' });
+    expect(await store.settings()).toEqual(before);
     expect(await store.meta()).toEqual({ last_synced_head: 'abc', last_synced_tree: 'def' });
+  });
+});
+
+describe('setUp: a repo deleted and created again under the same name', () => {
+  it('loses nothing from the device: the new repo is synced from null bases', async () => {
+    const now = () => new Date(T0);
+    const store = new MemoryStore({ deviceId: 'dev-a', now });
+    const logged = new Map([
+      sessionFile(S1),
+      sessionFile(S2),
+      templateFile(T1),
+      [BODYWEIGHT, bodyweight(ROWS)!],
+    ]);
+    await store.exclusive((s) =>
+      s.apply([...logged].map(([path, text]) => ({ op: 'content' as const, path, text }))),
+    );
+    const sync = (remote: MemoryRemote) =>
+      runSync({ store, remote, deviceId: 'dev-a', now, random: prng(1) }, 'full');
+    const onDevice = async () => {
+      const files = new Map<string, string>();
+      for (const path of await store.paths()) {
+        const text = await store.content(path);
+        if (text !== null) files.set(path, text);
+      }
+      return files;
+    };
+
+    const first = new MemoryRemote();
+    expect(await harness(first, store).run()).toEqual({ ok: true, initialised: true });
+    await sync(first);
+    expect(remoteFiles(first)).toEqual(new Map([...logged, [FORMAT_PATH, MARKER]]));
+
+    // Deleted on GitHub, and created again with the same owner, name and
+    // default branch: a new repository holding only its README.
+    const second = new MemoryRemote();
+    expect(await harness(second, store).run()).toEqual({ ok: true, initialised: true });
+    await sync(second);
+
+    expect(await onDevice()).toEqual(new Map([...logged, [FORMAT_PATH, MARKER]]));
+    expect(remoteFiles(second)).toEqual(await onDevice());
   });
 });

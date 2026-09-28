@@ -41,11 +41,25 @@ describe('MemoryRemote: a new repository', () => {
   });
 
   it('reports a private repo on main unless told otherwise', async () => {
-    expect(await new MemoryRemote().repoInfo()).toEqual({ private: true, defaultBranch: 'main' });
+    expect(await new MemoryRemote().repoInfo()).toEqual({
+      id: expect.any(Number),
+      private: true,
+      defaultBranch: 'main',
+    });
     expect(await new MemoryRemote({ private: false, defaultBranch: 'trunk' }).repoInfo()).toEqual({
+      id: expect.any(Number),
       private: false,
       defaultBranch: 'trunk',
     });
+  });
+
+  it('has an id of its own, which it keeps, as every GitHub repository does', async () => {
+    const remote = new MemoryRemote();
+    const { id } = await remote.repoInfo();
+    remote.externalCommit([{ path: 'a.json', content: 'a\n' }]);
+    expect((await remote.repoInfo()).id).toBe(id);
+    // A repository created again under the same name is another repository.
+    expect((await new MemoryRemote().repoInfo()).id).not.toBe(id);
   });
 
   it('can start empty, with no commits at all', async () => {
@@ -197,7 +211,7 @@ describe('MemoryRemote: commit and moveBranch', () => {
     expect(await remote.head()).toBe(first.commit);
   });
 
-  it("answers 'raced' when the head is no longer where the caller left it", async () => {
+  it("answers 'raced' when the move is refused and the head is no longer where the caller left it", async () => {
     const remote = new MemoryRemote();
     const root = (await remote.head())!;
     const { sha } = await remote.tree(root);
@@ -212,6 +226,50 @@ describe('MemoryRemote: commit and moveBranch', () => {
     expect(await remote.moveBranch(root, mine.commit)).toBe('raced');
     expect(await remote.head()).toBe(theirs);
     expect(remote.files().has('mine.json')).toBe(false);
+  });
+
+  it('moves whenever the commit descends from the head, even a head the caller did not leave', async () => {
+    // GitHub's fast-forward check compares with the head as it is, not with
+    // `from`: after another client force-resets the branch to an ancestor of
+    // `from`, a commit on `from` still fast-forwards it.
+    const remote = new MemoryRemote();
+    const root = (await remote.head())!;
+    const first = await push(remote, [{ path: 'a.json', content: '1\n' }]);
+    const { sha } = await remote.tree(first.commit);
+    const mine = await remote.commit({
+      parent: first.commit,
+      baseTree: sha,
+      changes: [{ path: 'b.json', content: '2\n' }],
+      message: 'Sync',
+    });
+    remote.forceBranch(root);
+
+    expect(await remote.moveBranch(first.commit, mine.commit)).toBe('moved');
+    expect(await remote.head()).toBe(mine.commit);
+    expect([...remote.files().keys()].sort()).toEqual(['README.md', 'a.json', 'b.json']);
+  });
+
+  it("answers 'raced' when a force-reset leaves the head where the commit does not descend from it", async () => {
+    const remote = new MemoryRemote();
+    const root = (await remote.head())!;
+    const { sha } = await remote.tree(root);
+    const side = await remote.commit({
+      parent: root,
+      baseTree: sha,
+      changes: [{ path: 'side.json', content: 'side\n' }],
+      message: 'Elsewhere',
+    });
+    const first = await push(remote, [{ path: 'a.json', content: '1\n' }]);
+    const mine = await remote.commit({
+      parent: first.commit,
+      baseTree: first.tree,
+      changes: [{ path: 'b.json', content: '2\n' }],
+      message: 'Sync',
+    });
+    remote.forceBranch(side.commit);
+
+    expect(await remote.moveBranch(first.commit, mine.commit)).toBe('raced');
+    expect(await remote.head()).toBe(side.commit);
   });
 
   it('lets a test slip a commit in just before the move, forcing a race', async () => {
@@ -345,10 +403,26 @@ describe('MemoryRemote: blobs and trees', () => {
     ]);
   });
 
-  it('refuses a commit or blob it does not have', async () => {
+  it('refuses a commit or blob it does not have, as GitHub answers 404', async () => {
     const remote = new MemoryRemote();
-    await repoError(remote.tree('f'.repeat(40)));
-    await repoError(remote.blob(blobSha('never written\n')));
+    expect((await repoError(remote.tree('f'.repeat(40)))).notFound).toBe(true);
+    expect((await repoError(remote.blob(blobSha('never written\n')))).notFound).toBe(true);
+  });
+
+  it('marks a refusal of something it has as found (422, not 404)', async () => {
+    const remote = new MemoryRemote();
+    const head = (await remote.head())!;
+    const { sha } = await remote.tree(head);
+    const refused = await repoError(
+      remote.commit({
+        parent: head,
+        baseTree: sha,
+        changes: [{ path: 'missing.json', content: null }],
+        message: 'x',
+      }),
+    );
+    expect(refused.notFound).toBe(false);
+    expect((await repoError(remote.moveBranch(head, 'f'.repeat(40)))).notFound).toBe(false);
   });
 
   it('keeps what it returns apart from what it holds', async () => {

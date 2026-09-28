@@ -356,16 +356,18 @@ export function storeContract(name: string, make: StoreFactory): void {
         owner: null,
         repo: null,
         branch: null,
+        repo_id: null,
         token: null,
         device_id: expect.stringMatching(/.+/),
       });
 
       await store.saveSettings({ owner: 'lifter', repo: 'sisyphos-log', token: 'tok' });
-      await store.saveSettings({ branch: 'main', token: 'tok2' });
+      await store.saveSettings({ branch: 'main', repo_id: 861234567, token: 'tok2' });
       expect(await store.settings()).toEqual({
         owner: 'lifter',
         repo: 'sisyphos-log',
         branch: 'main',
+        repo_id: 861234567,
         token: 'tok2',
         device_id: settings.device_id,
       });

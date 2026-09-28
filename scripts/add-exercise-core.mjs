@@ -83,8 +83,21 @@ export function parseIssueForm(body) {
   return fields;
 }
 
-/** A value quoted for a message, so a stray newline or backtick shows as what it is. */
-const shown = (/** @type {string} */ value) => JSON.stringify(value);
+/**
+ * A value quoted for a message, so a stray newline or backtick shows as what it
+ * is, inside a code span. The messages become a comment the bot posts on the
+ * issue, and outside code GitHub makes `@name` a mention, notifying whoever
+ * that is on the bot's behalf, and `#12` a link to issue 12. The span's fence
+ * is one backtick longer than any run of backticks in the value, so the value
+ * cannot close it.
+ * @param {string} value
+ */
+const shown = (value) => {
+  const quoted = JSON.stringify(value);
+  const longest = Math.max(0, ...(quoted.match(/`+/g) ?? []).map((run) => run.length));
+  const fence = '`'.repeat(longest + 1);
+  return `${fence}${quoted}${fence}`;
+};
 
 /** @param {string} cell */
 const list = (cell) =>
@@ -97,11 +110,23 @@ const list = (cell) =>
  * Whether the app's CSV writer would have to quote this cell (docs/STORAGE.md
  * 1.4). The shipped library holds no quoted cells and is read by splitting on
  * commas and newlines, so such a value would corrupt the row, or the file,
- * rather than be stored. Whitespace at either end, the rule's other case, is
- * trimmed off every value before it gets here.
+ * rather than be stored. Whitespace at either end, one of the rule's other
+ * cases, is trimmed off every value before it gets here; a leading #, the last,
+ * is refused with every other # by `githubReads`.
  * @param {string} cell
  */
-const needsQuoting = (cell) => /[,"\r\n]/.test(cell) || cell.startsWith('#');
+const needsQuoting = (cell) => /[,"\r\n]/.test(cell);
+
+/**
+ * Whether GitHub would read something in this cell as a reference, anywhere in
+ * it. The row goes into the commit message and the pull request, and the name
+ * into the pull request's title. There `#12` links issue 12, and "Fixes #12" in
+ * the merged commit closes it; `@name` mentions someone, notifying them on the
+ * bot's behalf. Neither character is worth that in a library row, so both are
+ * refused, and the submitter is told why.
+ * @param {string} cell
+ */
+const githubReads = (cell) => /[#@]/.test(cell);
 
 /**
  * Reads the submitted row and checks everything that does not depend on which
@@ -140,11 +165,17 @@ export function readSubmission(body, muscles) {
   };
 
   // Checked first and for every cell, whatever else is checked below: whatever
-  // reaches the file must not be able to change its shape.
+  // reaches the file must not be able to change its shape, and whatever reaches
+  // GitHub must not be able to act there.
   for (const column of COLUMNS) {
     if (needsQuoting(cells[column])) {
       problems.push(
-        `\`${column}\` cannot contain commas, double quotes or line breaks, or start with #, got ${shown(cells[column])}`,
+        `\`${column}\` cannot contain commas, double quotes or line breaks, got ${shown(cells[column])}`,
+      );
+    }
+    if (githubReads(cells[column])) {
+      problems.push(
+        `\`${column}\` cannot contain \`#\` or \`@\`, which GitHub would read in the pull request as a link to an issue (\`#12\`, closing it after a word like "Fixes") or a mention of someone (\`@name\`), got ${shown(cells[column])}`,
       );
     }
   }

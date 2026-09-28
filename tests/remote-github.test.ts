@@ -163,7 +163,11 @@ const getHead = (reply: unknown = refJson, status = 200): Exchange => ({
 describe('GitHubRemote: each operation', () => {
   it('reads the repository, before any branch is known', async () => {
     const { remote } = github([{ method: 'GET', url: REPO, reply: repoJson }], null);
-    expect(await remote.repoInfo()).toEqual({ private: true, defaultBranch: 'main' });
+    expect(await remote.repoInfo()).toEqual({
+      id: 861234567,
+      private: true,
+      defaultBranch: 'main',
+    });
   });
 
   it('reports a public repository as such', async () => {
@@ -381,7 +385,7 @@ describe('GitHubRemote: failures', () => {
         reply: { ...treeJson, truncated: true },
       },
     ]);
-    await failure(remote.tree(HEAD), 'repo');
+    expect((await failure(remote.tree(HEAD), 'repo')).notFound).toBe(false);
   });
 
   it('retries when the network fails', async () => {
@@ -427,6 +431,29 @@ describe('GitHubRemote: failures', () => {
       'token',
     );
     expect(error.message).toContain('Contents');
+    expect(error.message).toContain('Resource not accessible by personal access token');
+  });
+
+  it.each([
+    'Repository was archived so is read-only.',
+    'Resource protected by organization SAML enforcement. You must grant your Personal Access token access to this organization.',
+    "The 'acme' organization forbids access via a fine-grained personal access tokens if the token's lifetime is greater than 366 days.",
+  ])('says what GitHub said on a 403 a new permission would not fix: %s', async (message) => {
+    const { remote } = github([
+      {
+        ...getHead({ message, status: '403' }, 403),
+        headers: { 'x-ratelimit-remaining': '4990', 'x-ratelimit-reset': '1790510400' },
+      },
+    ]);
+    const error = await failure(remote.head(), 'token');
+    expect(error.message).toContain(message);
+    expect(error.message).toContain('Contents');
+  });
+
+  it('keeps the token out of what GitHub said on a 403', async () => {
+    const { remote } = github([getHead({ message: `Token ${TOKEN} is not approved` }, 403)]);
+    const error = await failure(remote.head(), 'token');
+    expect(error.message).toContain('Token [token] is not approved');
   });
 
   it('waits for the reset time of a primary rate limit (403, x-ratelimit-remaining: 0)', async () => {
@@ -475,6 +502,15 @@ describe('GitHubRemote: failures', () => {
     expect(error.retryAt).toEqual(new Date('2026-09-27T12:00:30.000Z'));
   });
 
+  it('waits a minute for a 429 that carries no headers and no message', async () => {
+    vi.useFakeTimers({ toFake: ['Date'] });
+    vi.setSystemTime(new Date('2026-09-27T12:00:00.000Z'));
+    // A 429 is a rate limit whatever it carries (section 6).
+    const { remote } = github([{ ...getHead(), status: 429, reply: undefined }]);
+    const error = await failure(remote.head(), 'rate_limit');
+    expect(error.retryAt).toEqual(new Date('2026-09-27T12:01:00.000Z'));
+  });
+
   it('waits a minute for a secondary rate limit that names no time', async () => {
     vi.useFakeTimers({ toFake: ['Date'] });
     vi.setSystemTime(new Date('2026-09-27T12:00:00.000Z'));
@@ -490,12 +526,21 @@ describe('GitHubRemote: failures', () => {
     );
     const error = await failure(remote.repoInfo(), 'repo');
     expect(error.message).toContain('lifter/sisyphos-log');
+    expect(error.notFound).toBe(true);
   });
 
   it('reports a missing branch (404)', async () => {
     const { remote } = github([getHead(notFoundJson, 404)]);
     const error = await failure(remote.head(), 'repo');
     expect(error.message).toContain('main');
+    expect(error.notFound).toBe(true);
+  });
+
+  it('stops on a repository answer with no id', async () => {
+    const { id: _, ...withoutId } = repoJson;
+    const { remote } = github([{ method: 'GET', url: REPO, reply: withoutId }], null);
+    const error = await failure(remote.repoInfo(), 'bug');
+    expect(error.message).toContain('id');
   });
 
   it('reports what GitHub said when it refuses a write (422)', async () => {
@@ -521,6 +566,8 @@ describe('GitHubRemote: failures', () => {
       'repo',
     );
     expect(error.message).toContain('GitRPC::BadObjectState');
+    // Found, and refused: setup must not call this "not found".
+    expect(error.notFound).toBe(false);
   });
 
   it('stops on a file whose content does not hash to its sha', async () => {
@@ -540,7 +587,7 @@ describe('GitHubRemote: failures', () => {
         reply: { ...blobJson, sha: OTHER, content: wrapped(base64(bytes)) },
       },
     ]);
-    await failure(remote.blob(OTHER), 'repo');
+    expect((await failure(remote.blob(OTHER), 'repo')).notFound).toBe(false);
   });
 
   it('stops on an answer that lacks what the request is for', async () => {
@@ -609,6 +656,36 @@ describe('GitHubRemote: the token', () => {
     const { remote } = github([getHead({ message: `Bad credentials for ${TOKEN}` }, 422)]);
     const error = await failure(remote.head(), 'repo');
     expect(error.message).toContain('[token]');
+  });
+
+  it.each([
+    ['a "…" from a shortened copy', `${TOKEN.slice(0, 40)}…`],
+    ['a space', `${TOKEN.slice(0, 40)} ${TOKEN.slice(40)}`],
+    ['a line break', `${TOKEN.slice(0, 40)}\n${TOKEN.slice(40)}`],
+  ])('is refused as a token, not as no network, when it holds %s', async (_, token) => {
+    // A fetch like the browser's: building the request refuses a header value
+    // that is not Latin-1 with a TypeError, as it refuses no network.
+    const fetch = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+      new Request(input, init);
+      return new Response(JSON.stringify(refJson));
+    });
+    const remote = new GitHubRemote({
+      owner: 'lifter',
+      repo: 'sisyphos-log',
+      token,
+      branch: 'main',
+      fetch,
+    });
+    const error = await remote.head().then(
+      () => null,
+      (e: unknown) => e,
+    );
+    expect(error).toBeInstanceOf(SyncError);
+    expect(error).toMatchObject({ kind: 'token', network: false });
+    const { message } = error as SyncError;
+    expect(message).toContain('characters a GitHub token cannot');
+    expect(message).not.toContain(TOKEN.slice(0, 40));
+    expect(fetch).not.toHaveBeenCalled();
   });
 });
 

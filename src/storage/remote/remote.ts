@@ -24,6 +24,13 @@ export interface RemoteTree {
 }
 
 export interface RepoInfo {
+  /**
+   * GitHub's id for the repository (`id` of `GET /repos/{o}/{r}`). It survives a
+   * rename or a transfer, and a repository deleted and created again under the
+   * same name gets a new one. That new repository holds another history, so
+   * setup tells the two apart by this, not by the name (section 8).
+   */
+  id: number;
   private: boolean;
   defaultBranch: string;
 }
@@ -67,9 +74,13 @@ export interface Remote {
   }): Promise<NewCommit>;
 
   /**
-   * Moves the branch from `from` to `to`, fast-forward only. Returns 'raced' only
-   * when a fresh read of the head shows it is no longer `from`: another device got
-   * there first. Any other refusal is thrown as the error it is (section 4.2).
+   * Moves the branch from `from` to `to`, fast-forward only. GitHub checks `to`
+   * against the head as it is, not against `from`: the move succeeds whenever
+   * `to` descends from the current head, even if the head is no longer `from`
+   * (another client force-reset it to an ancestor of `from`, say). Returns
+   * 'raced' only when the move was refused and a fresh read of the head shows it
+   * is no longer `from`: another device got there first. Any other refusal is
+   * thrown as the error it is (section 4.2).
    */
   moveBranch(from: string, to: string): Promise<'moved' | 'raced'>;
 

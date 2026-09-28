@@ -30,17 +30,26 @@ export class SyncError extends Error {
    * a storage failure carries too.
    */
   readonly network: boolean;
+  /**
+   * For `repo`: GitHub answered 404, so the repository, its branch or something
+   * in it is gone, or the token cannot see it. Every other `repo` error comes
+   * from a repository GitHub did find: a refused write, a tree too big to list, a
+   * file that is not text. Said explicitly by the remote adapter, like `network`,
+   * so setup can tell a wrong name or token from a repo it cannot use as it is.
+   */
+  readonly notFound: boolean;
 
   constructor(
     kind: SyncErrorKind,
     message: string,
-    options: { retryAt?: Date | null; cause?: unknown; network?: boolean } = {},
+    options: { retryAt?: Date | null; cause?: unknown; network?: boolean; notFound?: boolean } = {},
   ) {
     super(message, { cause: options.cause });
     this.name = 'SyncError';
     this.kind = kind;
     this.retryAt = options.retryAt ?? null;
     this.network = options.network ?? false;
+    this.notFound = options.notFound ?? false;
   }
 }
 

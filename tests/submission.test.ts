@@ -263,7 +263,7 @@ describe('from the link to the library row, without GitHub', () => {
   it('adds a new exercise with an awkward name', () => {
     const exercise: Exercise = {
       ...paused,
-      name: "Meadow's Press & Hold #2 (50% + 5)/side",
+      name: "Meadow's Press & Hold No. 2 (50% + 5)/side",
       base_lift: null,
       unilateral: true,
       load_type: 'bw_plus',
@@ -277,10 +277,25 @@ describe('from the link to the library row, without GitHub', () => {
     });
     if (!result.ok) throw new Error(result.problems.join('\n'));
     expect(result.submission.row).toBe(
-      "pause_squat_3ct,Meadow's Press & Hold #2 (50% + 5)/side,,high_spec,true,bw_plus,lb,pecs,",
+      "pause_squat_3ct,Meadow's Press & Hold No. 2 (50% + 5)/side,,high_spec,true,bw_plus,lb,pecs,",
     );
     expect(parseExercises(result.exercises, muscles).find((e) => e.id === exercise.id)).toEqual(
       exercise,
     );
   });
+
+  it.each(['Press & Hold #2', 'Fixes #12', 'Squat for @octocat'])(
+    'refuses a name GitHub would read as an issue link or a mention: %s',
+    (name) => {
+      const result = addExercise({
+        body: fileIssue({ ...paused, name }, 'new'),
+        exercises: exercisesCsv,
+        muscles: musclesCsv,
+      });
+      expect(result.ok).toBe(false);
+      expect(!result.ok && result.problems).toEqual([
+        expect.stringMatching(/^`name` cannot contain `#` or `@`/),
+      ]);
+    },
+  );
 });

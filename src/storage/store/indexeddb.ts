@@ -67,6 +67,7 @@ const MIGRATIONS: Upgrade[] = [
       owner: null,
       repo: null,
       branch: null,
+      repo_id: null,
       token: null,
       device_id: crypto.randomUUID(),
     };

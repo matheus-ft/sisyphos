@@ -1,7 +1,7 @@
 import { FormatError, SyncError } from './errors';
 import { parseFormatMarker, serializeFormatMarker } from './formats';
 import { FORMAT_PATH, FORMAT_VERSION } from './paths';
-import type { Remote } from './remote/remote';
+import type { Remote, RepoInfo } from './remote/remote';
 import type { LocalStore, Settings } from './store/store';
 
 /**
@@ -21,8 +21,15 @@ export interface SetupInput {
   token: string;
 }
 
+/**
+ * Why setup was refused. `not_found` is GitHub's 404 alone: a wrong name, or a
+ * token that cannot see the repo. `repo_problem` is a repo GitHub found but that
+ * cannot be used as it is (a protected branch refusing the first commit, a tree
+ * too big to list, a `sisyphos.json` that is not text); its message says what,
+ * in GitHub's or the adapter's words, since another name would not help.
+ */
 export type SetupFailure =
-  'not_found' | 'public' | 'not_a_log' | 'token' | 'needs_update' | 'network';
+  'not_found' | 'repo_problem' | 'public' | 'not_a_log' | 'token' | 'needs_update' | 'network';
 
 export type SetupResult =
   { ok: true; initialised: boolean } | { ok: false; reason: SetupFailure; message: string };
@@ -65,7 +72,7 @@ export async function setUp(input: SetupInput, deps: SetupDeps): Promise<SetupRe
     const prepared = await prepare(deps.makeRemote({ ...input, branch }), name);
     if (!prepared.ok) return prepared;
 
-    await save(deps.store, input, branch);
+    await save(deps.store, input, info);
     return prepared;
   } catch (error) {
     return failed(error);
@@ -150,22 +157,35 @@ function checkFormat(text: string, name: string): SetupResult {
  * app killed between the two writes, the old repo would be merged from null
  * bases next time, which is safe; the other order would not be.
  */
-async function save(store: LocalStore, input: SetupInput, branch: string): Promise<void> {
-  if (!sameLog(await store.settings(), input, branch)) await store.resetSync();
-  await store.saveSettings({ owner: input.owner, repo: input.repo, branch, token: input.token });
+async function save(store: LocalStore, input: SetupInput, info: RepoInfo): Promise<void> {
+  if (!sameLog(await store.settings(), input, info)) await store.resetSync();
+  await store.saveSettings({
+    owner: input.owner,
+    repo: input.repo,
+    branch: info.defaultBranch,
+    repo_id: info.id,
+    token: input.token,
+  });
 }
 
 /**
  * Whether the device already syncs with this log. A new token for it changes
  * nothing else (section 8). GitHub names ignore case, so `Me/Log` is `me/log`.
- * A different default branch counts as another log: it may hold another
- * history, against which the old bases would read as deletions too.
+ *
+ * The name is not enough. A repo deleted and created again under the same name
+ * holds another history, against which the old bases would read as deletions,
+ * and the first sync would delete from the device everything the new repo
+ * lacks. GitHub gives it a new id, so the ids must match too; a stored id that
+ * is missing or null never matches, since forgetting the bases of the same repo
+ * costs one full comparison, and keeping those of another loses data. A
+ * different default branch counts as another log for the same reason.
  */
-function sameLog(before: Settings, input: SetupInput, branch: string): boolean {
+function sameLog(before: Settings, input: SetupInput, info: RepoInfo): boolean {
   return (
     sameName(before.owner, input.owner) &&
     sameName(before.repo, input.repo) &&
-    before.branch === branch
+    before.repo_id === info.id &&
+    before.branch === info.defaultBranch
   );
 }
 
@@ -175,13 +195,15 @@ function sameName(a: string | null, b: string): boolean {
 
 /**
  * A failure from the remote, by class (section 6). A 404 at any step means the
- * repo, or the token's view of it, is not what the lifter thinks.
+ * repo, or the token's view of it, is not what the lifter thinks. Any other
+ * `repo` error comes from a repo GitHub found, and calling it not found would
+ * send the lifter to check a name that is right.
  */
 function failed(error: unknown): Refusal {
   if (!(error instanceof SyncError)) throw error;
   switch (error.kind) {
     case 'repo':
-      return refuse('not_found', error.message);
+      return refuse(error.notFound ? 'not_found' : 'repo_problem', error.message);
     case 'token':
       return refuse('token', error.message);
     case 'update':
