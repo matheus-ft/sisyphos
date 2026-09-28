@@ -583,6 +583,9 @@ function sameSettings(a: Settings | null, b: Settings): boolean {
     a.owner === b.owner &&
     a.repo === b.repo &&
     a.branch === b.branch &&
-    a.token === b.token
+    a.token === b.token &&
+    // A repo deleted and created again under the same name is another repo
+    // (section 8), so it lifts a stop the old one caused, as any new repo does.
+    (a.repo_id ?? null) === (b.repo_id ?? null)
   );
 }

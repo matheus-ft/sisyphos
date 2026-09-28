@@ -555,6 +555,12 @@ another matter: it clears every base, `last_synced_head`, `last_synced_tree` and
 never compares against the old repo's history. Skipping setup is allowed;
 exposure is then `unprotected` until it is done.
 
+A repo is identified by GitHub's repository id, stored at setup, not by its
+name. A repo deleted and created again under the same name gets a new id, holds
+another history, and so counts as a different repo. Setup runs while no sync
+does (it holds the same lock, 7.2), so a sync of the old repo cannot write its
+bases back over the cleared ones.
+
 The token is stored in `settings` on the device only. It is sent only as an
 `Authorization` header to `api.github.com`, and never logged or synced.
 

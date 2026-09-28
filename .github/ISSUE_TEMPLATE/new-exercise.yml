@@ -36,7 +36,7 @@ body:
     id: name
     attributes:
       label: name
-      description: No commas or double quotes
+      description: No commas, double quotes, # or @
       placeholder: 3-Count Paused Squat
     validations:
       required: true
