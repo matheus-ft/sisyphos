@@ -134,13 +134,13 @@ settles. A remote file that does not parse is **unreadable** (section 6).
 
 IndexedDB holds, per install:
 
-| Store       | Contents                                                                                                                      |
-| ----------- | ----------------------------------------------------------------------------------------------------------------------------- |
-| `content`   | Every log-repo file the device holds, keyed by path, as the exact text it would push                                          |
-| `sync`      | One entry per log-repo path: `base_sha`, `local_sha`, `unsynced_since`, and for tables `base_body`                            |
-| `sync_meta` | `last_synced_head` and `last_synced_tree`: the commit, and its tree, that every base agreed with when the last sync completed |
-| `inflight`  | At most one entry: the commit this device is trying to land (4.5)                                                             |
-| `settings`  | Repo owner and name, branch, token, device id. Never synced                                                                   |
+| Store       | Contents                                                                                                                                                                           |
+| ----------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `content`   | Every log-repo file the device holds, keyed by path, as the exact text it would push                                                                                               |
+| `sync`      | One entry per log-repo path: `base_sha`, `local_sha`, `unsynced_since`, and for tables `base_body`                                                                                 |
+| `sync_meta` | `last_synced_head`: the newest commit the bases were moved against, which the history check anchors at. `last_synced_tree`: its tree, recorded only when every base agrees with it |
+| `inflight`  | At most one entry: the commit this device is trying to land (4.5)                                                                                                                  |
+| `settings`  | Repo owner and name, branch, token, device id. Never synced                                                                                                                        |
 
 The store keeps files, not records, and knows nothing about what they mean. That
 is what lets the sync treat every path the same way. Sessions, rows and the rest
@@ -264,9 +264,9 @@ A sync runs under the lock described in 7.2. In outline:
      device has changed, in one operation on the write queue, so that no write
      can land between the two reads. Step 5's "agreed" bases depend on the two
      describing the same moment.
-3. **Read the remote tree**, recursively. When the head has not moved, no
-   request is needed: the remote's files are exactly the bases, and the tree is
-   `last_synced_tree`.
+3. **Read the remote tree**, recursively. When the head has not moved and
+   `last_synced_tree` is recorded, no request is needed: the remote's files are
+   exactly the bases, and the tree is `last_synced_tree`.
 4. **Fetch** the content the decision needs (4.3): the remote version of every
    path whose remote sha differs from both its base and its local sha.
    Concurrency is capped at six requests.
@@ -282,15 +282,19 @@ A sync runs under the lock described in 7.2. In outline:
      remote's, and keeps its old rows for the rest;
    - collect every path whose result differs from the remote version, plus the
      new conflict records: that is what must be pushed.
-6. If nothing must be pushed, set `last_synced_head` and `last_synced_tree` to
-   the head and stop.
+6. In the same operation, set `last_synced_head` to the head: every base this
+   moved describes it, and the history check must anchor at the newest such
+   commit, or a rewrite could slip past it. Set `last_synced_tree` to the
+   head's tree only if nothing must be pushed and every base agrees with the
+   remote, and to null otherwise. If nothing must be pushed, stop.
 7. **Write** the tree (on the head's tree) and the commit (parent: the head).
 8. **Record** the commit and its tree in `inflight` (on the write queue), with
    the sha of every pushed path, and for tables the pushed body.
 9. **Move the branch** to the commit, fast-forward only.
 10. **Settle**, on the write queue: set each pushed path's base to what was
-    pushed (for tables, `base_body` too), set `last_synced_head` and
-    `last_synced_tree`, and clear `inflight`.
+    pushed (for tables, `base_body` too), set `last_synced_head` to the new
+    commit and `last_synced_tree` to its tree (null unless every base agrees,
+    as in step 6), and clear `inflight`.
 
 If step 9 is refused because the branch moved, clear `inflight` and go back to
 step 2. The bases of pushed paths are still the old ones, so the next round
@@ -377,7 +381,9 @@ holds a commit:
 
 1. Ask whether the current head's history contains it (the compare operation:
    `identical` or `ahead` means it does).
-2. If it does, the commit landed: apply step 10 from the recorded shas.
+2. If it does, the commit landed: apply step 10 from the recorded shas, with
+   `last_synced_head` set to that commit and `last_synced_tree` left null,
+   since whether every base agreed is not in the record.
 3. Either way, clear `inflight`. If the commit never landed, the device's
    content is still local and its bases are unchanged, so the sync that follows
    pushes it again.
@@ -449,15 +455,15 @@ same rules: rare, and still nothing is lost.
 
 Every failure falls in exactly one class, and the class decides what happens.
 
-| Class               | Examples                                                                                                           | Behaviour                                                                                                                                                                                             |
-| ------------------- | ------------------------------------------------------------------------------------------------------------------ | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| **Retryable**       | No network, timeout, 5xx, five rounds lost to other devices                                                        | Retry (7.2)                                                                                                                                                                                           |
-| **Rate limit**      | 403 or 429 with `x-ratelimit-remaining: 0` or `retry-after`                                                        | Wait until the time GitHub gives, then retry                                                                                                                                                          |
-| **Token**           | 401; 403 that is not a rate limit                                                                                  | Stop automatic syncing; tapping sync tries again. Status asks for a new token; syncing resumes once one is saved                                                                                      |
-| **Repo**            | 404 for the repo or branch (gone, renamed, or no longer visible to the token); format marker missing or unreadable | Stop automatic syncing; tapping sync tries again. Status says what is wrong                                                                                                                           |
-| **Update**          | Format newer than the app understands                                                                              | Stop automatic syncing; tapping sync tries again. Status asks the lifter to update the app                                                                                                            |
-| **Unreadable file** | A log-repo file that does not parse                                                                                | That path is left alone: not taken, not pushed, not overwritten. Every other path syncs, but the sync does not record the head as synced, so the next one reads the tree again. Status names the file |
-| **Bug**             | A fetched blob whose hash does not match its sha; a serialiser that fails to round-trip                            | Stop automatic syncing; tapping sync tries again. Report it, and never guess past a broken invariant                                                                                                  |
+| Class               | Examples                                                                                                           | Behaviour                                                                                                                                                                             |
+| ------------------- | ------------------------------------------------------------------------------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **Retryable**       | No network, timeout, 5xx, five rounds lost to other devices                                                        | Retry (7.2)                                                                                                                                                                           |
+| **Rate limit**      | 403 or 429 with `x-ratelimit-remaining: 0` or `retry-after`                                                        | Wait until the time GitHub gives, then retry                                                                                                                                          |
+| **Token**           | 401; 403 that is not a rate limit                                                                                  | Stop automatic syncing; tapping sync tries again. Status asks for a new token; syncing resumes once one is saved                                                                      |
+| **Repo**            | 404 for the repo or branch (gone, renamed, or no longer visible to the token); format marker missing or unreadable | Stop automatic syncing; tapping sync tries again. Status says what is wrong                                                                                                           |
+| **Update**          | Format newer than the app understands                                                                              | Stop automatic syncing; tapping sync tries again. Status asks the lifter to update the app                                                                                            |
+| **Unreadable file** | A log-repo file that does not parse                                                                                | That path is left alone: not taken, not pushed, not overwritten. Every other path syncs, but the sync does not record the tree, so the next one reads it again. Status names the file |
+| **Bug**             | A fetched blob whose hash does not match its sha; a serialiser that fails to round-trip                            | Stop automatic syncing; tapping sync tries again. Report it, and never guess past a broken invariant                                                                                  |
 
 A failed sync never loses anything: the device's content is untouched by a sync
 that did not reach step 5, and step 5 only applies decisions it has finished

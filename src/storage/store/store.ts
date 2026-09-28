@@ -27,9 +27,17 @@ export interface SyncEntry {
 }
 
 export interface SyncMeta {
-  /** The commit every base agreed with when the last sync completed. */
+  /**
+   * The newest commit the bases were moved against: every base describes that
+   * commit or its history. The history check (4.2 step 2) asks whether the head
+   * still holds it.
+   */
   last_synced_head: string | null;
-  /** That commit's tree. */
+  /**
+   * That commit's tree, recorded only when every base agrees with it; null
+   * otherwise. The step-3 shortcut takes the bases as the remote's files only
+   * when this is set.
+   */
   last_synced_tree: string | null;
 }
 

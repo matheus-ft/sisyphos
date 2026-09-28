@@ -546,8 +546,14 @@ describe('a pull', () => {
       expect(await a.disk.entry(path)).toEqual(before.get(path));
     }
     expect(files.get(sessionPath(S1.id))).toBe(serializeSession(session(S1.id, 'a')));
-    // S1's base is not the log's version at this head, so the head is not recorded.
-    expect(await a.disk.meta()).toEqual(recorded);
+    // The bases moved at this head, so the history check anchors there; S1's base
+    // is not the log's version at it, so the tree is not recorded and the next
+    // sync reads the tree again.
+    expect(await a.disk.meta()).toEqual({
+      last_synced_head: await remote.head(),
+      last_synced_tree: null,
+    });
+    expect(recorded.last_synced_head).not.toBe(await remote.head());
 
     // The full sync that follows finds what the pull left alone.
     const full = await a.sync();
@@ -610,7 +616,7 @@ describe('an unreadable remote file', () => {
     expect((await a.files()).get(sessionPath(S1.id))).toBe(serializeSession(mine));
     expect((await a.files()).get(BODYWEIGHT)).toBe(bodyweight(ROWS));
     // The head is not recorded, so the next sync reads the tree and reports them again.
-    expect((await a.disk.meta()).last_synced_head).not.toBe(await remote.head());
+    expect((await a.disk.meta()).last_synced_tree).toBeNull();
     let again: SyncResult | undefined;
     const calls = await callsDuring(remote, async () => {
       again = await a.sync();
@@ -668,7 +674,7 @@ describe('an unreadable remote file', () => {
       conflicts: [],
     });
     expect(await a.disk.entry(BODYWEIGHT)).toEqual(before);
-    expect((await a.disk.meta()).last_synced_head).not.toBe(await remote.head());
+    expect((await a.disk.meta()).last_synced_tree).toBeNull();
   });
 });
 
@@ -776,7 +782,7 @@ describe('a hand-formatted remote file', () => {
     // A pull takes nothing from it; the log still needs rewriting, so the head is not recorded.
     const pulled = await a.sync('pull');
     expect(pulled).toMatchObject({ taken: [], conflicts: [] });
-    expect((await a.disk.meta()).last_synced_head).not.toBe(await remote.head());
+    expect((await a.disk.meta()).last_synced_tree).toBeNull();
 
     const result = await a.sync();
     expect(result).toMatchObject({ taken: [], conflicts: [] });
@@ -855,7 +861,7 @@ describe('fetching', () => {
     const result = await a.sync();
     expect(result).toMatchObject({ committed: null, taken: [sessionPath(S3.id)], conflicts: [] });
     expect(remote.files().get(BODYWEIGHT)).toBe(both);
-    expect((await a.disk.meta()).last_synced_head).not.toBe(await remote.head());
+    expect((await a.disk.meta()).last_synced_tree).toBeNull();
 
     expect(await a.sync()).toMatchObject({ pushed: [BODYWEIGHT], conflicts: [] });
     expect(remote.files().get(BODYWEIGHT)).toBe(
@@ -946,6 +952,24 @@ describe('a rewritten history', () => {
       pushed: [sessionPath(S1.id)],
       conflicts: [],
     });
+    expect((await a.files()).get(sessionPath(S1.id))).toBe(serializeSession(S1));
+    expect(remote.files().get(sessionPath(S1.id))).toBe(serializeSession(S1));
+  });
+
+  it('is caught even when an unreadable file kept the tree from being recorded', async () => {
+    const remote = newLog();
+    // A file that never parses keeps every sync from recording the tree (section 6).
+    remote.externalCommit([{ path: 'sessions/2026/2026-01-01-zzzz.json', content: 'not json\n' }]);
+    const early = (await remote.head())!;
+    const a = new Device(remote, 'dev-a', { seed: 1 });
+    await a.put(sessionFile(S1));
+    expect((await a.sync()).unreadable).toEqual(['sessions/2026/2026-01-01-zzzz.json']);
+
+    remote.forceBranch(early);
+    remote.externalCommit([change(sessionFile(S2))]);
+    await a.sync();
+    // The history check anchored at the head S1's base was moved against, so
+    // the rewrite is seen and S1 is pushed back, not deleted as missing.
     expect((await a.files()).get(sessionPath(S1.id))).toBe(serializeSession(S1));
     expect(remote.files().get(sessionPath(S1.id))).toBe(serializeSession(S1));
   });

@@ -149,7 +149,14 @@ async function recover(context: Context): Promise<void> {
   const head = await remote.head();
   if (head === null) throw noCommits();
   const landed = await remote.contains(inflight.commit, head);
-  const ops: StoreOp[] = landed ? settleBases(inflight) : [];
+  // Landed: the pushed bases describe that commit, so the history check anchors
+  // there; its tree is not recorded, since whether every base agreed is not known.
+  const ops: StoreOp[] = landed
+    ? [
+        ...settleBases(inflight),
+        { op: 'meta', meta: { last_synced_head: inflight.commit, last_synced_tree: null } },
+      ]
+    : [];
   await onDevice(() =>
     store.exclusive((s) => s.apply([...ops, { op: 'inflight', inflight: null }])),
   );
@@ -293,11 +300,21 @@ async function syncRound(
         }).run(candidates),
       );
 
-      // 6. Nothing to push: the head is synced, if every base now agrees with it.
+      // 5 and 6. Every base this moved now describes the remote at `head`, so the
+      // history check anchors there from now on (step 2), whatever else happens;
+      // an anchor left behind would let a rewritten history slip past it. The tree
+      // is recorded only when nothing is left to push and every base agrees with
+      // it: that is what the step-3 shortcut relies on.
       const ops = [...plan.ops];
-      const record = plan.pushes.length === 0 && plan.agreed;
-      if (record && (meta.last_synced_head !== head || meta.last_synced_tree !== tree.sha)) {
-        ops.push({ op: 'meta', meta: { last_synced_head: head, last_synced_tree: tree.sha } });
+      const anchor = {
+        last_synced_head: head,
+        last_synced_tree: plan.pushes.length === 0 && plan.agreed ? tree.sha : null,
+      };
+      if (
+        meta.last_synced_head !== anchor.last_synced_head ||
+        meta.last_synced_tree !== anchor.last_synced_tree
+      ) {
+        ops.push({ op: 'meta', meta: anchor });
       }
       if (ops.length > 0) await s.apply(ops);
       return plan;
@@ -344,13 +361,13 @@ async function syncRound(
   }
 
   // 10. Settle.
+  // The pushed bases now describe the new commit, so the anchor moves to it;
+  // the tree only when every base agrees with it (step 6).
   const settle: StoreOp[] = settleBases(inflight);
-  if (plan.agreed) {
-    settle.push({
-      op: 'meta',
-      meta: { last_synced_head: next.commit, last_synced_tree: next.tree },
-    });
-  }
+  settle.push({
+    op: 'meta',
+    meta: { last_synced_head: next.commit, last_synced_tree: plan.agreed ? next.tree : null },
+  });
   settle.push({ op: 'inflight', inflight: null });
   await onDevice(() => store.exclusive((s) => s.apply(settle)));
 
