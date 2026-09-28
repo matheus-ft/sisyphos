@@ -10,6 +10,7 @@
     "check": "svelte-check --tsconfig ./tsconfig.app.json && tsc -p tsconfig.node.json",
     "test": "vitest run",
     "test:watch": "vitest",
+    "smoke": "vitest run tests/smoke.live.test.ts --mode smoke --reporter=verbose",
     "format": "prettier --write .",
     "format:check": "prettier --check .",
     "hooks:install": "git config core.hooksPath .githooks",
