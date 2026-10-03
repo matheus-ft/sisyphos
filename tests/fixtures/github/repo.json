@@ -1,0 +1,31 @@
+{
+  "id": 861234567,
+  "node_id": "R_kgDOM1a2bw",
+  "name": "sisyphos-log",
+  "full_name": "lifter/sisyphos-log",
+  "private": true,
+  "owner": {
+    "login": "lifter",
+    "id": 1234567,
+    "node_id": "U_kgDOABLWhw",
+    "type": "User",
+    "url": "https://api.github.com/users/lifter"
+  },
+  "html_url": "https://github.com/lifter/sisyphos-log",
+  "description": null,
+  "fork": false,
+  "url": "https://api.github.com/repos/lifter/sisyphos-log",
+  "created_at": "2026-09-01T10:00:00Z",
+  "updated_at": "2026-09-27T09:12:44Z",
+  "pushed_at": "2026-09-27T09:12:43Z",
+  "size": 12,
+  "visibility": "private",
+  "default_branch": "main",
+  "permissions": {
+    "admin": true,
+    "maintain": true,
+    "push": true,
+    "triage": true,
+    "pull": true
+  }
+}

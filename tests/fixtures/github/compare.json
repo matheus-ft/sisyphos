@@ -1,0 +1,40 @@
+{
+  "url": "https://api.github.com/repos/lifter/sisyphos-log/compare/47d95352d32c158115d1787fb44d3743bb867486...3d66f61923ba44a8fc8519d840b604d1ada2a3d1",
+  "html_url": "https://github.com/lifter/sisyphos-log/compare/47d95352d32c158115d1787fb44d3743bb867486...3d66f61923ba44a8fc8519d840b604d1ada2a3d1",
+  "permalink_url": "https://github.com/lifter/sisyphos-log/compare/lifter:47d9535...lifter:3d66f61",
+  "diff_url": "https://github.com/lifter/sisyphos-log/compare/47d95352d32c158115d1787fb44d3743bb867486...3d66f61923ba44a8fc8519d840b604d1ada2a3d1.diff",
+  "patch_url": "https://github.com/lifter/sisyphos-log/compare/47d95352d32c158115d1787fb44d3743bb867486...3d66f61923ba44a8fc8519d840b604d1ada2a3d1.patch",
+  "base_commit": {
+    "sha": "47d95352d32c158115d1787fb44d3743bb867486",
+    "url": "https://api.github.com/repos/lifter/sisyphos-log/commits/47d95352d32c158115d1787fb44d3743bb867486"
+  },
+  "merge_base_commit": {
+    "sha": "47d95352d32c158115d1787fb44d3743bb867486",
+    "url": "https://api.github.com/repos/lifter/sisyphos-log/commits/47d95352d32c158115d1787fb44d3743bb867486"
+  },
+  "status": "ahead",
+  "ahead_by": 1,
+  "behind_by": 0,
+  "total_commits": 1,
+  "commits": [
+    {
+      "sha": "3d66f61923ba44a8fc8519d840b604d1ada2a3d1",
+      "url": "https://api.github.com/repos/lifter/sisyphos-log/commits/3d66f61923ba44a8fc8519d840b604d1ada2a3d1",
+      "parents": [
+        {
+          "sha": "47d95352d32c158115d1787fb44d3743bb867486"
+        }
+      ]
+    }
+  ],
+  "files": [
+    {
+      "sha": "e613cf2671d9de6b68fd2ba74fc9585de5abef07",
+      "filename": "sessions/2026/2026-09-14-k3f9.json",
+      "status": "added",
+      "additions": 5,
+      "deletions": 0,
+      "changes": 5
+    }
+  ]
+}

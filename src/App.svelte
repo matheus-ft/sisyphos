@@ -18,6 +18,7 @@
     CONFIG,
   } from './metrics/definitions';
   import type { PerformedSet } from './model';
+  import DevPanel from './DevPanel.svelte';
 
   // No logging UI yet. This page reads the real library and charts so a broken
   // reference shows up now rather than in three weeks, and it demonstrates the
@@ -83,6 +84,8 @@
     Schema and metric layer wired up; no logging UI yet. Everything below is computed live from
     <code>config/</code> — {exercises.length} exercises, {muscles.length} muscle groups.
   </p>
+
+  <DevPanel />
 
   <section>
     <h2>Muscle counting</h2>

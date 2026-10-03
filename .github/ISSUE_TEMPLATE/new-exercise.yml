@@ -1,68 +1,99 @@
-name: New exercise
-description: Add an exercise to the shared library
+name: Exercise
+description: Add an exercise to the shared library, or change one already in it
 title: 'exercise: '
 labels: [exercise-submission]
+# Every field is a text input, even those with a fixed set of values. The app
+# opens this form with every field filled in from the URL's query string, and
+# GitHub documents that for text fields only; dropdowns are reported not to
+# take it. The bot checks each value against the allowed ones instead.
+# src/library/submission.ts builds that URL, and scripts/add-exercise-core.mjs
+# reads the issue back by these labels: change a field's id or label there too.
 body:
   - type: markdown
     attributes:
       value: |
-        The app files this for you when you create an exercise. Filling it in by
-        hand works too. A bot validates the row and opens a pull request; if
-        something is wrong it says what, here, and you can edit and it retries.
+        The app files this for you, every field filled in, when you create an
+        exercise or change one. Filling it in by hand works too. A bot validates
+        the row and opens a pull request; if something is wrong it says what,
+        here, and when you edit the issue it tries again.
+  - type: input
+    id: kind
+    attributes:
+      label: kind
+      description: new, for an exercise the library does not have; change, to replace the row with this id
+      placeholder: new
+    validations:
+      required: true
   - type: input
     id: id
     attributes:
       label: id
       description: snake_case, stable forever, referenced by every log that uses it
       placeholder: pause_squat_3ct
-    validations: { required: true }
+    validations:
+      required: true
   - type: input
     id: name
-    attributes: { label: name, placeholder: 3-Count Paused Squat }
-    validations: { required: true }
-  - type: dropdown
+    attributes:
+      label: name
+      description: No commas, double quotes, # or @
+      placeholder: 3-Count Paused Squat
+    validations:
+      required: true
+  - type: input
     id: base_lift
     attributes:
       label: base_lift
-      description: Which competition event this serves. Volume attributes here and never crosses events.
-      options: [squat, bench, deadlift, none]
-    validations: { required: true }
-  - type: dropdown
+      description: squat, bench, deadlift, or none. Which competition event this serves; volume attributes here and never crosses events.
+      placeholder: squat
+    validations:
+      required: true
+  - type: input
     id: tier
     attributes:
       label: tier
-      description: Specificity relative to that event
-      options:
-        - comp
-        - high_spec
-        - low_spec
-        - acc
-    validations: { required: true }
-  - type: dropdown
+      description: comp, high_spec, low_spec or acc. Specificity relative to that event.
+      placeholder: high_spec
+    validations:
+      required: true
+  - type: input
     id: unilateral
-    attributes: { label: unilateral, options: ['false', 'true'] }
-    validations: { required: true }
-  - type: dropdown
+    attributes:
+      label: unilateral
+      description: true for one set per side, otherwise false
+      placeholder: 'false'
+    validations:
+      required: true
+  - type: input
     id: load_type
     attributes:
       label: load_type
       description: external = the number on the bar; bw_plus = bodyweight plus the number; none = not weight-driven
-      options: [external, bw_plus, none]
-    validations: { required: true }
-  - type: dropdown
+      placeholder: external
+    validations:
+      required: true
+  - type: input
     id: default_unit
     attributes:
       label: default_unit
-      description: A hint for the entry form only. Each set records its own unit.
-      options: [kg, lb, pins]
-    validations: { required: true }
+      description: kg, lb or pins. A hint for the entry form only; each set records its own unit.
+      placeholder: kg
+    validations:
+      required: true
   - type: input
     id: primary
     attributes:
       label: primary movers
-      description: Muscle ids from src/library/muscles.csv, separated by /
+      description: >-
+        Muscle ids separated by /, from hamstrings, glutes, hip_flexors, quads,
+        adductors, calves, tibialis, abs, lower_back, lats, pecs, front_delts,
+        rear_delts, upper_back, biceps, triceps, forearms (src/library/muscles.csv)
       placeholder: quads/glutes
-    validations: { required: true }
+    validations:
+      required: true
   - type: input
     id: aux
-    attributes: { label: auxiliary muscles, placeholder: adductors/lower_back }
+    attributes:
+      label: auxiliary muscles
+      description: Muscle ids separated by /, as above, none of them a primary mover. May be empty.
+      placeholder: adductors/lower_back

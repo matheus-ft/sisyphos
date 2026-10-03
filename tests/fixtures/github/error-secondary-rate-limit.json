@@ -1,0 +1,5 @@
+{
+  "message": "You have exceeded a secondary rate limit. Please wait a few minutes before you try again. If you reach out to GitHub Support for help, please include the request ID C0DE:1A2B:3C4D5E:6F7A8B:66F6A1B3 and timestamp 2026-09-27 12:00:00 UTC.",
+  "documentation_url": "https://docs.github.com/rest/overview/rate-limits-for-the-rest-api#about-secondary-rate-limits",
+  "status": "403"
+}

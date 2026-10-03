@@ -65,8 +65,12 @@ are meant to be read.
   holds. If two devices ever did pick the same one, sync would see one file with
   two contents and treat it as a conflict (4.3), so even then nothing is lost.
 - A slug is the name lowercased, with every run of characters other than ASCII
-  letters and digits replaced by one hyphen, trimmed of hyphens, and cut to 40
-  characters.
+  letters and digits replaced by one hyphen, trimmed of hyphens, cut to 40
+  characters, and trimmed of a trailing hyphen again, since the cut can end on
+  one. A name that leaves nothing (empty, or only punctuation or letters outside
+  ASCII) has the slug `template`. Either way the id is hyphen-separated runs of
+  letters and digits: no doubled hyphen before the random characters, and none
+  leading.
 - An id never changes. A session moved to another date, or a template renamed,
   keeps its id: the file name is a label, and the record's fields are the truth.
 - Ids that never appear in a path (exercise instances, sets) stay random UUIDs.
@@ -101,9 +105,11 @@ built. Absent values are `null`, never omitted.
 **CSV files:**
 
 - A header row, then one row per record, comma-separated.
-- A cell containing a comma, a double quote, `\r` or `\n`, or starting with `#`,
-  is wrapped in double quotes, with inner quotes doubled (RFC 4180). No other
-  cell is quoted.
+- A cell containing a comma, a double quote, `\r` or `\n`, starting with `#`, or
+  starting or ending with whitespace, is wrapped in double quotes, with inner
+  quotes doubled (RFC 4180). No other cell is quoted. The reader trims unquoted
+  cells (the shipped library relies on it), so whitespace a value really has
+  must be quoted to survive.
 - `null` is an empty cell. Booleans are `true` or empty. Numbers use JavaScript's
   shortest round-trip form (`String(n)`). Dates are `YYYY-MM-DD`; instants are
   ISO-8601 UTC with milliseconds.
@@ -128,16 +134,25 @@ settles. A remote file that does not parse is **unreadable** (section 6).
 
 IndexedDB holds, per install:
 
-| Store                     | Contents                                                                                                                      |
-| ------------------------- | ----------------------------------------------------------------------------------------------------------------------------- |
-| One store per record type | Sessions, templates, conflict records, and the rows of each table. Sessions are indexed by `date`                             |
-| `sync`                    | One entry per log-repo path: `base_sha`, `local_sha`, `unsynced_since`, and for tables `base_body`                            |
-| `sync_meta`               | `last_synced_head` and `last_synced_tree`: the commit, and its tree, that every base agreed with when the last sync completed |
-| `inflight`                | At most one entry: the commit this device is trying to land (4.5)                                                             |
-| `settings`                | Repo owner and name, branch, token, device id. Never synced                                                                   |
+| Store       | Contents                                                                                                                                                                           |
+| ----------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `content`   | Every log-repo file the device holds, keyed by path, as the exact text it would push                                                                                               |
+| `sync`      | One entry per log-repo path: `base_sha`, `local_sha`, `unsynced_since`, and for tables `base_body`                                                                                 |
+| `sync_meta` | `last_synced_head`: the newest commit the bases were moved against, which the history check anchors at. `last_synced_tree`: its tree, recorded only when every base agrees with it |
+| `inflight`  | At most one entry: the commit this device is trying to land (4.5)                                                                                                                  |
+| `settings`  | Repo owner and name, branch, token, device id. Never synced                                                                                                                        |
+
+The store keeps files, not records, and knows nothing about what they mean. That
+is what lets the sync treat every path the same way. Sessions, rows and the rest
+are parsed from the content by the log layer (`storage/log.ts`), which caches
+each parsed file by its sha, so listing sessions reparses only what changed.
 
 The device id is random, generated once per install and never copied between
 devices. A restored device gets a new one.
+
+Every write, from any tab, runs one at a time: the write queue (2.2) holds a Web
+Lock across tabs where the browser has one, so another tab cannot write between
+a sync's read and its write.
 
 The IndexedDB schema is versioned. Opening an older version migrates it in the
 upgrade transaction, and a migration never drops data.
@@ -160,8 +175,8 @@ One queued operation:
 
 1. Reads what it needs (for a table row: the table's current rows).
 2. Computes the new record, the file's new serialisation and its hash (section
-   3). Hashing is asynchronous, so it happens here, **before** any transaction
-   opens.
+   3), **before** any transaction opens. Hashing is synchronous (a plain SHA-1,
+   `storage/hash.ts`), because the browser's own is asynchronous only.
 3. Opens one transaction and writes the record and its path's `sync` entry
    together. No `await` may separate two requests of one transaction: IndexedDB
    commits a transaction as soon as the microtask queue drains with nothing
@@ -239,9 +254,19 @@ A sync runs under the lock described in 7.2. In outline:
 1. **Recover** an unfinished commit, if `inflight` holds one (4.5).
 2. **Read the head.** If it equals `last_synced_head` and no path needs syncing,
    stop. The common case therefore costs one request.
-3. **Read the remote tree**, recursively. When the head has not moved, no
-   request is needed: the remote's files are exactly the bases, and the tree is
-   `last_synced_tree`.
+   - **History check.** If the head moved, ask whether its history still
+     contains `last_synced_head`. If it does not, the history was rewritten, or
+     this is not the repo the device last synced with. The bases then describe
+     files this remote never held, so the device forgets them all (as setup
+     does, section 8), and the sync goes on as a first sync, which can take,
+     push or conflict but never delete.
+   - **Snapshot.** Read the sync entries, and the content of each table the
+     device has changed, in one operation on the write queue, so that no write
+     can land between the two reads. Step 5's "agreed" bases depend on the two
+     describing the same moment.
+3. **Read the remote tree**, recursively. When the head has not moved and
+   `last_synced_tree` is recorded, no request is needed: the remote's files are
+   exactly the bases, and the tree is `last_synced_tree`.
 4. **Fetch** the content the decision needs (4.3): the remote version of every
    path whose remote sha differs from both its base and its local sha.
    Concurrency is capped at six requests.
@@ -257,15 +282,19 @@ A sync runs under the lock described in 7.2. In outline:
      remote's, and keeps its old rows for the rest;
    - collect every path whose result differs from the remote version, plus the
      new conflict records: that is what must be pushed.
-6. If nothing must be pushed, set `last_synced_head` and `last_synced_tree` to
-   the head and stop.
+6. In the same operation, set `last_synced_head` to the head: every base this
+   moved describes it, and the history check must anchor at the newest such
+   commit, or a rewrite could slip past it. Set `last_synced_tree` to the
+   head's tree only if nothing must be pushed and every base agrees with the
+   remote, and to null otherwise. If nothing must be pushed, stop.
 7. **Write** the tree (on the head's tree) and the commit (parent: the head).
 8. **Record** the commit and its tree in `inflight` (on the write queue), with
    the sha of every pushed path, and for tables the pushed body.
 9. **Move the branch** to the commit, fast-forward only.
 10. **Settle**, on the write queue: set each pushed path's base to what was
-    pushed (for tables, `base_body` too), set `last_synced_head` and
-    `last_synced_tree`, and clear `inflight`.
+    pushed (for tables, `base_body` too), set `last_synced_head` to the new
+    commit and `last_synced_tree` to its tree (null unless every base agrees,
+    as in step 6), and clear `inflight`.
 
 If step 9 is refused because the branch moved, clear `inflight` and go back to
 step 2. The bases of pushed paths are still the old ones, so the next round
@@ -306,6 +335,24 @@ takes what the remote has, pushes what it has, and records a conflict where both
 have different content. That is exactly right for a first sync onto an existing
 log.
 
+**A known limit: a deletion can be undone by a concurrent write.** Comparing
+three versions sees where a unit ended up, not the way it got there. When a
+device creates a record and deletes it again between syncs, or restores one and
+deletes it, its content ends where its base was. It then has no change to
+offer. The same holds on the remote side. If another device wrote that same
+record without having seen the deletion, its write simply stands: the deletion
+is not honoured, and no conflict is raised.
+
+Nothing is lost in this case: the record comes back, and deleting it again
+works. Catching it would take state this design deliberately does not keep:
+
+- a per-record marker that the device changed it since the last sync;
+- deletion markers (tombstones) kept in the files, which would never shrink
+  without a purge rule.
+
+Neither is worth it for a race this narrow in a single lifter's log. The
+simulation checks this limit exactly, and nothing wider (section 10).
+
 For a table, the file's result is the combination of every key's result, and it
 is pushed if it differs from R. A table's result is computed from the device's
 current rows at step 5, so an edit made while step 4 was fetching is included,
@@ -334,7 +381,9 @@ holds a commit:
 
 1. Ask whether the current head's history contains it (the compare operation:
    `identical` or `ahead` means it does).
-2. If it does, the commit landed: apply step 10 from the recorded shas.
+2. If it does, the commit landed: apply step 10 from the recorded shas, with
+   `last_synced_head` set to that commit and `last_synced_tree` left null,
+   since whether every base agreed is not in the record.
 3. Either way, clear `inflight`. If the commit never landed, the device's
    content is still local and its bases are unchanged, so the sync that follows
    pushes it again.
@@ -406,15 +455,15 @@ same rules: rare, and still nothing is lost.
 
 Every failure falls in exactly one class, and the class decides what happens.
 
-| Class               | Examples                                                                                                           | Behaviour                                                                                                                                                                                             |
-| ------------------- | ------------------------------------------------------------------------------------------------------------------ | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| **Retryable**       | No network, timeout, 5xx, five rounds lost to other devices                                                        | Retry (7.2)                                                                                                                                                                                           |
-| **Rate limit**      | 403 or 429 with `x-ratelimit-remaining: 0` or `retry-after`                                                        | Wait until the time GitHub gives, then retry                                                                                                                                                          |
-| **Token**           | 401; 403 that is not a rate limit                                                                                  | Stop automatic syncing. Status asks for a new token; syncing resumes once one is saved                                                                                                                |
-| **Repo**            | 404 for the repo or branch (gone, renamed, or no longer visible to the token); format marker missing or unreadable | Stop automatic syncing. Status says what is wrong                                                                                                                                                     |
-| **Update**          | Format newer than the app understands                                                                              | Stop syncing. Status asks the lifter to update the app                                                                                                                                                |
-| **Unreadable file** | A log-repo file that does not parse                                                                                | That path is left alone: not taken, not pushed, not overwritten. Every other path syncs, but the sync does not record the head as synced, so the next one reads the tree again. Status names the file |
-| **Bug**             | A fetched blob whose hash does not match its sha; a serialiser that fails to round-trip                            | Stop syncing and report it. Never guess past a broken invariant                                                                                                                                       |
+| Class               | Examples                                                                                                           | Behaviour                                                                                                                                                                             |
+| ------------------- | ------------------------------------------------------------------------------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **Retryable**       | No network, timeout, 5xx, five rounds lost to other devices                                                        | Retry (7.2)                                                                                                                                                                           |
+| **Rate limit**      | 403 or 429 with `x-ratelimit-remaining: 0` or `retry-after`                                                        | Wait until the time GitHub gives, then retry                                                                                                                                          |
+| **Token**           | 401; 403 that is not a rate limit                                                                                  | Stop automatic syncing; tapping sync tries again. Status asks for a new token; syncing resumes once one is saved                                                                      |
+| **Repo**            | 404 for the repo or branch (gone, renamed, or no longer visible to the token); format marker missing or unreadable | Stop automatic syncing; tapping sync tries again. Status says what is wrong                                                                                                           |
+| **Update**          | Format newer than the app understands                                                                              | Stop automatic syncing; tapping sync tries again. Status asks the lifter to update the app                                                                                            |
+| **Unreadable file** | A log-repo file that does not parse                                                                                | That path is left alone: not taken, not pushed, not overwritten. Every other path syncs, but the sync does not record the tree, so the next one reads it again. Status names the file |
+| **Bug**             | A fetched blob whose hash does not match its sha; a serialiser that fails to round-trip                            | Stop automatic syncing; tapping sync tries again. Report it, and never guess past a broken invariant                                                                                  |
 
 A failed sync never loses anything: the device's content is untouched by a sync
 that did not reach step 5, and step 5 only applies decisions it has finished
@@ -522,6 +571,12 @@ another matter: it clears every base, `last_synced_head`, `last_synced_tree` and
 never compares against the old repo's history. Skipping setup is allowed;
 exposure is then `unprotected` until it is done.
 
+A repo is identified by GitHub's repository id, stored at setup, not by its
+name. A repo deleted and created again under the same name gets a new id, holds
+another history, and so counts as a different repo. Setup runs while no sync
+does (it holds the same lock, 7.2), so a sync of the old repo cannot write its
+bases back over the cleared ones.
+
 The token is stored in `settings` on the device only. It is sent only as an
 `Authorization` header to `api.github.com`, and never logged or synced.
 
@@ -554,8 +609,17 @@ the addition, **R** the shipped row now; rows are equal when their hashes are.
 | R = B     | The shipped row has not changed since the addition was made          | **The addition is used.** A brand-new exercise is this case too (both absent)        |
 | Otherwise | The shipped row changed after the addition was made                  | **Conflict**, flagged like every other (5.2). The shipped row is used until resolved |
 
-The first two results are ordinary writes and sync like any other. A library
-conflict is not written to `conflicts/`: both versions already persist, one in
+The first two results are ordinary writes and sync like any other. A rebase is
+only written when `based_on` actually changes, so assembling the library twice
+writes nothing the second time.
+
+An addition whose `based_on` names a shipped row this build does not have was
+made on a newer version of the app. Ids never leave the shipped library, so this
+build simply has not seen that row yet. The addition is used and nothing is
+written: to this build the base is as absent as the shipped row. The newer
+version decides it properly once this device updates.
+
+A library conflict is not written to `conflicts/`: both versions already persist, one in
 the app and one in the log, so the conflict is derived afresh every time the
 library is assembled, identically on every device.
 
@@ -620,7 +684,11 @@ until nothing changes. After every schedule:
 1. **Convergence.** Every device and the remote hold identical content.
 2. **Nothing lost.** Every version a device wrote survives, in the data or in a
    conflict record, unless it was replaced or deleted by a write made on a
-   device that had already seen it.
+   device that had already seen it. A deletion counts as a version too, with
+   exactly one exception: the known limit in 4.3. A deletion may be undone by
+   a write made without seeing it, when the deleting side's content returned to
+   its base in between. The simulation reports those cases separately and
+   fails on any other.
 3. **Nothing comes back.** A record deleted on a device that had seen all its
    versions stays deleted.
 4. **Conflicts only when concurrent.** A conflict record appears only where two

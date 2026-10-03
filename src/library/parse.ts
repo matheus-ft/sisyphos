@@ -36,37 +36,42 @@ export function parseMuscles(csv: string): Muscle[] {
 }
 
 export function parseExercises(csv: string, knownMuscles?: Set<string>): Exercise[] {
-  return parseCsv(csv).map((row: Row) => {
-    const id = row.id;
-    const muscles = {
-      primary: parseList(row.primary ?? ''),
-      aux: parseList(row.aux ?? ''),
-    };
+  return parseCsv(csv).map((row: Row) => exerciseFromRow(row, knownMuscles));
+}
 
-    if (knownMuscles) {
-      for (const role of ['primary', 'aux'] as const) {
-        for (const m of muscles[role]) {
-          if (!knownMuscles.has(m)) {
-            throw new Error(`${id}: ${role} references unknown muscle "${m}"`);
-          }
+/**
+ * One exercise row, shipped or a lifter's addition: both files hold the same
+ * columns and are read by exactly these rules, so an addition that repeats a
+ * shipped row reads as the same exercise. Throws on an invalid cell.
+ */
+export function exerciseFromRow(row: Row, knownMuscles?: Set<string>): Exercise {
+  const id = row.id;
+  const muscles = {
+    primary: parseList(row.primary ?? ''),
+    aux: parseList(row.aux ?? ''),
+  };
+
+  if (knownMuscles) {
+    for (const role of ['primary', 'aux'] as const) {
+      for (const m of muscles[role]) {
+        if (!knownMuscles.has(m)) {
+          throw new Error(`${id}: ${role} references unknown muscle "${m}"`);
         }
       }
     }
+  }
 
-    return {
-      id,
-      name: row.name,
-      // Blank is meaningful: work that serves no competition event.
-      base_lift: row.base_lift ? oneOf(row.base_lift, LIFTS, 'base_lift', id) : null,
-      tier: oneOf(row.tier, TIERS, 'tier', id),
-      // Blank defaults to false, so only unilateral exercises need the cell filled.
-      unilateral: parseBool(row.unilateral ?? ''),
-      load_type: row.load_type ? oneOf(row.load_type, LOAD_TYPES, 'load_type', id) : 'external',
-      // A hint for the entry form. The unit recorded on each set is what counts.
-      default_unit: row.default_unit
-        ? oneOf(row.default_unit, LOAD_UNITS, 'default_unit', id)
-        : 'kg',
-      muscles,
-    };
-  });
+  return {
+    id,
+    name: row.name,
+    // Blank is meaningful: work that serves no competition event.
+    base_lift: row.base_lift ? oneOf(row.base_lift, LIFTS, 'base_lift', id) : null,
+    tier: oneOf(row.tier, TIERS, 'tier', id),
+    // Blank defaults to false, so only unilateral exercises need the cell filled.
+    unilateral: parseBool(row.unilateral ?? ''),
+    load_type: row.load_type ? oneOf(row.load_type, LOAD_TYPES, 'load_type', id) : 'external',
+    // A hint for the entry form. The unit recorded on each set is what counts.
+    default_unit: row.default_unit ? oneOf(row.default_unit, LOAD_UNITS, 'default_unit', id) : 'kg',
+    muscles,
+  };
 }

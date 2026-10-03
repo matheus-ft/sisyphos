@@ -82,6 +82,18 @@ max with whichever device synced last. Rejected: asking at sync time. It blocks
 sync on a decision, and keeps the pending decision on one device, where a
 reinstall loses it.
 
+**Accepted: a deletion can be undone by a concurrent write.** The three-way
+comparison sees where a record ended up, not how. Create-then-delete, or
+restore-then-delete, between syncs looks like no change at all, so another
+device's write of the same record stands and the deletion is not flagged.
+Nothing is lost: the record comes back, and it can be deleted again. Rejected: a
+per-record changed-since-sync marker, which reintroduces the kind of stored
+flag this design removed, and only covers the deleting device's side. Rejected:
+tombstones in the files, which catch both sides but make every file carry its
+deleted entries forever, and need a purge rule. Neither is worth it for a race
+this narrow in one lifter's log. STORAGE.md 4.3 states the limit exactly, and
+the simulation checks nothing wider.
+
 **Local writes are immediate; the log repo is written at three moments.** Every
 change is on the device the moment it is complete. The log repo is written when
 a session ends, when the lifter asks, and when the app is left outside a

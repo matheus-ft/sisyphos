@@ -1,6 +1,10 @@
 /** Scalars shared by every other model file. */
 
-/** Stable client-generated id, sortable by creation time (UUIDv7-style). */
+/**
+ * Stable client-generated id. Sessions, templates and conflict records are named
+ * by theirs, so those are readable (`2026-09-14-k3f9`, `squat-day-a-k3f9`; see
+ * docs/STORAGE.md 1.2). Everything else is a random UUID.
+ */
 export type Id = string;
 
 /** ISO-8601 UTC instant, e.g. "2026-09-14T06:30:00.000Z". */

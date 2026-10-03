@@ -1,4 +1,5 @@
-# Turns an exercise submission issue into a pull request.
+# Turns an exercise submission issue into a pull request: a new row for the
+# library, or a replacement for the row with the same id.
 #
 # Nobody forks anything. A pull request's source branch has to live in this repo
 # or a fork of it, and a submitter has neither — but an issue is something any
@@ -7,92 +8,172 @@
 #
 # Validation failures comment on the issue saying what is wrong. Editing the
 # issue re-runs this, so a submitter can fix it in place.
+#
+# Everything in the issue is typed by whoever opened it, and the form applies
+# its label for anyone, so this workflow handles text anyone can write while
+# holding write access. What keeps that text data (docs/STORAGE.md 9.2):
+#
+#   - It reaches a shell only through `env:`, used as a quoted variable. Never
+#     write `${{ }}` inside `run:`: the runner pastes the value into the script
+#     before bash reads it, so a quote and a semicolon in an issue title would
+#     run as commands. tests/add-exercise.test.ts fails if a `run:` has `${{`.
+#   - It never goes through step or job outputs. The runner parses
+#     $GITHUB_OUTPUT, and a value carrying a newline or a heredoc delimiter
+#     could set outputs of its own. Steps hand each other files in $RUNNER_TEMP
+#     instead, and each job re-runs the script on the body, which is cheap and
+#     gives the same row every time.
+#   - Titles, bodies and messages are built with printf from those variables and
+#     handed to git and gh as single arguments or files, never evaluated again.
+#   - The job that installs and runs npm packages can only read the repo; the
+#     job that can write runs only our own script, git and gh. The token reaches
+#     a step only when its env names it.
 name: Exercise submission
 
 on:
   issues:
     types: [opened, edited, labeled]
 
-permissions:
-  contents: write
-  pull-requests: write
-  issues: write
+# Nothing by default; each job asks for what it uses.
+permissions: {}
 
 concurrency:
   group: exercise-submission-${{ github.event.issue.number }}
   cancel-in-progress: true
 
+defaults:
+  run:
+    # Unlike the default shell, fails a pipeline when any part of it fails.
+    shell: bash
+
 jobs:
-  propose:
-    if: contains(github.event.issue.labels.*.name, 'exercise-submission')
+  validate:
+    # Labelling the issue with anything else changes nothing to propose.
+    if: >-
+      contains(github.event.issue.labels.*.name, 'exercise-submission') &&
+      (github.event.action != 'labeled' || github.event.label.name == 'exercise-submission')
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      issues: write # to say what is wrong
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Validate the submission
+        id: check
+        env:
+          ISSUE_BODY: ${{ github.event.issue.body }}
+        run: |
+          printf '%s' "$ISSUE_BODY" | node scripts/add-exercise.mjs >/dev/null 2>"$RUNNER_TEMP/problems.md"
+
+      - name: Report validation problems
+        if: failure() && steps.check.outcome == 'failure'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          ISSUE_NUMBER: ${{ github.event.issue.number }}
+        run: |
+          {
+            printf 'This submission cannot be added yet:\n\n'
+            cat "$RUNNER_TEMP/problems.md"
+            printf '\nEdit the issue to fix it and I will try again.\n'
+          } >"$RUNNER_TEMP/comment.md"
+          gh issue comment "$ISSUE_NUMBER" --body-file "$RUNNER_TEMP/comment.md"
+
+  test:
+    needs: validate
+    runs-on: ubuntu-latest
+    # Installs and runs npm packages, so it can read the repo and nothing more.
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          # No token left in the git config for those packages to find.
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Stage the row
+        env:
+          ISSUE_BODY: ${{ github.event.issue.body }}
+        run: |
+          printf '%s' "$ISSUE_BODY" | node scripts/add-exercise.mjs
+
+      - name: Check the library still parses
+        run: |
+          npm ci
+          npm test
+
+  propose:
+    needs: test
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write # push the branch
+      pull-requests: write # open or update the pull request
+      issues: write # link it from the issue
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
           node-version: 22
 
-      - name: Validate and stage the row
-        id: add
+      # The same script on the same body, so the same row the test job checked.
+      - name: Stage the row
         env:
           ISSUE_BODY: ${{ github.event.issue.body }}
         run: |
-          if ! row=$(printf '%s' "$ISSUE_BODY" | node scripts/add-exercise.mjs 2>errors.txt); then
-            {
-              echo "problems<<EOF"
-              cat errors.txt
-              echo "EOF"
-            } >> "$GITHUB_OUTPUT"
-            exit 0
-          fi
-          {
-            echo "row=$row"
-            echo "ok=true"
-          } >> "$GITHUB_OUTPUT"
-
-      - name: Report validation problems
-        if: steps.add.outputs.problems != ''
-        env:
-          GH_TOKEN: ${{ github.token }}
-          PROBLEMS: ${{ steps.add.outputs.problems }}
-        run: |
-          gh issue comment "${{ github.event.issue.number }}" --body "$(printf 'This submission cannot be added yet:\n\n%s\n\nEdit the issue to fix it and I will try again.' "$PROBLEMS")"
-          exit 1
-
-      - name: Check the library still parses
-        if: steps.add.outputs.ok == 'true'
-        run: |
-          npm ci
-          npm test
+          printf '%s' "$ISSUE_BODY" | node scripts/add-exercise.mjs --json >"$RUNNER_TEMP/submission.json"
 
       - name: Open the pull request
-        if: steps.add.outputs.ok == 'true'
         env:
           GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          ISSUE_NUMBER: ${{ github.event.issue.number }}
         run: |
-          branch="exercise/${{ github.event.issue.number }}"
+          submission="$RUNNER_TEMP/submission.json"
+          kind=$(jq -r .kind "$submission")
+          id=$(jq -r .id "$submission")
+          name=$(jq -r .name "$submission")
+          row=$(jq -r .row "$submission")
+          if [ "$kind" = change ]; then
+            action='Change exercise'
+            summary=$(printf 'Replaces the row for `%s` in `src/library/exercises.csv` with:' "$id")
+          else
+            action='Add exercise'
+            summary='Adds this row to `src/library/exercises.csv`:'
+          fi
+
+          printf '%s %s from #%s\n\n%s\n' "$action" "$id" "$ISSUE_NUMBER" "$row" >"$RUNNER_TEMP/commit.txt"
+          {
+            printf 'Closes #%s\n\n%s\n\n' "$ISSUE_NUMBER" "$summary"
+            printf '```\n%s\n```\n\n' "$row"
+            printf '%s\n' 'Validated by `scripts/add-exercise.mjs`: the id is snake_case, and new to the library or already in it as the submission says; every value is in range and needs no quoting in the CSV; every muscle exists in `src/library/muscles.csv` and is listed once.'
+          } >"$RUNNER_TEMP/pr.md"
+
+          branch="exercise/$ISSUE_NUMBER"
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git checkout -b "$branch"
           git add src/library/exercises.csv
-          git commit -m "Add exercise from #${{ github.event.issue.number }}
-
-          ${{ steps.add.outputs.row }}"
+          git commit -F "$RUNNER_TEMP/commit.txt"
+          # An edit rebuilds the branch from master. Without a remote-tracking ref
+          # for it, --force-with-lease expects the branch not to exist and would
+          # refuse to replace the one the first run pushed.
+          git fetch --depth=1 origin "+refs/heads/$branch:refs/remotes/origin/$branch" 2>/dev/null || true
           git push --force-with-lease origin "$branch"
 
-          url=$(gh pr list --head "$branch" --json url --jq '.[0].url')
+          title="$action: $name"
+          url=$(gh pr list --head "$branch" --json url --jq '.[0].url // empty')
           if [ -z "$url" ]; then
-            url=$(gh pr create \
-              --title "Add exercise: ${{ github.event.issue.title }}" \
-              --body "Closes #${{ github.event.issue.number }}
-
-          Row added to \`src/library/exercises.csv\`:
-
-          \`\`\`
-          ${{ steps.add.outputs.row }}
-          \`\`\`
-
-          Validated by \`scripts/add-exercise.mjs\`: id is unique and snake_case, tier and load type are in range, and every muscle exists in \`src/library/muscles.csv\`." \
-              --head "$branch")
+            url=$(gh pr create --head "$branch" --title "$title" --body-file "$RUNNER_TEMP/pr.md")
+          else
+            # The edit may have changed the kind or the name.
+            gh pr edit "$url" --title "$title" --body-file "$RUNNER_TEMP/pr.md"
           fi
-          gh issue comment "${{ github.event.issue.number }}" --body "Validated and proposed: $url"
+          gh issue comment "$ISSUE_NUMBER" --body "$(printf '%s `%s`: validated and proposed in %s' "$action" "$id" "$url")"

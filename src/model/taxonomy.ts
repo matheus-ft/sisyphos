@@ -62,3 +62,12 @@ export interface Exercise {
   default_unit: LoadUnit;
   muscles: Record<MuscleRole, string[]>;
 }
+
+/**
+ * An exercise the lifter created or changed, from `library/additions.csv`.
+ * `based_on` is the hash of the shipped row it was made against, or null for an
+ * exercise the shipped library did not have (docs/STORAGE.md 9.1).
+ */
+export interface ExerciseAddition extends Exercise {
+  based_on: string | null;
+}
