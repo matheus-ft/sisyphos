@@ -89,6 +89,8 @@ describe('IndexedDbStore', () => {
   });
 
   it("never lets another tab's write land between a read and the write it leads to", async () => {
+    // Tabs are kept apart by a Web Lock; without one the store assumes one tab.
+    expect(globalThis.navigator?.locks, 'Web Locks: needs Node 24.5 or newer').toBeDefined();
     const name = fresh();
     const [tabA, tabB] = await Promise.all([IndexedDbStore.open(name), IndexedDbStore.open(name)]);
     await tabA.exclusive((s) => s.apply([{ op: 'content', path: 'n', text: '0' }]));

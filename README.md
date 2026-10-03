@@ -68,7 +68,7 @@ line beats a reindented block.
 
 ## Running it
 
-Requires Node 22.12 or newer.
+Requires Node 24.5 or newer: the tests need its Web Locks (`navigator.locks`).
 
 ```sh
 npm install
