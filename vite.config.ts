@@ -1,4 +1,6 @@
+/// <reference types="vitest/config" />
 import { defineConfig } from 'vite';
+import { configDefaults } from 'vitest/config';
 import { svelte } from '@sveltejs/vite-plugin-svelte';
 import { VitePWA } from 'vite-plugin-pwa';
 
@@ -32,4 +34,7 @@ export default defineConfig(({ command }) => ({
     }),
   ],
   resolve: { alias: { $lib: '/src/lib' } },
+  // Worktrees under .claude/ hold whole copies of the tests. Run from the main
+  // checkout, those would run too, and two smoke tests at once race each other.
+  test: { exclude: [...configDefaults.exclude, '.claude/**'] },
 }));
