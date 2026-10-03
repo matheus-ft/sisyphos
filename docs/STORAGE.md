@@ -230,7 +230,8 @@ HTTP. It needs:
 | Operation                  | GitHub API                                                                      |
 | -------------------------- | ------------------------------------------------------------------------------- |
 | Branch head                | `GET /repos/{o}/{r}/git/ref/heads/{branch}`                                     |
-| Every path and blob sha    | `GET /repos/{o}/{r}/git/trees/{commit}?recursive=1`                             |
+| A commit's tree            | `GET /repos/{o}/{r}/git/commits/{commit}`                                       |
+| Every path and blob sha    | `GET /repos/{o}/{r}/git/trees/{tree}?recursive=1`                               |
 | One file's content         | `GET /repos/{o}/{r}/git/blobs/{sha}`                                            |
 | Write a tree               | `POST /repos/{o}/{r}/git/trees`, with `base_tree` so untouched files carry over |
 | Write a commit             | `POST /repos/{o}/{r}/git/commits`, one parent                                   |
@@ -240,6 +241,10 @@ HTTP. It needs:
 Every request must be sent with `cache: 'no-store'`. GitHub marks API responses
 cacheable for 60 seconds, and a cached branch head makes every commit fail as
 though another device had moved the branch.
+
+A tree is listed by its own sha, read from the commit first. Listed by a commit
+sha, GitHub resolves the commit to its tree but answers with the commit's sha in
+`sha`, and that is no tree to build on.
 
 A tree listing that GitHub reports as `truncated` is an error. Silently syncing
 part of the log is worse than not syncing.

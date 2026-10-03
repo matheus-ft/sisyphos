@@ -7,6 +7,7 @@ import { blobSha } from '../src/storage/hash';
 // the adapter does not read.
 import repoJson from './fixtures/github/repo.json';
 import refJson from './fixtures/github/ref.json';
+import commitJson from './fixtures/github/commit.json';
 import treeJson from './fixtures/github/tree.json';
 import blobJson from './fixtures/github/blob.json';
 import createTreeJson from './fixtures/github/create-tree.json';
@@ -151,6 +152,12 @@ function wrapped(encoded: string): string {
   return encoded.replace(/.{1,60}/g, '$&\n');
 }
 
+const getCommit: Exchange = {
+  method: 'GET',
+  url: `${REPO}/git/commits/${HEAD}`,
+  reply: commitJson,
+};
+
 const getHead = (reply: unknown = refJson, status = 200): Exchange => ({
   method: 'GET',
   url: `${REPO}/git/ref/heads/main`,
@@ -190,9 +197,11 @@ describe('GitHubRemote: each operation', () => {
     expect(await remote.head()).toBe(HEAD);
   });
 
-  it('lists every file of a commit recursively, and only files', async () => {
+  it("lists every file of a commit recursively, and only files, by the tree's own sha", async () => {
+    // Listed by the commit's sha, GitHub answers with the commit's sha in `sha`.
     const { remote } = github([
-      { method: 'GET', url: `${REPO}/git/trees/${HEAD}?recursive=1`, reply: treeJson },
+      getCommit,
+      { method: 'GET', url: `${REPO}/git/trees/${HEAD_TREE}?recursive=1`, reply: treeJson },
     ]);
     expect(await remote.tree(HEAD)).toEqual({
       sha: HEAD_TREE,
@@ -379,13 +388,26 @@ describe('GitHubRemote: a refused move', () => {
 describe('GitHubRemote: failures', () => {
   it('refuses a truncated tree', async () => {
     const { remote } = github([
+      getCommit,
       {
         method: 'GET',
-        url: `${REPO}/git/trees/${HEAD}?recursive=1`,
+        url: `${REPO}/git/trees/${HEAD_TREE}?recursive=1`,
         reply: { ...treeJson, truncated: true },
       },
     ]);
     expect((await failure(remote.tree(HEAD), 'repo')).notFound).toBe(false);
+  });
+
+  it('stops on a tree listing that answers for another sha', async () => {
+    const { remote } = github([
+      getCommit,
+      {
+        method: 'GET',
+        url: `${REPO}/git/trees/${HEAD_TREE}?recursive=1`,
+        reply: { ...treeJson, sha: HEAD },
+      },
+    ]);
+    await failure(remote.tree(HEAD), 'bug');
   });
 
   it('retries when the network fails', async () => {

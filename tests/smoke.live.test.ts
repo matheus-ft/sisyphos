@@ -410,9 +410,9 @@ describe.skipIf(!CONFIGURED)('live smoke test against GitHub', { timeout: 120_00
       unknown: false,
     });
 
-    // A commit with no changes writes no tree: it is on the base tree, and
-    // reading a commit's tree answers with the tree's own sha, which the sync
-    // relies on for `base_tree` though GitHub does not document it.
+    // A commit with no changes writes no tree: it is on the base tree. The tree
+    // a commit is read with is the tree's own sha, not the commit's (which a
+    // tree listing by commit sha answers with), so a commit can be built on it.
     const same = await probe.commit({ parent: head, baseTree: tree.sha, changes: [], message });
     expect(same.tree).toBe(tree.sha);
     expect((await probe.tree(same.commit)).sha).toBe(tree.sha);
