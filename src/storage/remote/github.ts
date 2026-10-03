@@ -104,15 +104,28 @@ export class GitHubRemote implements Remote {
   }
 
   async tree(commit: string): Promise<RemoteTree> {
-    // The docs accept a tree sha or a ref, and a ref names a commit, so a commit
-    // sha resolves to its tree; the answer's `sha` is then the tree's own, which
-    // is what the next commit's `base_tree` needs. (Relied on, not documented.)
+    // Listed by a commit sha, GitHub resolves it to the commit's tree but answers
+    // with the commit's sha in `sha`, which is no tree to build on. So the commit
+    // is read first for its tree's own sha, and the tree is listed by that.
+    const found = await this.send(
+      'GET',
+      `${this.repoPath()}/git/commits/${encodeURIComponent(commit)}`,
+    );
+    if (!found.ok) throw await this.failure(found, this.missing(`commit ${commit}`));
+    const sha = this.string(await this.read(found), 'tree.sha', 'the commit');
+
     const res = await this.send(
       'GET',
-      `${this.repoPath()}/git/trees/${encodeURIComponent(commit)}?recursive=1`,
+      `${this.repoPath()}/git/trees/${encodeURIComponent(sha)}?recursive=1`,
     );
-    if (!res.ok) throw await this.failure(res, this.missing(`commit ${commit}`));
+    if (!res.ok) throw await this.failure(res, this.missing(`tree ${sha}`));
     const data = await this.read(res);
+    if (this.string(data, 'sha', 'the tree') !== sha) {
+      throw this.error(
+        'bug',
+        `GitHub listed another tree than ${sha}; syncing stopped rather than trust it`,
+      );
+    }
     // Past 100,000 entries or 7 MB GitHub lists part of the tree and says so.
     // Syncing part of the log is worse than not syncing (STORAGE.md 4.1).
     if (pick(data, 'truncated') === true) {
@@ -129,7 +142,7 @@ export class GitHubRemote implements Remote {
         path: this.string(entry, 'path', 'the tree'),
         sha: this.string(entry, 'sha', 'the tree'),
       }));
-    return { sha: this.string(data, 'sha', 'the tree'), files };
+    return { sha, files };
   }
 
   async blob(sha: string): Promise<string> {

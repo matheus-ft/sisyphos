@@ -1,0 +1,35 @@
+{
+  "sha": "47d95352d32c158115d1787fb44d3743bb867486",
+  "node_id": "C_kwDOM1a2b9oAKDQ3ZDk1MzUyZDMyYzE1ODExNWQxNzg3ZmI0NGQzNzQzYmI4Njc0ODY",
+  "url": "https://api.github.com/repos/lifter/sisyphos-log/git/commits/47d95352d32c158115d1787fb44d3743bb867486",
+  "html_url": "https://github.com/lifter/sisyphos-log/commit/47d95352d32c158115d1787fb44d3743bb867486",
+  "author": {
+    "name": "Lifter",
+    "email": "1234567+lifter@users.noreply.github.com",
+    "date": "2026-09-26T18:30:00Z"
+  },
+  "committer": {
+    "name": "Lifter",
+    "email": "1234567+lifter@users.noreply.github.com",
+    "date": "2026-09-26T18:30:00Z"
+  },
+  "tree": {
+    "sha": "71d9cae7f3769f570fa20c392288ce503ff29929",
+    "url": "https://api.github.com/repos/lifter/sisyphos-log/git/trees/71d9cae7f3769f570fa20c392288ce503ff29929"
+  },
+  "message": "Sync",
+  "parents": [
+    {
+      "sha": "366e905da7d0e5c5b46c49b399246fb0ccd0ddfe",
+      "url": "https://api.github.com/repos/lifter/sisyphos-log/git/commits/366e905da7d0e5c5b46c49b399246fb0ccd0ddfe",
+      "html_url": "https://github.com/lifter/sisyphos-log/commit/366e905da7d0e5c5b46c49b399246fb0ccd0ddfe"
+    }
+  ],
+  "verification": {
+    "verified": false,
+    "reason": "unsigned",
+    "signature": null,
+    "payload": null,
+    "verified_at": null
+  }
+}
