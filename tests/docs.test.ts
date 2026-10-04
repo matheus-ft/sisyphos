@@ -59,8 +59,8 @@ const basenames = new Set(files.map((f) => f.split('/').pop()));
 /** Paths in the lifter's log repo, which is not this repository. */
 const LOG_REPO =
   /^(sessions|templates|lifter|conflicts)\/|^(library\/)?additions\.csv$|^sisyphos\.json$/;
-/** Named in a doc, not built yet: the exports (DATA.md, Exports), a field UI.md proposes. */
-const PLANNED = new Set(['sets.csv', 'sessions.csv', 'done_at']);
+/** Named in a doc, not built yet: the exports (DATA.md, Exports). */
+const PLANNED = new Set(['sets.csv', 'sessions.csv']);
 /** Names the design removed, kept in DESIGN.md's account of why. */
 const REMOVED = new Set(['include_warmups', 'duration_s', 'distance_m']);
 
@@ -75,7 +75,7 @@ function spans(text: string): string[] {
 
 function pathExists(span: string, doc: string): boolean {
   const path = span.replace(/\/$/, '');
-  if (!path.includes('/')) return basenames.has(path);
+  if (!path.includes('/')) return basenames.has(path) || dirSet.has(path);
   const docDir = doc.split('/').slice(0, -1).join('/');
   return ['', 'src/', docDir ? `${docDir}/` : ''].some(
     (base) => fileSet.has(base + path) || dirSet.has(base + path),

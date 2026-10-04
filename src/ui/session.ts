@@ -1,0 +1,374 @@
+import { toKg } from '../metrics/load';
+import {
+  formatInterval,
+  isComplete,
+  type Exercise,
+  type ExerciseInstance,
+  type Id,
+  type IsoDate,
+  type LoadPrescription,
+  type LoadUnit,
+  type PerformedSet,
+  type PrescribedSet,
+  type Session,
+  type Template,
+} from '../model';
+
+/**
+ * What the session screen does to a session, as pure functions: each takes a
+ * session and returns the next one, which the screen saves. Ids come from the
+ * caller, so the same edit gives the same session.
+ */
+
+export type NewId = () => Id;
+
+/** The calendar date at `at` where the lifter is: the session's aggregation key. */
+export function localDate(at: Date): IsoDate {
+  const pad = (n: number) => String(n).padStart(2, '0');
+  return `${at.getFullYear()}-${pad(at.getMonth() + 1)}-${pad(at.getDate())}`;
+}
+
+export function newSession(input: { id: Id; at: Date; tz: string; deviceId: string }): Session {
+  const now = input.at.toISOString();
+  return {
+    id: input.id,
+    date: localDate(input.at),
+    started_at: now,
+    tz: input.tz,
+    time_precision: 'instant',
+    ended_at: null,
+    label: { name: null, block: null, week: null, day: null, weekday: null },
+    bodyweight_kg: null,
+    notes: null,
+    exercises: [],
+    created_at: now,
+    updated_at: now,
+    device_id: input.deviceId,
+  };
+}
+
+/**
+ * What a set of this exercise measures. The library says how an exercise is
+ * loaded, not whether unloaded work is timed or measured in distance; held
+ * positions are the unloaded work it holds, so unloaded means timed.
+ */
+export function measureOf(exercise: Exercise): 'weight' | 'time' {
+  return exercise.load_type === 'none' ? 'time' : 'weight';
+}
+
+function emptySet(id: Id, prescribedId: Id | null = null): PerformedSet {
+  return {
+    id,
+    prescribed_id: prescribedId,
+    state: 'pending',
+    reps: null,
+    rpe: null,
+    load: null,
+    is_warmup: false,
+    notes: null,
+  };
+}
+
+export function addExercise(session: Session, exercise: Exercise, newId: NewId): Session {
+  const instance: ExerciseInstance = {
+    id: newId(),
+    exercise_id: exercise.id,
+    prescribed: [],
+    performed: [emptySet(newId())],
+    notes: null,
+  };
+  return { ...session, exercises: [...session.exercises, instance] };
+}
+
+function updateInstance(
+  session: Session,
+  instanceId: Id,
+  update: (instance: ExerciseInstance) => ExerciseInstance,
+): Session {
+  return {
+    ...session,
+    exercises: session.exercises.map((e) => (e.id === instanceId ? update(e) : e)),
+  };
+}
+
+function updateSet(
+  session: Session,
+  instanceId: Id,
+  setId: Id,
+  update: (set: PerformedSet) => PerformedSet,
+): Session {
+  return updateInstance(session, instanceId, (e) => ({
+    ...e,
+    performed: e.performed.map((s) => (s.id === setId ? update(s) : s)),
+  }));
+}
+
+/**
+ * A new set after the last one. The next set is usually the same load for the
+ * same reps, so a weighted set copies those; never the RPE, which is what the
+ * set turns out to feel like, so the copy stays pending until it is lifted. A
+ * timed set copies nothing: its time is all it holds, and a copy would count as
+ * done before it was held.
+ */
+export function addSet(session: Session, instanceId: Id, newId: NewId): Session {
+  return updateInstance(session, instanceId, (e) => {
+    const last = e.performed.at(-1);
+    const next = emptySet(newId());
+    if (last?.load?.kind === 'weight') {
+      next.load = last.load;
+      next.reps = last.reps;
+    }
+    return { ...e, performed: [...e.performed, next] };
+  });
+}
+
+export interface SetEdit {
+  /** The number typed as the load: kilograms, pounds or pins; seconds for timed work. Null clears it. */
+  amount?: number | null;
+  unit?: LoadUnit;
+  reps?: number | null;
+  rpe?: number | null;
+  is_warmup?: boolean;
+}
+
+/**
+ * One field of a set changed. Whether the set is done follows from its values
+ * (`isComplete`): there is nothing to tick, and a set left blank, such as an
+ * untouched target, stays pending.
+ */
+export function editSet(
+  session: Session,
+  instanceId: Id,
+  setId: Id,
+  edit: SetEdit,
+  measure: 'weight' | 'time',
+  defaultUnit: LoadUnit,
+): Session {
+  return updateSet(session, instanceId, setId, (set) => {
+    const next: PerformedSet = { ...set };
+    if (edit.reps !== undefined) next.reps = measure === 'time' ? null : edit.reps;
+    if (edit.rpe !== undefined) next.rpe = edit.rpe;
+    if (edit.is_warmup !== undefined) next.is_warmup = edit.is_warmup;
+    if (edit.amount !== undefined || edit.unit !== undefined) {
+      const amount = edit.amount !== undefined ? edit.amount : amountOf(set);
+      if (amount === null) next.load = null;
+      else if (measure === 'time') next.load = { kind: 'time', seconds: amount };
+      else
+        next.load = {
+          kind: 'weight',
+          value: amount,
+          unit: edit.unit ?? unitOf(set) ?? defaultUnit,
+        };
+    }
+    next.state = isComplete(next) ? 'done' : 'pending';
+    return next;
+  });
+}
+
+/** The number a set's load holds, whatever it measures. */
+export function amountOf(set: PerformedSet): number | null {
+  if (!set.load) return null;
+  if (set.load.kind === 'weight') return set.load.value;
+  return set.load.kind === 'time' ? set.load.seconds : set.load.meters;
+}
+
+export function unitOf(set: PerformedSet): LoadUnit | null {
+  return set.load?.kind === 'weight' ? set.load.unit : null;
+}
+
+export function removeSet(session: Session, instanceId: Id, setId: Id): Session {
+  return updateInstance(session, instanceId, (e) => ({
+    ...e,
+    performed: e.performed.filter((s) => s.id !== setId),
+  }));
+}
+
+export function removeExercise(session: Session, instanceId: Id): Session {
+  return { ...session, exercises: session.exercises.filter((e) => e.id !== instanceId) };
+}
+
+/**
+ * Moves a session to another date. A session dated other than the day it was
+ * started on was logged after the fact, so its clock time says nothing about
+ * when it happened, and analysis must not read it as if it did.
+ */
+export function setDate(session: Session, date: IsoDate): Session {
+  const sameDay = date === localDate(new Date(session.started_at));
+  return { ...session, date, time_precision: sameDay ? 'instant' : 'date_only' };
+}
+
+export function finish(session: Session, at: Date): Session {
+  return { ...session, ended_at: at.toISOString() };
+}
+
+/** A bodyweight-plus set counts the lifter's bodyweight, which the session must hold. */
+export function needsBodyweight(session: Session, exercise: Exercise): boolean {
+  return exercise.load_type === 'bw_plus' && session.bodyweight_kg === null;
+}
+
+// --- what came before ---------------------------------------------------------------
+
+/** "140 × 5 @ 8", "1:30", "+20 × 8 @ 7" for a bodyweight-plus set. */
+export function formatSet(set: PerformedSet, exercise?: Exercise): string {
+  const load = set.load;
+  let text = '';
+  if (load?.kind === 'time') text = formatSeconds(load.seconds);
+  else if (load?.kind === 'distance') text = `${load.meters} m`;
+  else if (load?.kind === 'weight') {
+    const value =
+      exercise?.load_type === 'bw_plus' && load.value >= 0 ? `+${load.value}` : `${load.value}`;
+    text = `${value}${load.unit === 'kg' ? '' : ` ${load.unit}`}`;
+  }
+  if (set.reps !== null) text += `${text ? ' × ' : ''}${set.reps}`;
+  if (set.rpe !== null) text += ` @ ${set.rpe}`;
+  return text.trim();
+}
+
+export function formatSeconds(seconds: number): string {
+  const m = Math.floor(seconds / 60);
+  const s = Math.round(seconds % 60);
+  return m > 0 ? `${m}:${String(s).padStart(2, '0')}` : `${s} s`;
+}
+
+/** The most recent other session holding this exercise, newest first by date and start. */
+function lastInstance(
+  exerciseId: string,
+  sessions: Session[],
+  except: Id,
+): ExerciseInstance | null {
+  const ordered = [...sessions].sort(
+    (a, b) => b.date.localeCompare(a.date) || b.started_at.localeCompare(a.started_at),
+  );
+  for (const session of ordered) {
+    if (session.id === except) continue;
+    const found = session.exercises.find(
+      (e) => e.exercise_id === exerciseId && e.performed.some((s) => s.state === 'done'),
+    );
+    if (found) return found;
+  }
+  return null;
+}
+
+/** The done sets of this exercise in the last other session that had it. */
+export function lastTime(exercise: Exercise, sessions: Session[], except: Id): string | null {
+  const found = lastInstance(exercise.id, sessions, except);
+  if (!found) return null;
+  return found.performed
+    .filter((s) => s.state === 'done')
+    .map((s) => formatSet(s, exercise))
+    .join(', ');
+}
+
+/** The unit this exercise was last logged in; gyms differ, so a habit beats the library's hint. */
+export function lastUnit(exercise: Exercise, sessions: Session[], except: Id): LoadUnit {
+  const found = lastInstance(exercise.id, sessions, except);
+  const unit = found?.performed.map(unitOf).find((u) => u !== null);
+  return unit ?? exercise.default_unit;
+}
+
+// --- templates ----------------------------------------------------------------------
+
+/** A session's done sets as the targets of a template. */
+export function templateFrom(
+  session: Session,
+  input: { id: Id; name: string; at: Date },
+): Template {
+  const now = input.at.toISOString();
+  return {
+    id: input.id,
+    name: input.name,
+    intention: null,
+    exercises: session.exercises
+      .map((e) => ({
+        exercise_id: e.exercise_id,
+        prescribed: e.performed.filter((s) => s.state === 'done').map(prescriptionOf),
+      }))
+      .filter((e) => e.prescribed.length > 0),
+    created_at: now,
+    updated_at: now,
+  };
+}
+
+function prescriptionOf(set: PerformedSet): Omit<PrescribedSet, 'id'> {
+  const exactly = (n: number | null): [number | null, number | null] | null =>
+    n === null ? null : [n, n];
+  let load: LoadPrescription = { kind: 'weight', weight: { mode: 'rpe_driven' } };
+  if (set.load?.kind === 'time')
+    load = { kind: 'time', seconds: [set.load.seconds, set.load.seconds] };
+  else if (set.load?.kind === 'distance')
+    load = { kind: 'distance', meters: [set.load.meters, set.load.meters] };
+  else if (set.load?.kind === 'weight') {
+    // A prescription is in kilograms; a pin setting has none, so RPE decides it.
+    const kg = toKg(set.load.value, set.load.unit);
+    if (kg !== null) {
+      const round = Math.round(kg * 100) / 100;
+      load = { kind: 'weight', weight: { mode: 'absolute', kg: [round, round] } };
+    }
+  }
+  return {
+    reps: exactly(set.reps),
+    rpe: exactly(set.rpe),
+    load,
+    is_warmup: set.is_warmup,
+    notes: null,
+  };
+}
+
+/** A new session's exercises from a template: its targets prescribed, one pending set for each. */
+export function fromTemplate(session: Session, template: Template, newId: NewId): Session {
+  const exercises: ExerciseInstance[] = template.exercises.map((e) => {
+    const prescribed = e.prescribed.map((p) => ({ ...p, id: newId() }));
+    return {
+      id: newId(),
+      exercise_id: e.exercise_id,
+      prescribed,
+      performed: prescribed.map((p) => ({ ...emptySet(newId(), p.id), is_warmup: p.is_warmup })),
+      notes: null,
+    };
+  });
+  return { ...session, exercises: [...session.exercises, ...exercises] };
+}
+
+/** What a set's prescription asks for, field by field, shown faintly in its empty fields. */
+export function targetsOf(
+  instance: ExerciseInstance,
+  set: PerformedSet,
+): { amount: string; reps: string; rpe: string } {
+  const p = instance.prescribed.find((x) => x.id === set.prescribed_id);
+  const low = (i: [number | null, number | null] | null | undefined) =>
+    i ? formatInterval(i) : '';
+  if (!p) return { amount: '', reps: '', rpe: '' };
+  let amount = '';
+  if (p.load.kind === 'time')
+    amount = p.load.seconds[0] === null ? '' : formatSeconds(p.load.seconds[0]);
+  else if (p.load.kind === 'weight' && p.load.weight.mode === 'absolute')
+    amount = low(p.load.weight.kg);
+  return { amount, reps: low(p.reps), rpe: low(p.rpe) };
+}
+
+// --- what was typed ---------------------------------------------------------------
+
+/**
+ * A number typed into a set's field: `null` for an empty field, `undefined` for
+ * one that is not a number, which the field then ignores. A comma is a decimal
+ * point, as phones in most locales type it.
+ */
+export function parseNumber(text: string): number | null | undefined {
+  const trimmed = text.trim().replace(',', '.');
+  if (trimmed === '') return null;
+  const n = Number(trimmed);
+  return Number.isFinite(n) && n >= 0 ? n : undefined;
+}
+
+/** Seconds, typed as `90` or `1:30`. */
+export function parseSeconds(text: string): number | null | undefined {
+  const match = /^\s*(\d+):([0-5]?\d)\s*$/.exec(text);
+  return match ? Number(match[1]) * 60 + Number(match[2]) : parseNumber(text);
+}
+
+/** An RPE as the chart reads it: 1 to 10, in halves. */
+export function parseRpe(text: string): number | null | undefined {
+  const n = parseNumber(text);
+  if (n === null || n === undefined) return n;
+  return n >= 1 && n <= 10 && Number.isInteger(n * 2) ? n : undefined;
+}

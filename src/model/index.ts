@@ -3,8 +3,8 @@
  *
  *   primitives  the scalars everything is built from — ids, dates, intervals,
  *               load units — and the operations on them
- *   taxonomy    how exercises are classified. This is what config/muscles.csv
- *               and config/exercises.csv describe, and none of it appears in a
+ *   taxonomy    how exercises are classified. This is what src/library/muscles.csv
+ *               and src/library/exercises.csv describe, and none of it appears in a
  *               log: a set references an exercise by id and nothing more
  *   records     everything recorded about your training — sessions, sets,
  *               templates, reference maxes, records, bodyweight
