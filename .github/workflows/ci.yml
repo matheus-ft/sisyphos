@@ -32,11 +32,26 @@ jobs:
           node-version: 24
           cache: npm
       - run: npm ci
-      # The same script as locally, so CI can never check less than a commit did.
-      - run: npm run verify
-      # Pages serves from /<repo>/, so the bundle needs that base path.
-      - run: npm run build -- --base="/${GITHUB_REPOSITORY#*/}/"
-      - if: github.event_name != 'pull_request' && github.ref == 'refs/heads/master'
+
+      # Least to most fundamental, so the first failure is the cheapest to fix.
+      # `npm run verify` runs the same four, in the same order, locally.
+      - name: Formatting (Prettier)
+        # The pre-commit hook formats staged files; this catches commits made
+        # without it.
+        run: npm run format:check
+      - name: Lint (ESLint)
+        run: npm run lint
+      - name: Type check (svelte-check, tsc)
+        run: npm run check
+      - name: Tests (Vitest)
+        run: npm test
+
+      # Everything a deploy does short of publishing, on every run, so a pull
+      # request that would break the deploy fails here instead of on master.
+      - name: Build for Pages
+        # Pages serves from /<repo>/, so the bundle needs that base path.
+        run: npm run build -- --base="/${GITHUB_REPOSITORY#*/}/"
+      - name: Package for Pages
         uses: actions/upload-pages-artifact@v5
         with:
           path: dist
