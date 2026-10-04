@@ -6,35 +6,37 @@ branch, and where two rulesets overlap the stricter one wins.
 
 ## `master-solo.json` — use this now
 
-Blocks deletion and force pushes. Nothing else, because nothing else earns its
-cost while one person is pushing several times a day.
+Every change reaches master through a pull request that `build` has passed:
 
-Note what is deliberately absent:
+- no deletion, no force push, linear history
+- a pull request, merged by squash, with no approval required
+- the `build` check passing
 
-**No required approvals.** You cannot approve your own pull request. Requiring
-one while you are the only maintainer locks you out of your own repository, and
-the only way out is a bypass, at which point it was never protection.
+**No required approvals.** You cannot approve your own pull request, so requiring
+one while you are the only maintainer locks you out of your own repository.
 
-**No required status checks.** A commit cannot have passing checks before it
-exists, so requiring them rejects direct pushes outright — it does not merely
-gate merges. That is correct discipline later and pure drag now.
+**The branch need not be current with master.** Requiring it makes every pull
+request opened alongside another wait for an update and a second run. A merge
+that breaks master is still caught: master's own run fails before deploying.
 
 ## `master-team.json` — use this once someone else contributes
 
-Adds the pull request workflow the solo ruleset leaves out:
+The same, plus what review needs:
 
-- one approving review, dismissed when new commits land
-- the `build` job must pass, and the branch must be current with master
+- one approving review, dismissed when new commits land, and the last push
+  approved by someone other than its author
 - review threads resolved before merge
-- linear history, and merges by squash or rebase only
-
-`build` is the job name in `.github/workflows/ci.yml`, which runs
-the checks of `npm run verify` and the build on every pull request. It only becomes available as a required
-check after it has run at least once on the repository.
+- the branch current with master before merging
 
 Switching to this is also the moment to give yourself a bypass actor if you want
-an escape hatch for an emergency fix — add it in the UI under **Bypass list**
+an escape hatch for an emergency fix: add it in the UI under **Bypass list**
 rather than hand-editing an actor id in here.
+
+## The `build` check
+
+`build` is the job in `.github/workflows/ci.yml` that runs the checks and the
+Pages build on every pull request. GitHub offers it as a required check only
+after it has run once on the repository, which it has.
 
 ## Why rulesets rather than classic branch protection
 
