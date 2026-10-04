@@ -1,0 +1,60 @@
+# Checks every pull request and every push to master, and publishes master to
+# GitHub Pages once those checks pass, so nothing reaches the phone unchecked.
+#
+# Publishing is what makes the phone work. A service worker only registers in a
+# secure context, so the installed app needs HTTPS — which Pages provides for
+# free. Once deployed: open the URL in Safari, Share, Add to Home Screen. After
+# that it launches from the icon, full screen, and logs with no signal at all.
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches: [master]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+# A newer push to a pull request makes its older run pointless.
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  # `build` is the check .github/rulesets/master-team.json requires by name.
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 24
+          cache: npm
+      - run: npm ci
+      # The same script as locally, so CI can never check less than a commit did.
+      - run: npm run verify
+      # Pages serves from /<repo>/, so the bundle needs that base path.
+      - run: npm run build -- --base="/${GITHUB_REPOSITORY#*/}/"
+      - if: github.event_name != 'pull_request' && github.ref == 'refs/heads/master'
+        uses: actions/upload-pages-artifact@v5
+        with:
+          path: dist
+
+  deploy:
+    needs: build
+    if: github.event_name != 'pull_request' && github.ref == 'refs/heads/master'
+    runs-on: ubuntu-latest
+    permissions:
+      pages: write
+      id-token: write
+    # Never interrupt a deploy in flight; queue behind it instead.
+    concurrency:
+      group: pages
+      cancel-in-progress: false
+    environment:
+      name: github-pages
+      url: ${{ steps.deploy.outputs.page_url }}
+    steps:
+      - id: deploy
+        uses: actions/deploy-pages@v5

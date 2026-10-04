@@ -28,8 +28,8 @@ Adds the pull request workflow the solo ruleset leaves out:
 - review threads resolved before merge
 - linear history, and merges by squash or rebase only
 
-`build` is the job name in `.github/workflows/deploy.yml`, which runs
-`npm run check` and the full test suite. It only becomes available as a required
+`build` is the job name in `.github/workflows/ci.yml`, which runs
+`npm run verify` and the build on every pull request. It only becomes available as a required
 check after it has run at least once on the repository.
 
 Switching to this is also the moment to give yourself a bypass actor if you want

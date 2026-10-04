@@ -1027,6 +1027,8 @@ describe('reading a session fails with FormatError', () => {
       ],
     }),
   );
+  // The edit reaches into any field of the record, to make it invalid.
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const edit = (base: object, change: (s: any) => void): string => {
     const copy = structuredClone(base);
     change(copy);

@@ -94,7 +94,7 @@
       switching is the whole mechanism. Nothing recomputes from storage, because nothing was stored.
     </p>
     <div class="switcher" role="group" aria-label="Muscle weighting preset">
-      {#each MUSCLE_PRESET_NAMES as name}
+      {#each MUSCLE_PRESET_NAMES as name (name)}
         <button
           type="button"
           class="chip"
@@ -110,7 +110,7 @@
     </p>
 
     <ul class="bars">
-      {#each ranked as [group, sets]}
+      {#each ranked as [group, sets] (group)}
         <li>
           <span class="bar-label">{nameOf.get(group)}</span>
           <span class="bar-track"
@@ -134,7 +134,7 @@
       discrete breakdown never goes away — it is usually the more useful sentence.
     </p>
     <div class="switcher" role="group" aria-label="Tier weighting preset">
-      {#each TIER_PRESET_NAMES as name}
+      {#each TIER_PRESET_NAMES as name (name)}
         <button
           type="button"
           class="chip"
@@ -153,7 +153,7 @@
         <tr><th>Event</th><th>comp</th><th>high</th><th>low</th><th>acc</th><th>weighted</th></tr>
       </thead>
       <tbody>
-        {#each [...perLift.entries()] as [lift, tiers]}
+        {#each [...perLift.entries()] as [lift, tiers] (lift)}
           <tr>
             <td>{lift}</td>
             <td class="tabular">{tiers.get('comp')}</td>
@@ -174,7 +174,7 @@
         <tr><th>Set</th><th>e1RM</th><th>Stress index</th><th>CS balance</th></tr>
       </thead>
       <tbody>
-        {#each worked as [label, kg, reps, rpe]}
+        {#each worked as [label, kg, reps, rpe] (label)}
           <tr>
             <td>{label}</td>
             <td class="tabular">{fmt(e1rm(kg, rpe, reps))}</td>

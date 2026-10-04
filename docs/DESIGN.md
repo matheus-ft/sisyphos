@@ -143,8 +143,8 @@ volume, regardless of transfer.
 considered and rejected as more machinery than the problem deserves. Retag an
 exercise and every past analysis reads the new way.
 
-**The muscle vocabulary is not user-editable.** There is no writer for it in
-`StorageAdapter`, on purpose: exercises reference muscle ids permanently, so a
+**The muscle vocabulary is not user-editable.** Nothing in the storage layer
+writes it, on purpose: exercises reference muscle ids permanently, so a
 rename would silently break every exercise pointing at it. Adding an exercise is
 a submission that becomes a pull request; changing the vocabulary is a change to
 the app.
@@ -293,6 +293,6 @@ device with nowhere to sync to means everything is unsynced.
 Logging from the phone has to be reliable and hassle-free, so the Pages workflow
 exists before any UI does. A service worker only registers in a secure context,
 which means HTTPS, which means a real deploy — a LAN address will load the page
-but never install it. `.github/workflows/deploy.yml` publishes on every push to
+but never install it. `.github/workflows/ci.yml` checks and publishes every push to
 master; the manifest uses relative `start_url` and `scope` so the same build works
 at the domain root or under `/<repo>/`.
