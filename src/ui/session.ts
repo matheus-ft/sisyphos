@@ -103,13 +103,21 @@ function updateSet(
   }));
 }
 
-/** A new pending set copying the last one's values: the next set is usually the same. */
+/**
+ * A new set after the last one. The next set is usually the same load for the
+ * same reps, so a weighted set copies those; never the RPE, which is what the
+ * set turns out to feel like, so the copy stays pending until it is lifted. A
+ * timed set copies nothing: its time is all it holds, and a copy would count as
+ * done before it was held.
+ */
 export function addSet(session: Session, instanceId: Id, newId: NewId): Session {
   return updateInstance(session, instanceId, (e) => {
     const last = e.performed.at(-1);
-    const next: PerformedSet = last
-      ? { ...last, id: newId(), prescribed_id: null, state: 'pending', notes: null }
-      : emptySet(newId());
+    const next = emptySet(newId());
+    if (last?.load?.kind === 'weight') {
+      next.load = last.load;
+      next.reps = last.reps;
+    }
     return { ...e, performed: [...e.performed, next] };
   });
 }
@@ -124,8 +132,9 @@ export interface SetEdit {
 }
 
 /**
- * One field of a set changed. A done set the edit leaves incomplete goes back to
- * pending: a set's state never claims more than its values hold.
+ * One field of a set changed. Whether the set is done follows from its values
+ * (`isComplete`): there is nothing to tick, and a set left blank, such as an
+ * untouched target, stays pending.
  */
 export function editSet(
   session: Session,
@@ -151,7 +160,7 @@ export function editSet(
           unit: edit.unit ?? unitOf(set) ?? defaultUnit,
         };
     }
-    if (next.state === 'done' && !isComplete(next)) next.state = 'pending';
+    next.state = isComplete(next) ? 'done' : 'pending';
     return next;
   });
 }
@@ -167,14 +176,6 @@ export function unitOf(set: PerformedSet): LoadUnit | null {
   return set.load?.kind === 'weight' ? set.load.unit : null;
 }
 
-/** Ticks a set done, or back to pending. A set that is not complete cannot be done. */
-export function setDone(session: Session, instanceId: Id, setId: Id, done: boolean): Session {
-  return updateSet(session, instanceId, setId, (set) => {
-    if (done && !isComplete(set)) return set;
-    return { ...set, state: done ? 'done' : 'pending' };
-  });
-}
-
 export function removeSet(session: Session, instanceId: Id, setId: Id): Session {
   return updateInstance(session, instanceId, (e) => ({
     ...e,
@@ -184,6 +185,16 @@ export function removeSet(session: Session, instanceId: Id, setId: Id): Session 
 
 export function removeExercise(session: Session, instanceId: Id): Session {
   return { ...session, exercises: session.exercises.filter((e) => e.id !== instanceId) };
+}
+
+/**
+ * Moves a session to another date. A session dated other than the day it was
+ * started on was logged after the fact, so its clock time says nothing about
+ * when it happened, and analysis must not read it as if it did.
+ */
+export function setDate(session: Session, date: IsoDate): Session {
+  const sameDay = date === localDate(new Date(session.started_at));
+  return { ...session, date, time_precision: sameDay ? 'instant' : 'date_only' };
 }
 
 export function finish(session: Session, at: Date): Session {
@@ -318,17 +329,21 @@ export function fromTemplate(session: Session, template: Template, newId: NewId)
   return { ...session, exercises: [...session.exercises, ...exercises] };
 }
 
-/** What a pending set's prescription asks for, shown in its empty row: "140 × 5 @ 8". */
-export function targetOf(instance: ExerciseInstance, set: PerformedSet): string | null {
+/** What a set's prescription asks for, field by field, shown faintly in its empty fields. */
+export function targetsOf(
+  instance: ExerciseInstance,
+  set: PerformedSet,
+): { amount: string; reps: string; rpe: string } {
   const p = instance.prescribed.find((x) => x.id === set.prescribed_id);
-  if (!p) return null;
-  let load = '';
-  if (p.load.kind === 'time') load = formatInterval(p.load.seconds, ' s');
-  else if (p.load.kind === 'distance') load = formatInterval(p.load.meters, ' m');
-  else if (p.load.weight.mode === 'absolute') load = formatInterval(p.load.weight.kg);
-  const reps = p.reps ? formatInterval(p.reps) : '';
-  const rpe = p.rpe ? ` @ ${formatInterval(p.rpe)}` : '';
-  return [load, reps].filter(Boolean).join(' × ') + rpe;
+  const low = (i: [number | null, number | null] | null | undefined) =>
+    i ? formatInterval(i) : '';
+  if (!p) return { amount: '', reps: '', rpe: '' };
+  let amount = '';
+  if (p.load.kind === 'time')
+    amount = p.load.seconds[0] === null ? '' : formatSeconds(p.load.seconds[0]);
+  else if (p.load.kind === 'weight' && p.load.weight.mode === 'absolute')
+    amount = low(p.load.weight.kg);
+  return { amount, reps: low(p.reps), rpe: low(p.rpe) };
 }
 
 // --- what was typed ---------------------------------------------------------------

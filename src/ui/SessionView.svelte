@@ -2,7 +2,7 @@
   import type { Exercise, Session } from '../model';
   import AddExercise from './AddExercise.svelte';
   import ExerciseCard from './ExerciseCard.svelte';
-  import { addExercise, lastTime, lastUnit, parseNumber } from './session';
+  import { addExercise, lastTime, lastUnit, parseNumber, setDate } from './session';
 
   interface Props {
     session: Session;
@@ -20,7 +20,7 @@
 
   const byId = $derived(new Map(library.map((e) => [e.id, e])));
   const open = $derived(session.ended_at === null);
-  const needsBodyweight = $derived(
+  const hasBodyweightWork = $derived(
     session.exercises.some((e) => byId.get(e.exercise_id)?.load_type === 'bw_plus'),
   );
   /** Exercises of recent sessions first: most days repeat a recent one. */
@@ -34,22 +34,20 @@
     return () => clearInterval(timer);
   });
 
-  const elapsed = $derived.by(() => {
+  /** How long it has run, or ran; nothing for a session logged after the fact. */
+  const duration = $derived.by(() => {
+    if (session.time_precision === 'date_only') return '';
     const end = session.ended_at ? Date.parse(session.ended_at) : now;
     const minutes = Math.max(0, Math.round((end - Date.parse(session.started_at)) / 60_000));
     return minutes < 60 ? `${minutes} min` : `${Math.floor(minutes / 60)} h ${minutes % 60} min`;
   });
 
-  const day = $derived(
-    new Date(`${session.date}T12:00:00`).toLocaleDateString([], {
-      weekday: 'long',
-      day: 'numeric',
-      month: 'long',
-    }),
-  );
-
   function pick(exercise: Exercise): void {
     onchange(addExercise(session, exercise, () => crypto.randomUUID()));
+  }
+
+  function changeDate(value: string): void {
+    if (/^\d{4}-\d{2}-\d{2}$/.test(value)) onchange(setDate(session, value));
   }
 
   function setBodyweight(text: string): void {
@@ -67,21 +65,31 @@
   }
 </script>
 
-<section>
+<article>
   <header>
-    {#if !open}<button class="back" onclick={onclose}>‹ Sessions</button>{/if}
-    <h1>{day}</h1>
-    <p class="meta tabular">{open ? `${elapsed} so far` : elapsed}</p>
+    {#if !open}<button class="link" onclick={onclose}>‹ back</button>{/if}
+    <div class="when">
+      <input
+        class="date"
+        type="date"
+        aria-label="Date"
+        value={session.date}
+        onchange={(e) => changeDate(e.currentTarget.value)}
+      />
+      {#if duration}<span class="duration tabular">{duration}{open ? ' so far' : ''}</span>{/if}
+    </div>
   </header>
 
-  {#if needsBodyweight}
+  {#if hasBodyweightWork}
     <label class="bodyweight">
-      Bodyweight today, kg
+      bodyweight today
       <input
         inputmode="decimal"
+        placeholder="kg"
         value={session.bodyweight_kg ?? ''}
         onchange={(e) => setBodyweight(e.currentTarget.value)}
       />
+      kg
     </label>
   {/if}
 
@@ -99,101 +107,71 @@
 
   <AddExercise {library} {recentIds} onpick={pick} />
 
-  <label class="notes">
-    Notes
-    <textarea rows="3" value={session.notes ?? ''} onchange={(e) => setNotes(e.currentTarget.value)}
-    ></textarea>
-  </label>
+  <textarea
+    class="notes"
+    rows="3"
+    placeholder="notes…"
+    value={session.notes ?? ''}
+    onchange={(e) => setNotes(e.currentTarget.value)}></textarea>
 
   {#if open}
-    <button class="finish" onclick={onfinish}>Finish session</button>
+    <button class="finish" onclick={onfinish}>Finish</button>
   {:else}
     <div class="after">
-      <button onclick={saveTemplate}>Save as template</button>
-      <button class="delete" onclick={ondelete}>Delete session</button>
+      <button class="link" onclick={saveTemplate}>save as template</button>
+      <button class="link" onclick={ondelete}>delete session</button>
     </div>
   {/if}
-</section>
+</article>
 
 <style>
-  header {
-    margin-bottom: 1rem;
+  .when {
+    display: flex;
+    align-items: baseline;
+    gap: 0.75rem;
   }
 
-  h1 {
-    margin: 0;
+  .date {
+    border-bottom-color: transparent;
     font-size: 1.4rem;
+    font-weight: 600;
   }
 
-  .meta {
-    margin: 0.2rem 0 0;
+  .duration {
     color: var(--muted);
   }
 
-  .back {
-    margin: 0 0 0.5rem;
-    padding: 0.5rem 0;
-    min-height: 2.75rem;
-    border: 0;
-    background: none;
-    color: var(--accent);
-    font: inherit;
-  }
-
-  label {
-    display: grid;
-    gap: 0.3rem;
-    margin: 1rem 0;
-    font-size: 0.9rem;
+  .bodyweight {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
     color: var(--ink-2);
   }
 
-  input,
-  textarea {
-    min-height: 2.75rem;
-    padding: 0.5rem 0.75rem;
-    border: 1px solid var(--line);
-    border-radius: 0.5rem;
-    background: var(--surface);
-    color: var(--ink);
-    font: inherit;
-    font-size: 1rem;
+  .bodyweight input {
+    width: 4.5rem;
+    font-size: 1.2rem;
+    text-align: center;
   }
 
-  .bodyweight input {
-    width: 7rem;
+  .notes {
+    display: block;
+    width: 100%;
+    margin-top: 1rem;
+    resize: vertical;
   }
 
   .finish {
     width: 100%;
-    min-height: 3.25rem;
     margin-top: 2rem;
-    border: 1px solid var(--accent);
-    border-radius: 0.75rem;
-    background: none;
-    color: var(--accent);
-    font: inherit;
-    font-size: 1.05rem;
+    border: 1px solid var(--ink);
+    border-radius: 0.5rem;
     font-weight: 600;
   }
 
   .after {
     display: flex;
-    gap: 0.5rem;
-    margin-top: 2rem;
-  }
-
-  .after button {
-    min-height: 2.75rem;
-    padding: 0 1rem;
-    border: 1px solid var(--line);
-    border-radius: 0.5rem;
-    background: var(--surface);
-    color: var(--ink);
-    font: inherit;
-  }
-
-  .after .delete {
-    color: var(--accent);
+    gap: 1.5rem;
+    margin-top: 1.5rem;
   }
 </style>

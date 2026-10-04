@@ -10,6 +10,7 @@
   let { library, recentIds, onpick }: Props = $props();
 
   let query = $state('');
+  let focused = $state(false);
 
   /** Lowercased and stripped of accents, so "romanian" finds "Romanian" and "pes" finds "pés". */
   const fold = (text: string) =>
@@ -21,6 +22,7 @@
   const results = $derived.by(() => {
     const words = fold(query).split(/\s+/).filter(Boolean);
     if (words.length === 0) {
+      if (!focused) return [];
       const byId = new Map(library.map((e) => [e.id, e]));
       return recentIds.flatMap((id) => byId.get(id) ?? []).slice(0, 6);
     }
@@ -36,7 +38,14 @@
 </script>
 
 <div class="add">
-  <input bind:value={query} placeholder="Add exercise" autocapitalize="off" autocomplete="off" />
+  <input
+    bind:value={query}
+    placeholder="+ exercise"
+    autocapitalize="off"
+    autocomplete="off"
+    onfocus={() => (focused = true)}
+    onblur={() => setTimeout(() => (focused = false), 200)}
+  />
   {#if results.length}
     <ul>
       {#each results as exercise (exercise.id)}
@@ -48,36 +57,29 @@
 
 <style>
   .add {
-    margin: 1.25rem 0;
+    margin: 0.75rem 0;
   }
 
   input {
     width: 100%;
-    min-height: 2.75rem;
-    padding: 0 0.75rem;
-    border: 1px dashed var(--line);
-    border-radius: 0.5rem;
-    background: var(--surface);
-    color: var(--ink);
-    font: inherit;
-    font-size: 1rem;
+    border-bottom-style: dashed;
+  }
+
+  input::placeholder {
+    color: var(--accent);
+    opacity: 1;
   }
 
   ul {
-    margin: 0.25rem 0 0;
+    margin: 0;
     padding: 0;
     list-style: none;
   }
 
   button {
     width: 100%;
-    min-height: 2.75rem;
-    padding: 0 0.75rem;
-    border: 0;
+    padding-left: 1rem;
     border-bottom: 1px solid var(--line);
-    background: none;
-    color: var(--ink);
-    font: inherit;
     text-align: left;
   }
 </style>

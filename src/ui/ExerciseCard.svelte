@@ -1,12 +1,5 @@
 <script lang="ts">
-  import {
-    isComplete,
-    type Exercise,
-    type ExerciseInstance,
-    type LoadUnit,
-    type PerformedSet,
-    type Session,
-  } from '../model';
+  import type { Exercise, ExerciseInstance, LoadUnit, PerformedSet, Session } from '../model';
   import {
     addSet,
     amountOf,
@@ -19,8 +12,7 @@
     parseSeconds,
     removeExercise,
     removeSet,
-    setDone,
-    targetOf,
+    targetsOf,
     unitOf,
     type SetEdit,
   } from './session';
@@ -38,9 +30,12 @@
   }
   let { session, instance, exercise, last, unit, onchange }: Props = $props();
 
-  const measure = $derived(exercise ? measureOf(exercise) : 'weight');
-  const blocked = $derived(exercise ? needsBodyweight(session, exercise) : false);
+  const timed = $derived(exercise ? measureOf(exercise) === 'time' : false);
+  const measure = $derived(timed ? 'time' : 'weight');
+  const missingBodyweight = $derived(exercise ? needsBodyweight(session, exercise) : false);
   const UNITS: LoadUnit[] = ['kg', 'lb', 'pins'];
+  /** The set whose actions (warm-up, remove) are open, from a tap on its number. */
+  let opened = $state<string | null>(null);
 
   function edit(set: PerformedSet, change: SetEdit): void {
     onchange(editSet(session, instance.id, set.id, change, measure, unit));
@@ -59,6 +54,26 @@
     else edit(set, apply(value));
   }
 
+  /**
+   * Tapping an empty field that has a target takes the target, selected so that
+   * typing replaces it: lifting what was planned costs no typing. Never the RPE,
+   * which is what the set felt like, not what was planned.
+   */
+  function takeTarget(
+    input: HTMLInputElement,
+    target: string,
+    parse: (text: string) => number | null | undefined,
+    apply: (value: number) => SetEdit,
+    set: PerformedSet,
+  ): void {
+    if (input.value !== '' || target === '') return;
+    const value = parse(target);
+    if (value === null || value === undefined) return;
+    edit(set, apply(value));
+    input.value = target;
+    requestAnimationFrame(() => input.select());
+  }
+
   function nextUnit(set: PerformedSet): LoadUnit {
     const current = unitOf(set) ?? unit;
     return UNITS[(UNITS.indexOf(current) + 1) % UNITS.length];
@@ -67,10 +82,10 @@
   function shownAmount(set: PerformedSet): string {
     const amount = amountOf(set);
     if (amount === null) return '';
-    return measure === 'time' ? formatSeconds(amount).replace(' s', '') : String(amount);
+    return timed ? formatSeconds(amount).replace(' s', '') : String(amount);
   }
 
-  function removeCard(): void {
+  function removeExerciseAsked(): void {
     const logged = instance.performed.some((s) => s.state === 'done');
     if (!logged || confirm(`Remove ${exercise?.name ?? 'this exercise'} and its sets?`)) {
       onchange(removeExercise(session, instance.id));
@@ -78,175 +93,144 @@
   }
 </script>
 
-<article>
+<section>
   <header>
     <h2>{exercise?.name ?? instance.exercise_id}</h2>
-    <button class="icon" aria-label="Remove exercise" onclick={removeCard}>×</button>
+    <button class="quiet" onclick={removeExerciseAsked}>remove</button>
   </header>
-  {#if last}<p class="last tabular">Last time: {last}</p>{/if}
-
-  <div class="labels" class:time={measure === 'time'}>
-    <span></span>
-    <span>{measure === 'time' ? 'time' : 'load'}</span>
-    {#if measure === 'weight'}<span></span><span>reps</span>{/if}
-    <span>RPE</span>
-  </div>
+  {#if last}<p class="last tabular">last: {last}</p>{/if}
 
   {#each instance.performed as set, i (set.id)}
-    {@const target = targetOf(instance, set)}
-    {@const done = set.state === 'done'}
-    <div class="row tabular" class:done class:time={measure === 'time'}>
-      <span class="n">{set.is_warmup ? 'W' : i + 1}</span>
+    {@const target = targetsOf(instance, set)}
+    <div class="row tabular" class:timed class:pending={set.state !== 'done'}>
+      <button
+        class="n"
+        aria-label="Set {i + 1} actions"
+        onclick={() => (opened = opened === set.id ? null : set.id)}
+        >{set.is_warmup ? 'w' : i + 1}</button
+      >
       <input
-        inputmode={measure === 'time' ? 'text' : 'decimal'}
-        aria-label={measure === 'time' ? 'Time' : 'Load'}
-        placeholder={measure === 'time' ? '1:30' : ''}
+        inputmode={timed ? 'text' : 'decimal'}
+        aria-label={timed ? 'Time' : 'Load'}
+        placeholder={target.amount || (timed ? '0:00' : '')}
         value={shownAmount(set)}
+        onfocus={(e) =>
+          takeTarget(
+            e.currentTarget,
+            target.amount,
+            timed ? parseSeconds : parseNumber,
+            (amount) => ({ amount }),
+            set,
+          )}
         onchange={(e) =>
           field(
             e.currentTarget,
-            measure === 'time' ? parseSeconds : parseNumber,
+            timed ? parseSeconds : parseNumber,
             (amount) => ({ amount }),
             set,
             shownAmount(set),
           )}
       />
-      {#if measure === 'weight'}
-        <button class="unit" onclick={() => edit(set, { unit: nextUnit(set) })}>
-          {unitOf(set) ?? unit}
-        </button>
+      {#if !timed}
+        <button class="unit" onclick={() => edit(set, { unit: nextUnit(set) })}
+          >{unitOf(set) ?? unit}</button
+        >
+        <span class="sep">×</span>
         <input
           inputmode="numeric"
           aria-label="Reps"
+          placeholder={target.reps}
           value={set.reps ?? ''}
+          onfocus={(e) =>
+            takeTarget(e.currentTarget, target.reps, parseNumber, (reps) => ({ reps }), set)}
           onchange={(e) =>
             field(e.currentTarget, parseNumber, (reps) => ({ reps }), set, String(set.reps ?? ''))}
         />
       {/if}
+      <span class="sep">@</span>
       <input
         inputmode="decimal"
         aria-label="RPE"
+        placeholder={target.rpe}
         value={set.rpe ?? ''}
         onchange={(e) =>
           field(e.currentTarget, parseRpe, (rpe) => ({ rpe }), set, String(set.rpe ?? ''))}
       />
-      <button
-        class="tick"
-        class:on={done}
-        aria-label={done ? 'Mark not done' : 'Mark done'}
-        disabled={!done && (!isComplete(set) || blocked)}
-        onclick={() => onchange(setDone(session, instance.id, set.id, !done))}>✓</button
-      >
-      <details class="more">
-        <summary aria-label="More">⋯</summary>
-        <button onclick={() => edit(set, { is_warmup: !set.is_warmup })}>
-          {set.is_warmup ? 'Not a warm-up' : 'Warm-up'}
-        </button>
-        <button onclick={() => onchange(removeSet(session, instance.id, set.id))}>Remove set</button
-        >
-      </details>
     </div>
-    {#if target && !done}<p class="target tabular">Target {target}</p>{/if}
+    {#if opened === set.id}
+      <div class="actions">
+        <button class="link" onclick={() => edit(set, { is_warmup: !set.is_warmup })}>
+          {set.is_warmup ? 'not a warm-up' : 'warm-up'}
+        </button>
+        <button class="link" onclick={() => onchange(removeSet(session, instance.id, set.id))}>
+          remove set
+        </button>
+      </div>
+    {/if}
   {/each}
 
-  {#if blocked}<p class="hint">Enter today's bodyweight above to tick these sets.</p>{/if}
+  {#if missingBodyweight}<p class="hint">Today's bodyweight, above, counts in these sets.</p>{/if}
   <button
-    class="add-set"
-    onclick={() => onchange(addSet(session, instance.id, () => crypto.randomUUID()))}
+    class="link"
+    onclick={() => onchange(addSet(session, instance.id, () => crypto.randomUUID()))}>+ set</button
   >
-    + set
-  </button>
-</article>
+</section>
 
 <style>
-  article {
-    margin: 0 0 1rem;
-    padding: 0.75rem;
-    border: 1px solid var(--line);
-    border-radius: 0.75rem;
-    background: var(--surface);
+  section {
+    padding: 1rem 0 0.5rem;
+    border-bottom: 1px solid var(--line);
   }
 
   header {
     display: flex;
-    align-items: center;
+    align-items: baseline;
     justify-content: space-between;
   }
 
   h2 {
     margin: 0;
-    font-size: 1.05rem;
+    font-size: 1.1rem;
   }
 
-  .last,
-  .target,
-  .hint {
-    margin: 0.2rem 0 0.4rem;
+  .quiet {
+    min-height: 0;
     font-size: 0.85rem;
     color: var(--muted);
   }
 
-  .target {
-    margin: -0.2rem 0 0.4rem 2rem;
-  }
-
-  .labels,
-  .row {
-    display: grid;
-    grid-template-columns: 1.5rem 1fr 2.75rem 1fr 1fr 2.75rem 2rem;
-    gap: 0.35rem;
-    align-items: center;
-  }
-
-  .labels.time,
-  .row.time {
-    grid-template-columns: 1.5rem 1fr 1fr 2.75rem 2rem;
-  }
-
-  .labels {
-    font-size: 0.75rem;
+  .last,
+  .hint {
+    margin: 0.15rem 0 0.25rem;
+    font-size: 0.85rem;
     color: var(--muted);
   }
 
   .row {
-    margin: 0.3rem 0;
+    display: grid;
+    grid-template-columns: 2rem 1fr 2.75rem 1rem 1fr 1rem 1fr;
+    align-items: center;
+    gap: 0.25rem;
+  }
+
+  .row.timed {
+    grid-template-columns: 2rem 1fr 1rem 1fr;
+  }
+
+  .row input {
+    width: 100%;
+    min-width: 0;
+    font-size: 1.2rem;
+    text-align: center;
   }
 
   .n {
     color: var(--muted);
-    text-align: center;
   }
 
-  input {
-    width: 100%;
-    min-width: 0;
-    min-height: 2.75rem;
-    padding: 0 0.4rem;
-    border: 1px solid var(--line);
-    border-radius: 0.4rem;
-    background: var(--ground);
-    color: var(--ink);
-    font: inherit;
-    font-size: 1.1rem;
-    text-align: center;
-  }
-
-  .done input {
-    border-color: transparent;
-  }
-
-  button {
-    font: inherit;
-    color: var(--ink);
-  }
-
-  .unit,
-  .tick {
-    min-height: 2.75rem;
-    padding: 0;
-    border: 1px solid var(--line);
-    border-radius: 0.4rem;
-    background: none;
+  /* A set still missing a number is not counted yet, and shows it. */
+  .row.pending .n {
+    color: var(--line);
   }
 
   .unit {
@@ -254,69 +238,15 @@
     color: var(--ink-2);
   }
 
-  .tick {
-    font-size: 1.1rem;
+  .sep {
     color: var(--muted);
+    text-align: center;
   }
 
-  .tick.on {
-    border-color: var(--accent);
-    background: var(--accent);
-    color: var(--surface);
-  }
-
-  .tick:disabled {
-    opacity: 0.35;
-  }
-
-  .icon {
-    min-width: 2.75rem;
-    min-height: 2.75rem;
-    border: 0;
-    background: none;
-    color: var(--muted);
-    font-size: 1.3rem;
-  }
-
-  .more {
-    position: relative;
-  }
-
-  .more summary {
-    display: grid;
-    place-items: center;
-    min-height: 2.75rem;
-    color: var(--muted);
-    list-style: none;
-    cursor: pointer;
-  }
-
-  .more summary::-webkit-details-marker {
-    display: none;
-  }
-
-  .more[open] {
-    z-index: 1;
-  }
-
-  .more button {
-    position: relative;
-    display: block;
-    width: 9rem;
-    min-height: 2.75rem;
-    margin-left: -7rem;
-    border: 1px solid var(--line);
-    background: var(--surface);
-    text-align: left;
-    padding: 0 0.75rem;
-  }
-
-  .add-set {
-    min-height: 2.75rem;
-    margin-top: 0.25rem;
-    padding: 0 0.75rem;
-    border: 0;
-    background: none;
-    color: var(--accent);
+  .actions {
+    display: flex;
+    gap: 1.25rem;
+    padding-left: 2.25rem;
+    font-size: 0.9rem;
   }
 </style>

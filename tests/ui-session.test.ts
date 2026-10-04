@@ -21,8 +21,8 @@ import {
   parseSeconds,
   removeExercise,
   removeSet,
-  setDone,
-  targetOf,
+  setDate,
+  targetsOf,
   templateFrom,
 } from '../src/ui/session';
 import { statusLine } from '../src/ui/status';
@@ -46,11 +46,10 @@ function started(at = new Date(2026, 9, 4, 18, 30)): Session {
 
 /** A session with one squat set of 140 × 5 @ 8, done. */
 function withSquat(newId = ids()): Session {
-  let s = addExercise(started(), squat, newId);
+  const s = addExercise(started(), squat, newId);
   const [e] = s.exercises;
   const set = e.performed[0].id;
-  s = editSet(s, e.id, set, { amount: 140, reps: 5, rpe: 8 }, 'weight', 'kg');
-  return setDone(s, e.id, set, true);
+  return editSet(s, e.id, set, { amount: 140, reps: 5, rpe: 8 }, 'weight', 'kg');
 }
 
 describe('a session being logged', () => {
@@ -71,23 +70,28 @@ describe('a session being logged', () => {
     ]);
   });
 
-  it('ticks a set done only once it is complete', () => {
-    const newId = ids();
-    let s = addExercise(started(), squat, newId);
-    const [e] = s.exercises;
-    const set = e.performed[0].id;
-    s = editSet(s, e.id, set, { amount: 140, reps: 5 }, 'weight', 'kg');
-    expect(setDone(s, e.id, set, true).exercises[0].performed[0].state).toBe('pending');
-    s = editSet(s, e.id, set, { rpe: 8 }, 'weight', 'kg');
-    expect(setDone(s, e.id, set, true).exercises[0].performed[0].state).toBe('done');
-  });
-
-  it('lets a warm-up be done without an RPE', () => {
+  it('counts a set done once its numbers are complete, and pending until then', () => {
     let s = addExercise(started(), squat, ids());
     const [e] = s.exercises;
     const set = e.performed[0].id;
-    s = editSet(s, e.id, set, { amount: 60, reps: 5, is_warmup: true }, 'weight', 'kg');
-    expect(setDone(s, e.id, set, true).exercises[0].performed[0].state).toBe('done');
+    s = editSet(s, e.id, set, { amount: 140, reps: 5 }, 'weight', 'kg');
+    expect(s.exercises[0].performed[0].state).toBe('pending');
+    s = editSet(s, e.id, set, { rpe: 8 }, 'weight', 'kg');
+    expect(s.exercises[0].performed[0].state).toBe('done');
+  });
+
+  it('counts a warm-up done without an RPE', () => {
+    let s = addExercise(started(), squat, ids());
+    const [e] = s.exercises;
+    s = editSet(
+      s,
+      e.id,
+      e.performed[0].id,
+      { amount: 60, reps: 5, is_warmup: true },
+      'weight',
+      'kg',
+    );
+    expect(s.exercises[0].performed[0].state).toBe('done');
   });
 
   it('sends a done set back to pending when an edit leaves it incomplete', () => {
@@ -115,17 +119,34 @@ describe('a session being logged', () => {
     expect(s.exercises[0].performed[0]).toMatchObject({
       load: { kind: 'time', seconds: 60 },
       reps: null,
+      state: 'done',
     });
-    expect(setDone(s, e.id, set, true).exercises[0].performed[0].state).toBe('done');
     expect(formatSet(s.exercises[0].performed[0])).toBe('1:00');
   });
 
-  it('adds a set copying the last one, pending', () => {
+  it('adds a set copying the last load and reps but not the RPE, so it waits to be lifted', () => {
     const newId = ids();
     const s = addSet(withSquat(newId), 'id1', newId);
     const [first, second] = s.exercises[0].performed;
-    expect(second).toMatchObject({ load: first.load, reps: 5, rpe: 8, state: 'pending' });
+    expect(second).toMatchObject({ load: first.load, reps: 5, rpe: null, state: 'pending' });
     expect(second.id).not.toBe(first.id);
+  });
+
+  it('adds an empty set after a timed one, which a copy would count as held', () => {
+    const newId = ids();
+    let s = addExercise(started(), plank, newId);
+    const [e] = s.exercises;
+    s = editSet(s, e.id, e.performed[0].id, { amount: 60 }, 'time', 'kg');
+    expect(addSet(s, e.id, newId).exercises[0].performed[1]).toMatchObject({
+      load: null,
+      state: 'pending',
+    });
+  });
+
+  it('moves to another date, which makes its clock time meaningless', () => {
+    const moved = setDate(started(), '2026-10-01');
+    expect(moved).toMatchObject({ date: '2026-10-01', time_precision: 'date_only' });
+    expect(setDate(moved, '2026-10-04').time_precision).toBe('instant');
   });
 
   it('removes sets and exercises', () => {
@@ -199,7 +220,7 @@ describe('templates', () => {
     expect(e.performed).toEqual([
       expect.objectContaining({ state: 'pending', prescribed_id: e.prescribed[0].id }),
     ]);
-    expect(targetOf(e, e.performed[0])).toBe('140 × 5 @ 8');
+    expect(targetsOf(e, e.performed[0])).toEqual({ amount: '140', reps: '5', rpe: '8' });
   });
 });
 

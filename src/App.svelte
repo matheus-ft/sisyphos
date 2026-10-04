@@ -1,13 +1,15 @@
 <script lang="ts">
   import { onMount } from 'svelte';
-  import type { Exercise, Session, Template } from './model';
+  import type { Exercise, IsoDate, Session, Template } from './model';
   import { startStorage, type AppStorage } from './storage/app';
   import type { SetupInput, SetupResult } from './storage/setup';
   import type { StatusSnapshot } from './storage/status';
   import Home from './ui/Home.svelte';
   import SessionView from './ui/SessionView.svelte';
   import Setup from './ui/Setup.svelte';
-  import { finish, fromTemplate, localDate, newSession, templateFrom } from './ui/session';
+  import TemplateView from './ui/TemplateView.svelte';
+  import { finish, fromTemplate, localDate, newSession, setDate, templateFrom } from './ui/session';
+  import { newTemplate } from './ui/template';
   import { statusLine } from './ui/status';
 
   /** Set once the lifter chose to go without sync, so setup stops greeting them. */
@@ -19,6 +21,8 @@
   let showSetup = $state(false);
   /** The session on screen: the one in progress, or a past one being read or edited. */
   let session = $state<Session | null>(null);
+  /** The template being edited, when no session is on screen. */
+  let template = $state<Template | null>(null);
   let sessions = $state<Session[]>([]);
   let templates = $state<Template[]>([]);
   let library = $state<Exercise[]>([]);
@@ -106,17 +110,21 @@
     }
   }
 
-  async function start(template: Template | null): Promise<void> {
+  async function start(from: Template | null, date?: IsoDate): Promise<void> {
     const s = storage;
     if (!s) return;
     const at = new Date();
-    const fresh = newSession({
-      id: await s.log.newSessionId(localDate(at)),
+    const id = await s.log.newSessionId(date ?? localDate(at));
+    let fresh = newSession({
+      id,
       at,
       tz: Intl.DateTimeFormat().resolvedOptions().timeZone,
       deviceId: s.log.options.deviceId,
     });
-    await save(template ? fromTemplate(fresh, template, () => crypto.randomUUID()) : fresh);
+    if (date) fresh = setDate(fresh, date);
+    if (from) fresh = fromTemplate(fresh, from, () => crypto.randomUUID());
+    template = null;
+    await save(fresh);
   }
 
   async function finishSession(): Promise<void> {
@@ -149,6 +157,34 @@
       at: new Date(),
     });
     await s.log.putTemplate(template);
+    templates = await s.log.getTemplates();
+  }
+
+  async function createTemplate(): Promise<void> {
+    const s = storage;
+    const name = prompt('Name the template', '')?.trim();
+    if (!s || !name) return;
+    await saveTemplate(newTemplate({ id: await s.log.newTemplateId(name), name, at: new Date() }));
+  }
+
+  /** Shows the change at once and writes it, like `save` for sessions. */
+  async function saveTemplate(next: Template): Promise<void> {
+    template = next;
+    if (!storage) return;
+    try {
+      await storage.log.putTemplate(next);
+      templates = await storage.log.getTemplates();
+      failure = null;
+    } catch (error) {
+      failure = `Not saved: ${messageOf(error)}`;
+    }
+  }
+
+  async function deleteTemplate(): Promise<void> {
+    const s = storage;
+    if (!s || !template || !confirm(`Delete the template ${template.name}?`)) return;
+    await s.log.deleteTemplate(template.id);
+    template = null;
     templates = await s.log.getTemplates();
   }
 
@@ -190,8 +226,25 @@
       ondelete={remove}
       onsavetemplate={saveAsTemplate}
     />
+  {:else if template}
+    <TemplateView
+      {template}
+      {library}
+      onchange={saveTemplate}
+      onstart={() => template && start(template)}
+      onclose={() => (template = null)}
+      ondelete={deleteTemplate}
+    />
   {:else}
-    <Home {sessions} {templates} {library} onstart={start} onopen={(s: Session) => (session = s)} />
+    <Home
+      {sessions}
+      {templates}
+      {library}
+      onstart={start}
+      onopen={(s: Session) => (session = s)}
+      onopentemplate={(t: Template) => (template = t)}
+      onnewtemplate={createTemplate}
+    />
   {/if}
 </main>
 

@@ -30,9 +30,8 @@ shown as saved only once its write resolves. Only setup waits on GitHub.
 
 ## v0: logging a session
 
-Built, in `src/App.svelte` and `src/ui/`: the session screen, setup and the
-status line. Templates are saved from a finished session and started from;
-editing them is v0.5.
+Built, in `src/App.svelte` and `src/ui/`: the session screen, setup, the status
+line, and templates with exact targets.
 
 ## v0.5: the bridge
 
@@ -68,12 +67,12 @@ ring or vibrate, so it never claims to.
 
 ### Templates
 
-Listed, edited and started from. A template carries a program label (program
-name, block, week, day, weekday), which a session started from it copies:
+v0 builds them with exact targets. v0.5 adds a program label (program name,
+block, week, day, weekday), which a session started from it copies:
 "Block 2, week 3" is a property of the plan, not something typed per session.
 This adds `label` to `Template`, a change to the log format.
 
-Prescriptions are intervals (`3-5 reps`, `≥5`), with loads absolute, as a
+Targets become intervals (`3-5 reps`, `≥5`), with loads absolute, as a
 percentage of a reference max, RPE-driven or bodyweight plus.
 
 ### History and past sessions
