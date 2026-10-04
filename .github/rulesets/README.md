@@ -19,7 +19,7 @@ one while you are the only maintainer locks you out of your own repository.
 request opened alongside another wait for an update and a second run. A merge
 that breaks master is still caught: master's own run fails before deploying.
 
-## `master.json` — use this once someone else contributes
+## `master-team.json` — use this once someone else contributes
 
 The same, plus what review needs:
 

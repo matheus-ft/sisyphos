@@ -22,7 +22,7 @@ concurrency:
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
-  # `build` is the check both rulesets in .github/rulesets/ require by name.
+  # `build` is the check .github/rulesets/master-team.json requires by name.
   build:
     runs-on: ubuntu-latest
     steps:
