@@ -13,8 +13,8 @@ squat variation working quads and glutes — that lives in the exercise library 
 is resolved when you query.
 
 **Status: pre-alpha.** The schema, the metrics and the storage layer (device
-store and GitHub sync) are in place; no logging UI yet. What it will be is in
-[`docs/UI.md`](docs/UI.md).
+store and GitHub sync) are in place, and v0 of the app logs a session as you
+train. What comes next is in [`docs/UI.md`](docs/UI.md).
 
 Live at **<https://matheus-ft.github.io/sisyphos/>**, deployed from `master` on
 every push. On iOS, open it in Safari and use Share → Add to Home Screen; it then
@@ -56,6 +56,7 @@ src/
   library/    muscles.csv, exercises.csv, the parser for them, and how the
               lifter's own exercises combine with them
   metrics/    definitions.json, the two lookup charts, and the code reading them
+  ui/         the screens: logging a session, setup, the status line
   storage/    the device store, sync with the log repo, setup, scheduling,
               durability
 ```

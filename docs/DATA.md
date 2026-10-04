@@ -225,6 +225,8 @@ df = pd.read_csv('sets.csv').merge(pd.read_csv('exercises.csv'), on='exercise_id
 | `metrics/stress.ts`      | The fatigue chart, stress index, central balance                                 |
 | `metrics/load.ts`        | Unit conversion, effective load, tonnage                                         |
 | `metrics/volume.ts`      | Volume by muscle, by tier and by event                                           |
+| `ui/session.ts`          | Every change the session screen makes, as pure functions over a session          |
+| `ui/*.svelte`            | The screens; `App.svelte` at the root of `src/` wires them to the storage layer  |
 | `storage/app.ts`         | What the UI calls: `startStorage()` wires everything below                       |
 | `storage/log.ts`         | Sessions, templates, rows and conflicts, read and written as records             |
 | `storage/formats.ts`     | Every log-repo file to and from its record (see Serialisation above)             |

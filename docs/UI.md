@@ -30,57 +30,9 @@ shown as saved only once its write resolves. Only setup waits on GitHub.
 
 ## v0: logging a session
 
-One screen for the session, plus setup. No tabs, no conflict screens, no
-analysis.
-
-### Setup
-
-At first launch, and from the status line: a form with the repo (`owner/repo`
-or its URL) and the token, and **Connect**, which calls `connect()`. The steps
-on github.com are linked from it (`DATA.md`, Setup). **Use without sync**
-skips it; the status line then says the log is only on this phone.
-
-Each setup failure is shown in its own words (`SetupResult.message`).
-
-### The status line
-
-One line at the top, always: synced, not synced yet, syncing, offline (will
-retry), or what needs fixing (a token, the repo), from the scheduler's
-`StatusSnapshot`. During a session it reads "Saved on this phone · syncs when
-you finish", since syncing waits for the end on purpose. Unresolved conflicts
-show as a count; nothing is lost, and resolving them comes in v0.5.
-
-### The session
-
-With no session in progress: **Start session**, and below it the recent
-sessions, newest first, each opening the same screen for reading or editing.
-
-A session in progress shows, from the top:
-
-- the date and the time elapsed;
-- one card per exercise, in order;
-- **Add exercise**: a search over the library by name;
-- the session's notes, free text;
-- **Finish**, last, so it is never tapped by accident.
-
-An exercise card shows the exercise's name, the sets of the last session that
-had it ("last time: 140 × 5 @ 8, 140 × 5 @ 8.5"), and one row per set. A row is
-typed into directly: load, reps and RPE, the unit beside the load (the unit
-this exercise was last logged in, else its `default_unit`; a tap changes it),
-and a warm-up toggle. **+ set** adds a row copying the previous one. A set is
-marked done with a tick, which is enabled once the set is complete
-(`isComplete`); until then it stays pending. Sets and exercises can be removed.
-
-An exercise loaded as bodyweight plus (`bw_plus`) asks for the session's
-bodyweight the first time one of its sets is ticked. It is never pre-filled.
-
-**Finish** sets the end time, saves, and triggers the sync.
-
-### Templates, if they come cheap
-
-A finished session can be saved as a template under a name, and a session can
-start from one: its exercises, with each set's load, reps and RPE as targets
-shown in the empty rows. Editing a template waits for v0.5.
+Built, in `src/App.svelte` and `src/ui/`: the session screen, setup and the
+status line. Templates are saved from a finished session and started from;
+editing them is v0.5.
 
 ## v0.5: the bridge
 

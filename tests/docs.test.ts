@@ -75,7 +75,7 @@ function spans(text: string): string[] {
 
 function pathExists(span: string, doc: string): boolean {
   const path = span.replace(/\/$/, '');
-  if (!path.includes('/')) return basenames.has(path);
+  if (!path.includes('/')) return basenames.has(path) || dirSet.has(path);
   const docDir = doc.split('/').slice(0, -1).join('/');
   return ['', 'src/', docDir ? `${docDir}/` : ''].some(
     (base) => fileSet.has(base + path) || dirSet.has(base + path),

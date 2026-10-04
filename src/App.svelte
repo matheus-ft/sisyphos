@@ -1,337 +1,231 @@
 <script lang="ts">
-  import musclesCsv from './library/muscles.csv?raw';
-  import exercisesCsv from './library/exercises.csv?raw';
-  import { parseMuscles, parseExercises } from './library/parse';
-  import { e1rm } from './metrics/rpe-chart';
-  import { setStressIndex, centralBalance, stressByMuscle } from './metrics/stress';
-  import {
-    volumeByMuscle,
-    setsByTierForLift,
-    eventVolume,
-    type CountedSet,
-  } from './metrics/volume';
-  import {
-    muscleWeights,
-    tierWeights,
-    MUSCLE_PRESET_NAMES,
-    TIER_PRESET_NAMES,
-    CONFIG,
-  } from './metrics/definitions';
-  import type { PerformedSet } from './model';
-  import DevPanel from './DevPanel.svelte';
+  import { onMount } from 'svelte';
+  import type { Exercise, Session, Template } from './model';
+  import { startStorage, type AppStorage } from './storage/app';
+  import type { SetupInput, SetupResult } from './storage/setup';
+  import type { StatusSnapshot } from './storage/status';
+  import Home from './ui/Home.svelte';
+  import SessionView from './ui/SessionView.svelte';
+  import Setup from './ui/Setup.svelte';
+  import { finish, fromTemplate, localDate, newSession, templateFrom } from './ui/session';
+  import { statusLine } from './ui/status';
 
-  // No logging UI yet. This page reads the real library and charts so a broken
-  // reference shows up now rather than in three weeks, and it demonstrates the
-  // one interaction that matters for analysis: switching how muscles are counted.
-  const muscles = parseMuscles(musclesCsv);
-  const nameOf = new Map(muscles.map((m) => [m.id, m.name]));
-  const exercises = parseExercises(exercisesCsv, new Set(muscles.map((m) => m.id)));
-  const byId = new Map(exercises.map((e) => [e.id, e]));
+  /** Set once the lifter chose to go without sync, so setup stops greeting them. */
+  const SKIPPED = 'sisyphos.setup-skipped';
 
-  // A plausible session, so the numbers below are of something rather than nothing.
-  const SAMPLE: Array<[string, number, number, number]> = [
-    ['low_bar_squat', 4, 5, 8],
-    ['paused_squat', 3, 3, 7.5],
-    ['romanian_deadlift', 3, 8, 8],
-    ['leg_curl_seated', 3, 12, 9],
-    ['chest_supported_row', 3, 10, 8],
-  ];
+  let storage = $state<AppStorage | null>(null);
+  let status = $state<StatusSnapshot | null>(null);
+  let failure = $state<string | null>(null);
+  let showSetup = $state(false);
+  /** The session on screen: the one in progress, or a past one being read or edited. */
+  let session = $state<Session | null>(null);
+  let sessions = $state<Session[]>([]);
+  let templates = $state<Template[]>([]);
+  let library = $state<Exercise[]>([]);
 
-  const set = (reps: number, rpe: number): PerformedSet => ({
-    id: crypto.randomUUID(),
-    prescribed_id: null,
-    state: 'done',
-    reps,
-    rpe,
-    load: { kind: 'weight', value: 100, unit: 'kg' },
-    is_warmup: false,
-    notes: null,
+  const inSession = $derived(session !== null && session.ended_at === null);
+  const line = $derived(status ? statusLine(status, inSession) : null);
+
+  onMount(() => {
+    let disposed = false;
+    let started: AppStorage | null = null;
+    // Exposure ages with the clock, not only with writes.
+    const timer = setInterval(() => void started?.scheduler.status(), 60_000);
+
+    startStorage({
+      target: window,
+      onStatus: (next) => {
+        status = next;
+        // A finished sync may have brought sessions from another device.
+        if (started) void load(started);
+      },
+    }).then(
+      async (s) => {
+        if (disposed) return s.dispose();
+        started = s;
+        storage = s;
+        await load(s);
+        const open = await s.log.listOpenSessions();
+        session = open.at(-1) ?? null;
+        const settings = await s.store.settings();
+        showSetup = settings.owner === null && !skipped();
+        await s.scheduler.status();
+      },
+      (error: unknown) =>
+        (failure = `This phone's storage could not be opened: ${messageOf(error)}`),
+    );
+
+    return () => {
+      disposed = true;
+      clearInterval(timer);
+      started?.dispose();
+    };
   });
 
-  const counted: CountedSet[] = SAMPLE.flatMap(([id, n, reps, rpe]) =>
-    Array.from({ length: n }, () => ({ set: set(reps, rpe), exercise: byId.get(id)! })),
-  );
-  const stressSets = SAMPLE.flatMap(([id, n, reps, rpe]) =>
-    Array.from({ length: n }, () => ({ reps, rpe, exercise: byId.get(id)! })),
-  );
+  async function load(s: AppStorage): Promise<void> {
+    const [all, saved, assembled] = await Promise.all([
+      s.log.listSessions('0000-01-01', '9999-12-31'),
+      s.log.getTemplates(),
+      s.log.library(),
+    ]);
+    sessions = all;
+    templates = saved;
+    library = assembled.exercises;
+  }
 
-  let preset = $state(CONFIG.activeMuscleWeights);
-  let tierPreset = $state(CONFIG.activeTierWeights);
-  const weights = $derived(muscleWeights(preset));
-  const tw = $derived(tierWeights(tierPreset));
-  const perLift = $derived(setsByTierForLift(counted));
-  const eventTotals = $derived(eventVolume(counted, tw));
-  const byMuscle = $derived(volumeByMuscle(counted, weights));
-  const stress = $derived(stressByMuscle(stressSets, weights));
+  function skipped(): boolean {
+    try {
+      return localStorage.getItem(SKIPPED) === 'yes';
+    } catch {
+      return false;
+    }
+  }
 
-  const ranked = $derived([...byMuscle.entries()].sort((a, b) => b[1] - a[1]).slice(0, 9));
-  const peak = $derived(ranked.length ? ranked[0][1] : 1);
+  function skipSetup(): void {
+    try {
+      localStorage.setItem(SKIPPED, 'yes');
+    } catch {
+      // Without storage the form simply greets them again next launch.
+    }
+    showSetup = false;
+  }
 
-  const worked: Array<[string, number, number, number]> = [
-    ['150kg × 3 @ RPE 7.5', 150, 3, 7.5],
-    ['200kg × 1 @ RPE 9', 200, 1, 9],
-    ['100kg × 10 @ RPE 8', 100, 10, 8],
-    ['100kg × 15 @ RPE 8', 100, 15, 8],
-  ];
+  function messageOf(error: unknown): string {
+    return error instanceof Error ? error.message : String(error);
+  }
 
-  const fmt = (n: number | null | undefined, d = 1) =>
-    n === null || n === undefined ? '—' : n.toFixed(d);
+  /** Shows the change at once and writes it; the write is what makes it saved. */
+  async function save(next: Session): Promise<void> {
+    session = next;
+    if (!storage) return;
+    try {
+      await storage.log.putSession(next);
+      failure = null;
+    } catch (error) {
+      failure = `Not saved: ${messageOf(error)}`;
+    }
+  }
+
+  async function start(template: Template | null): Promise<void> {
+    const s = storage;
+    if (!s) return;
+    const at = new Date();
+    const fresh = newSession({
+      id: await s.log.newSessionId(localDate(at)),
+      at,
+      tz: Intl.DateTimeFormat().resolvedOptions().timeZone,
+      deviceId: s.log.options.deviceId,
+    });
+    await save(template ? fromTemplate(fresh, template, () => crypto.randomUUID()) : fresh);
+  }
+
+  async function finishSession(): Promise<void> {
+    const s = storage;
+    if (!s || !session) return;
+    await save(finish(session, new Date()));
+    // Not awaited: the status line follows the sync.
+    void s.scheduler.trigger('session_ended');
+    await close();
+  }
+
+  async function close(): Promise<void> {
+    session = null;
+    if (storage) await load(storage);
+  }
+
+  async function remove(): Promise<void> {
+    const s = storage;
+    if (!s || !session || !confirm('Delete this session? It is deleted from the log too.')) return;
+    await s.log.deleteSession(session.id);
+    await close();
+  }
+
+  async function saveAsTemplate(name: string): Promise<void> {
+    const s = storage;
+    if (!s || !session) return;
+    const template = templateFrom(session, {
+      id: await s.log.newTemplateId(name),
+      name,
+      at: new Date(),
+    });
+    await s.log.putTemplate(template);
+    templates = await s.log.getTemplates();
+  }
+
+  async function connect(input: SetupInput): Promise<SetupResult> {
+    if (!storage) throw new Error('storage is not open');
+    const result = await storage.connect(input);
+    if (result.ok) showSetup = false;
+    return result;
+  }
+
+  /** The status line leads to what fixes it: setup, or a sync now. */
+  function onStatusTap(): void {
+    if (!status) return;
+    if (['not_set_up', 'needs_token', 'repo_problem'].includes(status.status)) showSetup = true;
+    else void storage?.scheduler.trigger('manual');
+  }
 </script>
 
 <main>
-  <h1>Sisyphos</h1>
-  <p class="sub">
-    Schema and metric layer wired up; no logging UI yet. Everything below is computed live from
-    <code>config/</code> — {exercises.length} exercises, {muscles.length} muscle groups.
-  </p>
+  {#if line}
+    <button class="status" class:alarm={line.alarm} onclick={onStatusTap}>{line.text}</button>
+  {/if}
+  {#if failure}
+    <p class="failure" role="alert">{failure}</p>
+  {/if}
 
-  <DevPanel />
-
-  <section>
-    <h2>Muscle counting</h2>
-    <p class="lede">
-      Every scheme people argue about is the same calculation with different role weights, so
-      switching is the whole mechanism. Nothing recomputes from storage, because nothing was stored.
-    </p>
-    <div class="switcher" role="group" aria-label="Muscle weighting preset">
-      {#each MUSCLE_PRESET_NAMES as name (name)}
-        <button
-          type="button"
-          class="chip"
-          aria-pressed={preset === name}
-          onclick={() => (preset = name)}
-        >
-          {name}
-        </button>
-      {/each}
-    </div>
-    <p class="weights tabular">
-      primary {weights.primary} · aux {weights.aux}
-    </p>
-
-    <ul class="bars">
-      {#each ranked as [group, sets] (group)}
-        <li>
-          <span class="bar-label">{nameOf.get(group)}</span>
-          <span class="bar-track"
-            ><span class="bar-fill" style="width:{(sets / peak) * 100}%"></span></span
-          >
-          <span class="bar-value tabular">{fmt(sets)}</span>
-          <span class="bar-stress tabular">{fmt(stress.get(group), 0)}</span>
-        </li>
-      {/each}
-    </ul>
-    <p class="note">
-      Sets per muscle group from one sample session, and the stress attributed to it. Both use the
-      same weights, so they move together instead of telling different stories.
-    </p>
-  </section>
-
-  <section>
-    <h2>Specificity</h2>
-    <p class="lede">
-      The same mechanism on a second axis: how much a variation counts toward its event. The
-      discrete breakdown never goes away — it is usually the more useful sentence.
-    </p>
-    <div class="switcher" role="group" aria-label="Tier weighting preset">
-      {#each TIER_PRESET_NAMES as name (name)}
-        <button
-          type="button"
-          class="chip"
-          aria-pressed={tierPreset === name}
-          onclick={() => (tierPreset = name)}
-        >
-          {name}
-        </button>
-      {/each}
-    </div>
-    <p class="weights tabular">
-      comp {tw.comp} · high_spec {tw.high_spec} · low_spec {tw.low_spec} · acc {tw.acc}
-    </p>
-    <table>
-      <thead>
-        <tr><th>Event</th><th>comp</th><th>high</th><th>low</th><th>acc</th><th>weighted</th></tr>
-      </thead>
-      <tbody>
-        {#each [...perLift.entries()] as [lift, tiers] (lift)}
-          <tr>
-            <td>{lift}</td>
-            <td class="tabular">{tiers.get('comp')}</td>
-            <td class="tabular">{tiers.get('high_spec')}</td>
-            <td class="tabular">{tiers.get('low_spec')}</td>
-            <td class="tabular">{tiers.get('acc')}</td>
-            <td class="tabular"><strong>{fmt(eventTotals.get(lift))}</strong></td>
-          </tr>
-        {/each}
-      </tbody>
-    </table>
-  </section>
-
-  <section>
-    <h2>Charts</h2>
-    <table>
-      <thead>
-        <tr><th>Set</th><th>e1RM</th><th>Stress index</th><th>CS balance</th></tr>
-      </thead>
-      <tbody>
-        {#each worked as [label, kg, reps, rpe] (label)}
-          <tr>
-            <td>{label}</td>
-            <td class="tabular">{fmt(e1rm(kg, rpe, reps))}</td>
-            <td class="tabular">{fmt(setStressIndex(rpe, reps), 2)}</td>
-            <td class="tabular">{fmt(centralBalance([{ rpe, reps }]), 2)}</td>
-          </tr>
-        {/each}
-      </tbody>
-    </table>
-    <p class="note">
-      The 15-rep row reads <strong>—</strong> for e1RM on purpose: the chart stops at 12 and there is
-      no formula fallback. Stress clamps instead, because its edges are plateaus. CS balance is central
-      ÷ SI.
-    </p>
-  </section>
+  {#if !storage}
+    {#if !failure}<p class="opening">Opening…</p>{/if}
+  {:else if showSetup}
+    <Setup onconnect={connect} onskip={skipSetup} onclose={() => (showSetup = false)} />
+  {:else if session}
+    <SessionView
+      {session}
+      {library}
+      {sessions}
+      onchange={save}
+      onfinish={finishSession}
+      onclose={close}
+      ondelete={remove}
+      onsavetemplate={saveAsTemplate}
+    />
+  {:else}
+    <Home {sessions} {templates} {library} onstart={start} onopen={(s: Session) => (session = s)} />
+  {/if}
 </main>
 
 <style>
   main {
-    max-width: 46rem;
-    margin: 0 auto;
-    padding-inline: 1.25rem;
-    padding-block: 2.5rem 4rem;
-  }
-  h1 {
-    margin: 0 0 0.35rem;
-    font-size: 1.9rem;
-    letter-spacing: -0.02em;
-  }
-  h2 {
-    font-size: 0.72rem;
-    text-transform: uppercase;
-    letter-spacing: 0.12em;
-    color: var(--muted);
-    border-bottom: 1px solid var(--line);
-    padding-bottom: 0.4rem;
-    margin: 0 0 0.9rem;
-  }
-  .sub,
-  .lede {
-    color: var(--ink-2);
     max-width: 40rem;
+    margin: 0 auto;
+    padding: 0 1rem 4rem;
+    font-family: var(--sans);
   }
-  .sub {
-    margin: 0 0 2rem;
-  }
-  .lede {
-    margin: 0 0 1rem;
-    font-size: 0.92rem;
-  }
-  section {
-    margin-bottom: 2.5rem;
-  }
-  .switcher {
-    display: flex;
-    flex-wrap: wrap;
-    gap: 0.4rem;
-  }
-  .chip {
-    font: inherit;
-    font-size: 0.8rem;
-    padding: 0.3rem 0.7rem;
-    border: 1px solid var(--line);
-    background: var(--surface);
-    color: var(--ink-2);
-    border-radius: 999px;
-    cursor: pointer;
-  }
-  .chip[aria-pressed='true'] {
-    border-color: var(--accent);
-    color: var(--accent);
-    font-weight: 600;
-  }
-  .chip:focus-visible {
-    outline: 2px solid var(--accent);
-    outline-offset: 2px;
-  }
-  .weights {
-    font-size: 0.78rem;
-    color: var(--muted);
-    margin: 0.6rem 0 1rem;
-  }
-  ul.bars {
-    list-style: none;
-    margin: 0;
-    padding: 0;
-  }
-  ul.bars li {
-    display: grid;
-    grid-template-columns: 7.5rem 1fr 2.6rem 3rem;
-    gap: 0.6rem;
-    align-items: center;
-    padding: 0.28rem 0;
-    font-size: 0.86rem;
-  }
-  .bar-label {
-    color: var(--ink-2);
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-  }
-  .bar-track {
-    background: var(--surface);
-    border: 1px solid var(--line);
-    height: 0.85rem;
-  }
-  .bar-fill {
+
+  .status {
     display: block;
-    height: 100%;
-    background: var(--accent);
-  }
-  .bar-value {
-    text-align: right;
-    font-weight: 600;
-  }
-  .bar-stress {
-    text-align: right;
-    color: var(--muted);
-  }
-  @media (max-width: 30rem) {
-    ul.bars li {
-      grid-template-columns: 6rem 1fr 2.2rem 2.6rem;
-      font-size: 0.8rem;
-    }
-  }
-  table {
     width: 100%;
-    border-collapse: collapse;
-    font-size: 0.88rem;
-  }
-  th,
-  td {
-    text-align: left;
-    padding: 0.42rem 0.6rem 0.42rem 0;
+    margin: 0 0 1rem;
+    padding: 0.6rem 0;
+    border: 0;
     border-bottom: 1px solid var(--line);
-  }
-  th {
-    font-size: 0.66rem;
-    text-transform: uppercase;
-    letter-spacing: 0.09em;
+    background: none;
     color: var(--muted);
+    font: inherit;
+    font-size: 0.85rem;
+    text-align: left;
   }
-  td.tabular,
-  th:not(:first-child) {
-    text-align: right;
+
+  .status.alarm {
+    color: var(--accent);
   }
-  .note {
-    font-size: 0.8rem;
+
+  .failure {
+    color: var(--accent);
+  }
+
+  .opening {
     color: var(--muted);
-    margin: 0.8rem 0 0;
-    max-width: 42rem;
-  }
-  code {
-    font-family: var(--mono);
-    font-size: 0.88em;
-    background: var(--surface);
-    border: 1px solid var(--line);
-    padding: 0 0.25em;
   }
 </style>
