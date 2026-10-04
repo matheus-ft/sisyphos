@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { loadFactor, e1rm } from '../src/metrics/rpe-chart';
-import { stressFor, setStressIndex, centralBalance, totalStress } from '../src/metrics/stress';
+import { stressFor, setStressIndex, centralBalance } from '../src/metrics/stress';
 import { toKg, weightKg, effectiveLoadKg, setTonnageKg } from '../src/metrics/load';
 import { isAmrap, formatInterval } from '../src/model';
 import type { Exercise, PerformedSet } from '../src/model';

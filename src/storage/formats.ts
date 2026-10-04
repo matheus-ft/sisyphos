@@ -396,7 +396,9 @@ export function tableText(schema: TableSchema<unknown>, given: TableRow[]): stri
     try {
       written = rowLine(schema, canonical(schema, row));
     } catch (e) {
-      throw new Error(`cannot write ${line} to ${schema.path}: ${(e as Error).message}`);
+      throw new Error(`cannot write ${line} to ${schema.path}: ${(e as Error).message}`, {
+        cause: e,
+      });
     }
     if (written !== line) {
       throw new Error(`cannot write ${line} to ${schema.path}: its own form is ${written}`);

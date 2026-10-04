@@ -1,10 +1,8 @@
 import { describe, it, expect } from 'vitest';
 import {
-  CONFIG,
   muscleWeights,
   tierWeights,
   MUSCLE_PRESET_NAMES,
-  TIER_PRESET_NAMES,
   UNILATERAL_SET_COUNT_MULTIPLIER,
 } from '../src/metrics/definitions';
 import {
@@ -19,7 +17,7 @@ import { volumeByMuscle, volumeByTier, type CountedSet } from '../src/metrics/vo
 import { parseExercises, parseMuscles } from '../src/library/parse';
 import musclesCsv from '../src/library/muscles.csv?raw';
 import exercisesCsv from '../src/library/exercises.csv?raw';
-import type { Exercise, PerformedSet } from '../src/model';
+import type { PerformedSet } from '../src/model';
 
 const muscles = parseMuscles(musclesCsv);
 const exercises = parseExercises(exercisesCsv, new Set(muscles.map((m) => m.id)));
