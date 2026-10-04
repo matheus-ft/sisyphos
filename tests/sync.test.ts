@@ -49,7 +49,7 @@ import {
 } from './sync-harness';
 
 /**
- * The sync (docs/STORAGE.md 4.2 to 4.5, 5.1, 6) against the in-memory store and
+ * The sync (`src/storage/sync.ts`) against the in-memory store and
  * remote. Races and crashes are in sync-crash.test.ts.
  */
 
@@ -958,7 +958,7 @@ describe('a rewritten history', () => {
 
   it('is caught even when an unreadable file kept the tree from being recorded', async () => {
     const remote = newLog();
-    // A file that never parses keeps every sync from recording the tree (section 6).
+    // A file that never parses keeps every sync from recording the tree.
     remote.externalCommit([{ path: 'sessions/2026/2026-01-01-zzzz.json', content: 'not json\n' }]);
     const early = (await remote.head())!;
     const a = new Device(remote, 'dev-a', { seed: 1 });

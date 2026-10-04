@@ -39,7 +39,7 @@ type Tree = ReadonlyMap<string, string>;
 const encoder = new TextEncoder();
 const EMPTY_TREE: Tree = new Map();
 
-/** What the lifter's first commit holds when they tick "Add a README" (STORAGE.md section 8). */
+/** What the lifter's first commit holds when they tick "Add a README". */
 const README = '# sisyphos-log\n';
 
 /**
@@ -129,7 +129,7 @@ export class MemoryRemote implements Remote {
       return 'moved';
     }
     // Refused. With the head moved, another device got there first; with the
-    // head still at `from`, the refusal is a real error (STORAGE.md 4.2).
+    // head still at `from`, the refusal is a real error.
     if (this.branch !== from) return 'raced';
     if (!this.commits.has(to)) throw refused(`Object ${to} does not exist`);
     throw refused('Update is not a fast forward');

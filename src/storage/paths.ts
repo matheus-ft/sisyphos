@@ -1,7 +1,7 @@
 import type { Id } from '../model';
 
 /**
- * Where everything lives in the log repo (docs/STORAGE.md 1.1).
+ * Where everything lives in the log repo (DATA.md, The log repo's files).
  *
  * One place, because the device, the sync and the remote must agree exactly on
  * every path: a path computed twice is a path that can differ once. A path
@@ -10,7 +10,7 @@ import type { Id } from '../model';
 
 export const FORMAT_PATH = 'sisyphos.json';
 
-/** The highest log-repo format this build reads and writes (1.3). */
+/** The highest log-repo format this build reads and writes (DATA.md, The files). */
 export const FORMAT_VERSION = 1;
 
 export const TABLE_PATHS = {
@@ -24,7 +24,7 @@ export type TableKind = keyof typeof TABLE_PATHS;
 
 export const TABLE_KINDS = Object.keys(TABLE_PATHS) as TableKind[];
 
-/** `sessions/<YYYY>/<id>.json`, the year being the first four characters of the id (1.2). */
+/** `sessions/<YYYY>/<id>.json`, the year being the first four characters of the id (DATA.md, Ids). */
 export function sessionPath(id: Id): string {
   return `sessions/${id.slice(0, 4)}/${id}.json`;
 }
@@ -47,7 +47,7 @@ export type PathKind =
   | { kind: 'foreign' };
 
 /*
- * The exact id grammar of 1.2, so only names the app itself could have
+ * The exact id grammar (DATA.md, Ids), so only names the app itself could have
  * generated are the app's. A looser match would claim the lifter's own files
  * (`templates/notes.json`, `sessions/2026/2026 plan.json`): one that does not
  * parse would then be reported unreadable forever, and one that does would

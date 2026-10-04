@@ -11,8 +11,8 @@ import {
 
 /**
  * The decision is tested against the specification rather than examples
- * (docs/STORAGE.md 10): every combination of absent, equal and different base,
- * local and remote, in full syncs and pulls, checked against the table of 4.3
+ *: every combination of absent, equal and different base,
+ * local and remote, in full syncs and pulls, checked against the rule in decide.ts
  * transcribed below. The named cases are there to be read.
  */
 
@@ -38,7 +38,7 @@ const TABLE: ReadonlyArray<[(v: FileVersions) => boolean, FileDecision]> = [
 
 function reference(v: FileVersions, mode: Mode): FileDecision {
   const decision = TABLE.find(([holds]) => holds(v))![1];
-  // 4.4: a pull applies only L = B and L = R, and leaves every local change as it is.
+  // A pull applies only L = B and L = R, and leaves every local change as it is.
   const localChange = v.local !== v.base && v.local !== v.remote;
   return mode === 'pull' && localChange ? 'skip' : decision;
 }
@@ -53,7 +53,7 @@ const HOLDS: Record<FileDecision, 'local' | 'remote'> = {
 };
 
 /**
- * A file after its decision is applied and before any push lands (4.2 step 5):
+ * A file after its decision is applied and before any push lands:
  * the device holds the result, and the base moves to the remote wherever the
  * result equals it.
  */
@@ -77,7 +77,7 @@ describe('decideFile', () => {
   });
 
   it('takes what changed on one side from that side, and calls both changed differently a conflict', () => {
-    // The paragraph at the top of STORAGE.md, stated without the table's order.
+    // The rule in words, without the table's order.
     for (const v of COMBOS) {
       const here = v.local !== v.base;
       const there = v.remote !== v.base;
@@ -362,7 +362,7 @@ describe('decideTable', () => {
   );
 
   it('decides the next full sync as if the pull before it had not happened', () => {
-    // 4.4: a pull leaves every local change, base included, for the next full sync.
+    // A pull leaves every local change, base included, for the next full sync.
     const versions = tableOf(EVERY);
     const pulled = decideTable(versions, 'pull');
     const after = decideTable(

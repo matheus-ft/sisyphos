@@ -15,8 +15,8 @@ import type { LocalStore, Settings } from './store/store';
 
 /**
  * The app's storage, built once at startup: the device store, the log over it,
- * the remote the settings name, and the scheduler that decides when to sync
- * (docs/STORAGE.md sections 2, 7 and 8). Whatever shows the data (the UI) gets
+ * the remote the settings name, and the scheduler that decides when to sync.
+ * Whatever shows the data (the UI) gets
  * these objects and calls `dispose` on teardown.
  */
 
@@ -36,7 +36,7 @@ export function githubRemote(fetchImpl?: typeof fetch): MakeRemote {
 /**
  * The remote the settings describe, or null when the device is not set up: a
  * setup stores owner, repo, token and branch together, and the branch only once
- * the repo has been read (section 8).
+ * the repo has been read.
  */
 export function remoteFromSettings(
   settings: Settings,
@@ -78,19 +78,19 @@ export function maskToken(token: string | null): string {
   return `${prefix}…${secret.length >= 16 ? secret.slice(-4) : ''}`;
 }
 
-/** The shipped exercise library (docs/STORAGE.md 9), as the app reads it. */
+/** The shipped exercise library, as the app reads it. */
 export function shippedExercises(): Exercise[] {
   const muscles = new Set(parseMuscles(musclesCsv).map((muscle) => muscle.id));
   return parseExercises(exercisesCsv, muscles);
 }
 
 export interface StartOptions {
-  /** Where leaving the app and a returning connection are heard (7.1). */
+  /** Where leaving the app and a returning connection are heard. */
   target: Window;
   onStatus?: (status: StatusSnapshot) => void;
-  /** Conflicts a sync found or pulled, to announce (5.2). */
+  /** Conflicts a sync found or pulled, to announce. */
   onConflicts?: (conflicts: ConflictRecord[]) => void;
-  /** Library conflicts (9.1) a sync brought, announced the same way (5.2). */
+  /** Library conflicts a sync brought, announced the same way. */
   onLibraryConflicts?: (conflicts: LibraryConflict[]) => void;
   /** Injectable for tests; default: parsed from `src/library/exercises.csv`. */
   shipped?: Exercise[];
@@ -108,7 +108,7 @@ export interface AppStorage {
   /** Whether the browser agreed not to evict this app's storage under disk pressure. */
   persisted: Promise<boolean>;
   /**
-   * Points the device at a log repo (section 8). It waits for any sync running
+   * Points the device at a log repo. It waits for any sync running
    * first, and no sync starts until it is done. Once that succeeds, the first
    * full sync starts, which `status` follows; the result does not wait for it.
    */

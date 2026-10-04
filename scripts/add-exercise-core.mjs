@@ -107,10 +107,11 @@ const list = (cell) =>
     .filter(Boolean);
 
 /**
- * Whether the app's CSV writer would have to quote this cell (docs/STORAGE.md
- * 1.4). The shipped library holds no quoted cells and is read by splitting on
- * commas and newlines, so such a value would corrupt the row, or the file,
- * rather than be stored. Whitespace at either end, one of the rule's other
+ * Whether the app's CSV writer would have to quote this cell (docs/DATA.md,
+ * Serialisation). This script writes a row by joining its cells with commas
+ * and finds rows line by line, and the shipped library is kept free of quoted
+ * cells so it stays one row per line, so such a value is refused rather than
+ * quoted. Whitespace at either end, one of the rule's other
  * cases, is trimmed off every value before it gets here; a leading #, the last,
  * is refused with every other # by `githubReads`.
  * @param {string} cell

@@ -30,7 +30,7 @@ import type { Remote, RemoteTree } from './remote/remote';
 import type { Inflight, LocalStore, StoreOp, SyncEntry } from './store/store';
 
 /**
- * One sync (docs/STORAGE.md 4.2, 4.4, 4.5): recover an unfinished commit, read
+ * One sync: recover an unfinished commit, read
  * the head, compare, fetch, decide, commit, move the branch fast-forward only,
  * settle. A pull stops after deciding and never commits.
  *
@@ -39,14 +39,14 @@ import type { Inflight, LocalStore, StoreOp, SyncEntry } from './store/store';
  * store consistent: killing the app between any two awaits must be safe.
  *
  * Throws `SyncError` (errors.ts) and nothing else. Unreadable remote files do
- * not throw: they are reported in the result and left alone (section 6).
+ * not throw: they are reported in the result and left alone.
  *
  * Content is compared in the app's own form. The device only ever holds files
- * as the app writes them (1.4), and a base only ever moves to such a file, so a
+ * as the app writes them (DATA.md, Serialisation), and a base only ever moves to such a file, so a
  * remote file is read into its record and written back before it is compared:
  * a hand-formatted copy of the same record is then the same version, not a
  * change, and never a conflict. Where the remote's bytes differ from that form,
- * a full sync pushes the app's form, which is the one rewrite 1.4 describes.
+ * a full sync pushes the app's form, which is the one rewrite DATA.md (Serialisation) describes.
  * Tables get this for free, since `tableUnits` reads rows into their own form
  * and the base is `unitsText` of the per-key base (step 5).
  *
@@ -106,8 +106,8 @@ export async function runSync(deps: SyncDeps, mode: Mode): Promise<SyncResult> {
     // The store's failures and this file's broken invariants are already
     // SyncErrors (`onDevice`, `checked`). Anything else escaped from the remote,
     // whose contract is to throw only SyncErrors, or from a line not guarded
-    // above. Either way an assumption broke, and section 6 says to stop and
-    // report rather than retry past it.
+    // above. Either way an assumption broke: stop and report it (a `bug`)
+    // rather than retry past it.
     if (e instanceof SyncError) throw e;
     throw new SyncError('bug', `Sync failed unexpectedly: ${describe(e)}`, { cause: e });
   }
@@ -129,7 +129,7 @@ interface Found {
   conflicts: ConflictRecord[];
 }
 
-// --- 4.5: recovering an unfinished commit -------------------------------------------
+// --- Recovering an unfinished commit ------------------------------------------------
 
 /**
  * If the last sync recorded a commit and was killed before settling, finds out
@@ -167,7 +167,7 @@ function settleBases(inflight: Inflight): StoreOp[] {
   return inflight.pushed.map(({ path, sha, body }) => ({ op: 'base', path, sha, body }));
 }
 
-// --- 4.2: one round --------------------------------------------------------------
+// --- One round -------------------------------------------------------------------
 
 /** Steps 2 to 10. 'raced' when another device moved the branch first: the caller starts again. */
 async function syncRound(
@@ -186,7 +186,7 @@ async function syncRound(
   // the repo it was synced with), those bases describe files this remote never
   // held, and deciding against them would read the device's records as deleted
   // there. Forgetting them makes this a first sync, which can take, push or
-  // conflict but never delete (section 8's reset, reached from the other side).
+  // conflict but never delete, as after pointing the device at another repo.
   const last = (await onDevice(() => store.meta())).last_synced_head;
   if (last !== null && head !== last && !(await remote.contains(last, head))) {
     await onDevice(() => store.resetSync());
@@ -247,7 +247,7 @@ async function syncRound(
   await fetchAll(remote, [...wanted].sort(), context.concurrency, fetched, notText);
 
   // Where the device held the remote's version as the round began, and its base
-  // is older, the two agreed on that version at this head (4.2 step 5).
+  // is older, the two agreed on that version at this head.
   const agreed = new Map<string, { sha: string; body: string | null }>();
   for (const [path, sha] of remoteShas) {
     const entry = known.get(path);
@@ -271,13 +271,13 @@ async function syncRound(
         const local = entry?.local_sha ?? null;
         return !(base === local && local === (remoteShas.get(path) ?? null));
       });
-      // No `local_sha` is no content (section 3), so only paths with some are read.
+      // No `local_sha` is no content, so only paths with some are read.
       const local = new Map<string, string | null>();
       for (const path of candidates) {
         local.set(path, entries.get(path)?.local_sha ? await s.content(path) : null);
       }
 
-      // Conflict ids already in use on either side (1.2): a new one avoids them all.
+      // Conflict ids already in use on either side (DATA.md, Ids): a new one avoids them all.
       const held = new Set<string>();
       for (const path of [...tree.files.map((f) => f.path), ...paths]) {
         const kind = classify(path);
@@ -340,7 +340,7 @@ async function syncRound(
     message: commitMessage(plan.pushes),
   });
 
-  // 8. Record it, so a device killed after the branch moves still knows (4.5).
+  // 8. Record it, so a device killed after the branch moves still knows.
   const inflight: Inflight = {
     commit: next.commit,
     tree: next.tree,
@@ -392,7 +392,7 @@ function result(
   };
 }
 
-// --- 1.3: the format marker -----------------------------------------------------
+// --- The format marker ----------------------------------------------------------
 
 /**
  * The remote's `sisyphos.json` must be there and readable, in a format this
@@ -419,7 +419,7 @@ async function checkFormat(
   let format: number;
   try {
     // Inside the try: a marker that is not even text is as unreadable as one
-    // that does not parse, and that is a problem with the repo (section 6).
+    // that does not parse, and that is a problem with the repo.
     if (text === null) {
       text = await context.remote.blob(sha);
       fetched.set(sha, text);
@@ -435,7 +435,7 @@ async function checkFormat(
       `The log is in format ${format}, newer than this version of the app reads. Update the app.`,
     );
   }
-  // There is no older format yet. When there is, its migration goes here (1.3).
+  // There is no older format yet. When there is, its migration goes here (DATA.md, The files).
   if (format < FORMAT_VERSION) {
     throw new SyncError('bug', `This version of the app cannot migrate a log in format ${format}`);
   }
@@ -460,7 +460,7 @@ async function fetchAll(
         into.set(sha, await remote.blob(sha));
       } catch (e) {
         // A file that is not text is one file that does not parse: its paths are
-        // unreadable, and every other path still syncs (section 6).
+        // unreadable, and every other path still syncs.
         if (e instanceof FormatError) {
           notText.add(sha);
           continue;
@@ -536,7 +536,7 @@ type FileRecord = Session | Template | ConflictRecord;
 
 const UNREADABLE = Symbol('unreadable');
 
-/** Decides every path whose base, local and remote versions are not all equal (4.3). Pure. */
+/** Decides every path whose base, local and remote versions are not all equal. Pure. */
 class Planner {
   private readonly plan: Plan = {
     ops: [],
@@ -583,7 +583,7 @@ class Planner {
   }
 
   /**
-   * The device takes the remote's marker as it is and never pushes its own (1.3):
+   * The device takes the remote's marker as it is and never pushes its own (DATA.md, The files):
    * the format is the log's to say, so a difference is never a conflict.
    */
   private marker(path: string, remote: string | null): Outcome {
@@ -601,7 +601,7 @@ class Planner {
     return { base: remote };
   }
 
-  /** A session, template or conflict record: the unit is the file (4.3). */
+  /** A session, template or conflict record: the unit is the file. */
   private file(path: string, kind: FileKind, sha: string | null): Outcome {
     const { mode } = this.input;
     const entry = this.input.entries.get(path);
@@ -645,7 +645,7 @@ class Planner {
     }
     if (remote !== base) this.plan.ops.push({ op: 'base', path, sha: remote });
     // The remote's bytes are not the app's form of what it holds (a hand-edited
-    // file): the app's form is pushed, once (1.4).
+    // file): the app's form is pushed, once (DATA.md, Serialisation).
     if (mode === 'full' && remote !== sha) {
       this.push(path, needed(path, remoteText), null);
       return 'pushed';
@@ -653,7 +653,7 @@ class Planner {
     return { base: remote };
   }
 
-  /** A table: the unit is the row with a given key (4.3). */
+  /** A table: the unit is the row with a given key. */
   private table(path: string, schema: TableSchema<unknown>, sha: string | null): Outcome {
     const { mode } = this.input;
     const entry = this.input.entries.get(path);
@@ -716,7 +716,7 @@ class Planner {
   }
 
   /**
-   * The local side of a file conflict becomes a conflict record (5.1).
+   * The local side of a file conflict becomes a conflict record (DATA.md, The files).
    *
    * A conflict record in conflict is two devices having drawn the same id, which
    * is rare but possible. A record cannot hold another, so this device's record
@@ -798,7 +798,7 @@ class Planner {
     return this.input.fetched.get(sha)!;
   }
 
-  /** Reads a remote file; one that does not parse is unreadable and left alone (section 6). */
+  /** Reads a remote file; one that does not parse is unreadable and left alone. */
   private readRemote<T>(path: string, read: () => T): T | typeof UNREADABLE {
     try {
       return read();
@@ -824,7 +824,7 @@ class Planner {
  * left unchanged, would otherwise give the device two records with one id:
  * editing the copy would overwrite the original, and a conflict over it would
  * write a record no device can read. So it is a file that does not parse, left
- * alone and reported (section 6).
+ * alone and reported.
  */
 function remoteRecord(kind: FileKind, path: string, text: string): FileRecord {
   const record = parseFile(kind, text);
@@ -933,7 +933,7 @@ async function onDevice<T>(work: () => Promise<T>): Promise<T> {
 /**
  * Runs the pure part of the sync. Everything it reads was read and checked
  * already, so a failure is a broken invariant: a device file that does not
- * parse, a serialiser that does not round-trip. Stop and report (section 6).
+ * parse, a serialiser that does not round-trip. Stop and report.
  */
 function checked<T>(work: () => T): T {
   try {

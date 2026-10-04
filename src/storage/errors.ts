@@ -1,5 +1,5 @@
 /**
- * Failure classes (docs/STORAGE.md section 6). Every failure a sync can end in
+ * Failure classes. Every failure a sync can end in
  * is exactly one of these, and the class alone decides what happens next.
  *
  * An unreadable log-repo file is not here: it does not fail the sync, it is

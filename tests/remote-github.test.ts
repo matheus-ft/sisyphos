@@ -383,7 +383,7 @@ describe('GitHubRemote: a refused move', () => {
   });
 });
 
-// --- errors, by class (STORAGE.md section 6) --------------------------------------------
+// --- errors, by class --------------------------------------------
 
 describe('GitHubRemote: failures', () => {
   it('refuses a truncated tree', async () => {
@@ -527,7 +527,7 @@ describe('GitHubRemote: failures', () => {
   it('waits a minute for a 429 that carries no headers and no message', async () => {
     vi.useFakeTimers({ toFake: ['Date'] });
     vi.setSystemTime(new Date('2026-09-27T12:00:00.000Z'));
-    // A 429 is a rate limit whatever it carries (section 6).
+    // A 429 is a rate limit whatever it carries.
     const { remote } = github([{ ...getHead(), status: 429, reply: undefined }]);
     const error = await failure(remote.head(), 'rate_limit');
     expect(error.retryAt).toEqual(new Date('2026-09-27T12:01:00.000Z'));
@@ -610,7 +610,7 @@ describe('GitHubRemote: failures', () => {
       },
     ]);
     // Not a SyncError: a file that is not text is one file that does not parse,
-    // which the sync leaves alone while syncing the rest (section 6).
+    // which the sync leaves alone while syncing the rest.
     const error = await remote.blob(OTHER).then(
       () => null,
       (e: unknown) => e,

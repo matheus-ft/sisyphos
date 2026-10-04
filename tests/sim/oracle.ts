@@ -14,12 +14,12 @@ import type { RemoteChange } from '../../src/storage/remote/remote';
 import type { SyncEntry } from '../../src/storage/store/store';
 
 /**
- * The simulation's own record of who had seen what (docs/STORAGE.md section 10),
- * which invariants 2 to 4 are checked against. It never asks the sync what it
+ * The simulation's own record of who had seen what, which the invariants 2 to
+ * 4 listed in sim.test.ts are checked against. It never asks the sync what it
  * decided: it watches what reaches each device and each commit, and works out
  * the rest.
  *
- * **Places and versions.** A place is one unit of the decision (4.3): a session,
+ * **Places and versions.** A place is one unit of the decision: a session,
  * template or conflict file by its path, a table row as `path#key`. Every write
  * carries a version identity that survives the round trip: a session's notes, a
  * template's intention, a weigh-in's weight, a 1RM's note, a manual record's
@@ -47,7 +47,7 @@ import type { SyncEntry } from '../../src/storage/store/store';
  * found two holders had reached without seeing each other's, are linked, so
  * seeing one is seeing the other. For invariant 2, a value (not a deletion) is
  * also seen by a device that saw the same value at the same place, whichever
- * write put it there: a version is its content (4.3). Invariant 4 asks about
+ * write put it there: a version is its content. Invariant 4 asks about
  * changes, so it keeps to the events themselves.
  *
  * **The rule, step by step.** Every value a sync takes must replace the device's
@@ -55,7 +55,7 @@ import type { SyncEntry } from '../../src/storage/store/store';
  * and every unit a commit changes must hold the device's base content in the
  * log (R = B). So a version can only vanish by being replaced knowingly, or when
  * its unit's content had gone back to a base, where three versions cannot show
- * the change: the known limit of 4.3. A deletion lost that way is reported as
+ * the change: the known limit (docs/DESIGN.md, Storage). A deletion lost that way is reported as
  * undone by a concurrent write, invariant 2's one exception; anything else lost
  * fails.
  */
@@ -135,7 +135,7 @@ export class Oracle {
 
   /**
    * A lifter's write on a device: `before` and `after` are the device's values
-   * around it. Resolving a conflict (5.3) is one write to two places: keeping the
+   * around it. Resolving a conflict is one write to two places: keeping the
    * log's version discards the saved one; using the saved one moves it into the
    * data, replacing what stood there, and discards only the record.
    */
@@ -185,7 +185,7 @@ export class Oracle {
   }
 
   /**
-   * A sync decided (4.2 step 5) on a device, against the log at `head`. Every
+   * A sync decided on a device, against the log at `head`. Every
    * value the sync wrote to the device must be the log's at that head, except new
    * conflict records, which must hold the device's own version of a unit where
    * neither side had seen the other's change (invariant 4). `bases` are the
@@ -298,7 +298,7 @@ export class Oracle {
       // is one this device never saw (sync.ts `saveLocal`).
       const redrawn = isConflict(place) && was.value === null && theirs.value !== null;
       if (going === undefined && !redrawn) {
-        // Not a conflict, so the rule took R because L = B (4.3).
+        // Not a conflict, so the rule took R because L = B.
         const base = bases.get(place) ?? null;
         if (was.value !== base) {
           throw new SimFailure(
@@ -376,7 +376,7 @@ export class Oracle {
             `${device} pushed ${show(value)} to ${place}, having decided while holding ${show(held_.value)}`,
           );
         }
-        // Pushed because R = B (4.3): the log must hold what the device last agreed on.
+        // Pushed because R = B: the log must hold what the device last agreed on.
         const base = bases!.get(place) ?? null;
         if (before.value !== base) {
           throw new SimFailure(
@@ -542,8 +542,7 @@ export class Oracle {
    * later write of the same value at the same place (using a saved version)
    * carries it on, so it is excused once that write is.
    *
-   * A version is its content (4.3: units are equal when their serialisations
-   * are), so a write of a value has been seen by a device that saw that same
+   * A version is its content (the sync compares units by their serialisations), so a write of a value has been seen by a device that saw that same
    * value at that place, whichever write put it there: using a saved version
    * writes a value again, on any device that chooses it. A deletion is only
    * seen as itself, or as a deletion linked to it (invariant 2's exception
@@ -573,7 +572,7 @@ export class Oracle {
   }
 
   /**
-   * The design limit (docs/STORAGE.md 3 and 4.3: nothing marks a record as
+   * The design limit (`docs/DESIGN.md`, Storage: nothing marks a record as
    * changed or deleted). A version a sync overwrote while its unit's content
    * equalled the base, so the sync had no way to see it: on its own device,
    * whose content had gone back to the base; or in the log, whose content had

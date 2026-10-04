@@ -62,8 +62,7 @@ src/
 
 **No training data lives in this repo.** Sessions, bodyweight, reference maxes
 and records go in a separate private log repo you create once. See
-[`docs/DATA.md`](docs/DATA.md), and [`docs/STORAGE.md`](docs/STORAGE.md) for how
-syncing works.
+[`docs/DATA.md`](docs/DATA.md) for what it holds and how to set it up.
 
 Sessions are JSON because they are nested and machine-written. The library and
 the charts are CSV because they are read by humans in diffs, where one changed

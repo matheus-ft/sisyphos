@@ -308,7 +308,7 @@ export async function callsDuring(remote: MemoryRemote, work: () => Promise<unkn
   return remote.calls.slice(before);
 }
 
-/** A sync with nothing to do on either side makes one request and no commit (4.2 step 2). */
+/** A sync with nothing to do on either side makes one request and no commit. */
 export async function expectQuiet(device: Device): Promise<void> {
   let result: SyncResult | undefined;
   const calls = await callsDuring(device.remote, async () => {

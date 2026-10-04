@@ -27,8 +27,8 @@ import { sha1Hex } from './hash';
 import { classify, TABLE_PATHS, type TableKind } from './paths';
 
 /**
- * How every log-repo file is written and read (docs/STORAGE.md 1.4; columns and
- * keys in docs/DATA.md).
+ * How every log-repo file is written and read (docs/DATA.md, Serialisation and
+ * The files).
  *
  * Deterministic: the same data always serialises to the same bytes, because sync
  * compares content by hash. Every parser throws `FormatError` (errors.ts) for
@@ -53,7 +53,7 @@ export interface TableSchema<R> {
   key: readonly string[];
   /** Key columns compared numerically when sorting; the rest compare by code point. */
   numeric: readonly string[];
-  /** Record to cells, each cell already in its serialised text form (1.4). */
+  /** Record to cells, each cell already in its serialised text form (DATA.md, Serialisation). */
   toRow(record: R): TableRow;
   /** Cells to record. Throws FormatError. */
   fromRow(row: TableRow): R;
@@ -112,7 +112,7 @@ const ISO_DATE = /^\d{4}-\d{2}-\d{2}$/;
 
 // --- cells ---------------------------------------------------------------------
 
-/** A number as its cell: JavaScript's shortest round-trip form (1.4). */
+/** A number as its cell: JavaScript's shortest round-trip form (DATA.md, Serialisation). */
 function numberCell(n: number): string {
   if (!Number.isFinite(n)) throw new Error(`cannot write ${n} as a number`);
   return String(n);
@@ -338,7 +338,7 @@ function cells(row: TableRow, columns: readonly string[]): string[] {
 /**
  * A row in the app's own form: read into its record and written back. Readers
  * return rows in this form, so `2.0` and `2` are one key and one row, and a hand
- * edited file is rewritten in the app's form by the next sync (1.4).
+ * edited file is rewritten in the app's form by the next sync (DATA.md, Serialisation).
  */
 function canonical(schema: TableSchema<unknown>, row: TableRow): TableRow {
   return schema.toRow(schema.fromRow(row));
@@ -382,7 +382,7 @@ function wellFormedRow(row: TableRow): TableRow {
   );
 }
 
-/** The whole file: header, rows sorted by key (1.4), trailing newline. */
+/** The whole file: header, rows sorted by key (DATA.md, Serialisation), trailing newline. */
 export function tableText(schema: TableSchema<unknown>, given: TableRow[]): string {
   // Sorted and checked for one row per key as the file will hold them, as its
   // reader will see them: `a\uD83D` and `a\uDCAA` are one key there, and U+FFFD
@@ -488,7 +488,7 @@ function json(value: unknown): string {
   const text = JSON.stringify(
     value,
     (_key, v: unknown) => {
-      // Absent is null, never omitted (1.4).
+      // Absent is null, never omitted (DATA.md, Serialisation).
       if (v === undefined) return null;
       if (typeof v === 'number' && !Number.isFinite(v)) {
         throw new Error(`cannot write ${v} as a number`);
@@ -828,7 +828,7 @@ const row =
   };
 
 /**
- * One leading byte-order mark is dropped first. The app never writes one (1.4),
+ * One leading byte-order mark is dropped first. The app never writes one (DATA.md, Serialisation),
  * but an editor may, and the remote keeps it so the content still hashes to its
  * sha. `JSON.parse` refuses it, which would make a file whose data is fine
  * unreadable; taken without it, the file is rewritten in the app's form by the
@@ -905,7 +905,7 @@ export function parseConflict(text: string): ConflictRecord {
   let version: Session | Template | TableRow | null;
   if (target.kind === 'table') {
     // Resolving finds the row to replace by `key` and writes `version` into the
-    // table (5.3), so both are read into the app's own form, as the table's rows
+    // table, so both are read into the app's own form, as the table's rows
     // are: a key reading `2.0` would match no row `2`, and one naming another
     // row than its version would leave two rows, or fail, when resolved.
     const schema: TableSchema<unknown> = TABLES[target.table];
@@ -928,7 +928,7 @@ export function parseConflict(text: string): ConflictRecord {
         ? field('version', nullable(session))
         : field('version', nullable(template));
     // Resolving writes the saved record to `path`, and a file is named by the
-    // id of the record it holds (1.2): one holding another id would be a second
+    // id of the record it holds (DATA.md, Ids): one holding another id would be a second
     // file claiming that record.
     if (saved !== null && saved.id !== target.id) {
       fail('conflict.version.id', `"${target.id}", the id conflict.path names`);
@@ -963,7 +963,7 @@ export function parseFormatMarker(text: string): FormatMarker {
 const encoder = new TextEncoder();
 
 /**
- * `based_on` (9.1): the first 12 hex characters of the SHA-1 of the exercise's
+ * `based_on`: the first 12 hex characters of the SHA-1 of the exercise's
  * row as the app serialises it, shipped columns only.
  */
 export function exerciseRowHash(exercise: Exercise): string {

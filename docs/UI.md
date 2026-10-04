@@ -1,9 +1,9 @@
 # User interface
 
-What the app shows and does, screen by screen. `STORAGE.md` is how data gets
-onto the device and into the log repo; this is everything the lifter touches on
-top of it. Where a decision was made, the reason is next to it. What is not
-decided yet is listed at the end, with a recommendation for each.
+What the app shows and does, screen by screen, on top of the storage layer in
+`src/storage/`. Where a decision was made, the reason is next to it. What is not
+decided yet is listed at the end, with a recommendation for each. This is a spec
+for screens not built yet: each section is pruned as its screen ships.
 
 The storage API the screens use is `startStorage()` in `src/storage/app.ts`:
 `log` for reading and writing records, `scheduler` for triggers and status,
@@ -16,8 +16,10 @@ sets. Tap targets are at least 44 points. Numbers being entered or read mid-set
 are the largest thing on screen. Nothing needed during a set sits behind a menu.
 
 **Nothing waits for the network.** Every change is written to the device the
-moment it is made (`STORAGE.md` 2.2), and no screen shows a spinner for a local
-action. The only thing that ever waits on GitHub is setup.
+moment it is made (`LocalStore.exclusive` in `src/storage/store/store.ts`), and
+no screen shows a spinner for a local action. A change is written when it is
+complete (a set confirmed, a field left), not per keystroke, and is not shown as
+saved before its write resolves. The only thing that ever waits on GitHub is setup.
 
 **Undo instead of confirm.** Recording a set, skipping one, removing an exercise
 from a session: done at once, with an undo for a few seconds. Confirmation is
@@ -30,8 +32,7 @@ saved. That is the data model's rule (`DESIGN.md`), and the UI does not get to
 break it with a cache.
 
 **The lifter always knows what is safe.** Sync status and exposure are on every
-screen (`STORAGE.md` 7.3). A conflict is loud from the moment it is found
-(`STORAGE.md` 5.2).
+screen (2.2). A conflict is loud from the moment it arrives (2.3).
 
 ## 2. Shell
 
@@ -75,11 +76,12 @@ does not invent its own.
 
 ### 2.3 Conflicts are loud
 
-Exactly as `STORAGE.md` 5.2 says: a full-screen notice when a sync finds or
-pulls a conflict (`onConflicts`, `onLibraryConflicts`), again at every launch
-while any is unresolved, and a banner that cannot be dismissed on every screen
-until none is left. **Resolve now** is the default button. Section 9 is the
-resolution screen.
+A full-screen notice listing every unresolved conflict, sync and library alike,
+interrupts whatever is on screen when a sync finds or pulls one
+(`onConflicts`, `onLibraryConflicts`), and again at every launch while any is
+unresolved. A banner that cannot be dismissed stays on every screen until none
+is left. **Resolve now** is the default button. Section 9 is the resolution
+screen. `DESIGN.md` (Storage) says why it is this loud.
 
 ### 2.4 App updates
 
@@ -243,8 +245,8 @@ asks for confirmation and is synced as a deletion.
 A date picker, then the same screen. The session is saved with
 `time_precision: 'date_only'`, `started_at` at noon of that date in the current
 zone, and `ended_at` set when the lifter taps **Save**. Without `ended_at` it
-would count as a session in progress (`STORAGE.md` 7.1) and hold syncing back for
-three hours. Its duration means nothing, and analysis already ignores the clock
+would count as a session in progress (`sessionInProgress` in `scheduler.ts`) and hold syncing back.
+Its duration means nothing, and analysis already ignores the clock
 time of `date_only` sessions.
 
 ## 5. History
@@ -350,7 +352,7 @@ Under More:
   remove them in the repo on github.com.
 - **Log repo**: the repo and the masked token. **Replace token** changes only
   the token. **Use a different repo** asks for confirmation, because the device
-  then forgets everything it shared with the old repo (`STORAGE.md` 8).
+  then forgets everything it shared with the old repo (`DATA.md`, Setup).
 - **Storage**: whether the browser granted persistent storage, and how much
   space is used.
 - **Export**: `sets.csv` and `sessions.csv` (`DATA.md`), generated on the device
@@ -396,7 +398,7 @@ Each has a recommendation; the spec above assumes it until decided otherwise.
    Recommended: let each device be named in settings, stored on the device with
    its `device_id`, and shown in conflicts. It is not synced, so a name only
    shows on the device that gave it.
-8. **Interrupting during a session.** `STORAGE.md` 5.2 interrupts the moment a
+8. **Interrupting during a session.** Section 2.3 interrupts the moment a
    conflict arrives. During a session the only sync is the launch pull, which
    finds none itself but can bring in ones another device found. Recommended:
    interrupt anyway; it is rare and it is the rule.
@@ -405,4 +407,4 @@ Each has a recommendation; the spec above assumes it until decided otherwise.
 
 Hosting is decided, not open: the app stays at `matheus-ft.github.io` while it
 is the only Pages site there, and moves to an origin of its own before another
-one is published. `STORAGE.md` section 11 has the why and the steps.
+one is published. `DESIGN.md` (Hosting) has the why and the steps.
