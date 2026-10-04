@@ -6,6 +6,7 @@
     addTarget,
     addTemplateExercise,
     editTarget,
+    moveTemplateExercise,
     removeTarget,
     removeTemplateExercise,
     rename,
@@ -82,7 +83,21 @@
     <section>
       <header>
         <h2>{exercise?.name ?? entry.exercise_id}</h2>
-        <button class="quiet" onclick={() => removeExercise(index)}>remove</button>
+        <div class="order">
+          <button
+            class="quiet"
+            aria-label="Move up"
+            disabled={index === 0}
+            onclick={() => onchange(moveTemplateExercise(template, index, -1))}>↑</button
+          >
+          <button
+            class="quiet"
+            aria-label="Move down"
+            disabled={index === template.exercises.length - 1}
+            onclick={() => onchange(moveTemplateExercise(template, index, 1))}>↓</button
+          >
+          <button class="quiet" onclick={() => removeExercise(index)}>remove</button>
+        </div>
       </header>
       {#each entry.prescribed as target, t (t)}
         <div class="row tabular" class:timed>
@@ -183,6 +198,20 @@
     min-height: 0;
     font-size: 0.85rem;
     color: var(--muted);
+  }
+
+  /* Up, down and remove sit together at the right of the exercise's name. */
+  .order {
+    display: flex;
+    gap: 0.25rem;
+  }
+
+  .order button {
+    min-width: 2.25rem;
+  }
+
+  .order button:disabled {
+    visibility: hidden;
   }
 
   .row {

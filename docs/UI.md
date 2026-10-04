@@ -47,7 +47,7 @@ reload mid-session would lose the open set and the rest timer.
 ### Entering a set
 
 Both ways, as the lifter prefers at the moment: typing into the row, as in v0;
-or tapping the set's number, which opens a panel from the bottom with large −
+or a button at the row's end, which opens a panel from the bottom with large −
 and + buttons for load and reps and one-tap RPE buttons from 6 to 10 in halves.
 
 The − and + buttons step by the plate increment, set per unit in settings (for
@@ -60,7 +60,7 @@ then the previous set. RPE is never pre-filled.
 
 ### Rest timer
 
-After a set is ticked, a timer shows on screen, large enough to read from a
+Once a set is complete, a timer shows on screen, large enough to read from a
 bench. It counts up by default; an exercise can have a target rest, counted
 down instead and turning red at zero. It is not saved. An iPhone web app cannot
 ring or vibrate, so it never claims to.

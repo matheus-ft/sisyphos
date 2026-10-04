@@ -187,6 +187,21 @@ export function removeExercise(session: Session, instanceId: Id): Session {
   return { ...session, exercises: session.exercises.filter((e) => e.id !== instanceId) };
 }
 
+/** The list with the item at `from` moved `by` places, staying within the list. */
+export function move<T>(list: T[], from: number, by: number): T[] {
+  const to = Math.min(Math.max(from + by, 0), list.length - 1);
+  if (from < 0 || from >= list.length || to === from) return list;
+  const next = [...list];
+  next.splice(to, 0, ...next.splice(from, 1));
+  return next;
+}
+
+/** An exercise moved up (`by` < 0) or down the session; order is array order. */
+export function moveExercise(session: Session, instanceId: Id, by: number): Session {
+  const from = session.exercises.findIndex((e) => e.id === instanceId);
+  return { ...session, exercises: move(session.exercises, from, by) };
+}
+
 /**
  * Moves a session to another date. A session dated other than the day it was
  * started on was logged after the fact, so its clock time says nothing about

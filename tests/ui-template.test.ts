@@ -8,6 +8,7 @@ import {
   addTarget,
   addTemplateExercise,
   editTarget,
+  moveTemplateExercise,
   newTemplate,
   removeTarget,
   removeTemplateExercise,
@@ -104,5 +105,15 @@ describe('a template as the log stores it', () => {
     t = editTarget(t, 0, 0, { amount: 140, reps: 5, rpe: 8 }, 'weight');
     t = addTarget(t, 0, 'weight');
     expect(parseTemplate(serializeTemplate(t))).toEqual(t);
+  });
+});
+
+describe('the order of a template', () => {
+  it('moves an exercise up or down', () => {
+    const t = addTemplateExercise(addTemplateExercise(blank(), squat), plank);
+    expect(moveTemplateExercise(t, 1, -1).exercises.map((e) => e.exercise_id)).toEqual([
+      'plank',
+      'low_bar_squat',
+    ]);
   });
 });

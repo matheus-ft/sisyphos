@@ -6,6 +6,7 @@
     editSet,
     formatSeconds,
     measureOf,
+    moveExercise,
     needsBodyweight,
     parseNumber,
     parseRpe,
@@ -34,6 +35,7 @@
   const measure = $derived(timed ? 'time' : 'weight');
   const missingBodyweight = $derived(exercise ? needsBodyweight(session, exercise) : false);
   const UNITS: LoadUnit[] = ['kg', 'lb', 'pins'];
+  const position = $derived(session.exercises.findIndex((e) => e.id === instance.id));
   /** The set whose actions (warm-up, remove) are open, from a tap on its number. */
   let opened = $state<string | null>(null);
 
@@ -96,7 +98,21 @@
 <section>
   <header>
     <h2>{exercise?.name ?? instance.exercise_id}</h2>
-    <button class="quiet" onclick={removeExerciseAsked}>remove</button>
+    <div class="order">
+      <button
+        class="quiet"
+        aria-label="Move up"
+        disabled={position === 0}
+        onclick={() => onchange(moveExercise(session, instance.id, -1))}>↑</button
+      >
+      <button
+        class="quiet"
+        aria-label="Move down"
+        disabled={position === session.exercises.length - 1}
+        onclick={() => onchange(moveExercise(session, instance.id, 1))}>↓</button
+      >
+      <button class="quiet" onclick={removeExerciseAsked}>remove</button>
+    </div>
   </header>
   {#if last}<p class="last tabular">last: {last}</p>{/if}
 
@@ -197,6 +213,20 @@
     min-height: 0;
     font-size: 0.85rem;
     color: var(--muted);
+  }
+
+  /* Up, down and remove sit together at the right of the exercise's name. */
+  .order {
+    display: flex;
+    gap: 0.25rem;
+  }
+
+  .order button {
+    min-width: 2.25rem;
+  }
+
+  .order button:disabled {
+    visibility: hidden;
   }
 
   .last,

@@ -14,6 +14,8 @@ import {
   lastTime,
   lastUnit,
   localDate,
+  move,
+  moveExercise,
   needsBodyweight,
   newSession,
   parseNumber,
@@ -283,5 +285,23 @@ describe('what was typed', () => {
     expect(parseRpe('8.5')).toBe(8.5);
     expect(parseRpe('8.3')).toBeUndefined();
     expect(parseRpe('11')).toBeUndefined();
+  });
+});
+
+describe('the order of exercises', () => {
+  it('moves an item within the list, never past either end', () => {
+    expect(move(['a', 'b', 'c'], 0, 1)).toEqual(['b', 'a', 'c']);
+    expect(move(['a', 'b', 'c'], 2, -1)).toEqual(['a', 'c', 'b']);
+    expect(move(['a', 'b', 'c'], 0, -1)).toEqual(['a', 'b', 'c']);
+    expect(move(['a', 'b', 'c'], 2, 1)).toEqual(['a', 'b', 'c']);
+  });
+
+  it('moves an exercise up or down the session, by its id', () => {
+    const newId = ids();
+    const s = addExercise(addExercise(started(), squat, newId), plank, newId);
+    const plankId = s.exercises[1].id;
+    const moved = moveExercise(s, plankId, -1);
+    expect(moved.exercises.map((e) => e.exercise_id)).toEqual(['plank', 'low_bar_squat']);
+    expect(moveExercise(moved, plankId, -1)).toEqual(moved);
   });
 });
