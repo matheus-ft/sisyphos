@@ -2,14 +2,14 @@ import type { Exposure } from './durability';
 import type { SyncError } from './errors';
 
 /**
- * What the UI always shows (docs/STORAGE.md 7.3; exposure levels in
- * docs/DURABILITY.md). `durability.ts` keeps `requestPersistence`,
+ * What the UI always shows: sync status and exposure (levels explained to the
+ * lifter in docs/DURABILITY.md). `durability.ts` keeps `requestPersistence`,
  * `storageStatus` and `exposure`; exposure gains the rule that a session in
  * progress caps it at `pending`.
  *
  * The scheduler knows when syncs run and how they ended; `describeSync` turns
  * that into the status and the words the lifter sees, so the mapping from each
- * failure class (section 6) to what the lifter is told lives in one pure place.
+ * failure class to what the lifter is told lives in one pure place.
  */
 
 export type SyncStatus =
@@ -28,9 +28,9 @@ export interface StatusSnapshot {
   nextRetryAt: Date | null;
   /** The last failure, in words the lifter can act on. */
   message: string | null;
-  /** Unresolved sync conflicts (section 5). */
+  /** Unresolved sync conflicts. */
   conflicts: number;
-  /** Library conflicts (9.1), derived. */
+  /** Library conflicts, derived. */
   libraryConflicts: number;
   /** Remote files left alone because they do not parse. */
   unreadable: string[];
@@ -39,14 +39,14 @@ export interface StatusSnapshot {
 
 /** What the scheduler knows about syncing at one moment. */
 export interface SyncState {
-  /** A remote is configured (section 8). */
+  /** A remote is configured. */
   setUp: boolean;
   syncing: boolean;
   /** How the last finished sync failed; null once one succeeds, and before any has run. */
   failure: SyncError | null;
   /** When the next automatic attempt is due; null when none is armed. */
   nextRetryAt: Date | null;
-  /** Retries do not run during a session (7.2), which changes what the lifter is told. */
+  /** Retries do not run during a session, which changes what the lifter is told. */
   sessionInProgress: boolean;
 }
 
@@ -101,7 +101,7 @@ export function describeSync(
           'Your log was saved by a newer version of Sisyphos. Update the app to keep syncing; everything you log meanwhile is kept on this phone.',
       };
     case 'bug':
-      // Section 7.3 has no status of its own for a broken invariant. It is a
+      // `SyncStatus` has no status of its own for a broken invariant. It is a
       // problem syncing cannot get past by itself, like a repo problem, and the
       // message says what it really is.
       return {

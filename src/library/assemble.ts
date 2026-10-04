@@ -1,9 +1,9 @@
 import type { Exercise, ExerciseAddition } from '../model';
 
 /**
- * Which version of each exercise the app uses (docs/STORAGE.md 9.1).
+ * Which version of each exercise the app uses.
  *
- * Every addition is decided with the rule of 4.3: B is the shipped row it was
+ * Every addition is decided with the sync's three-way rule (`src/storage/decide.ts`): B is the shipped row it was
  * based on (`based_on`, a row hash, or null), L the addition, R the shipped row
  * now. Rows compare by `hash`.
  *
@@ -58,7 +58,7 @@ export function assembleLibrary(
       // R is absent. With B absent too this is a brand-new exercise, the R = B
       // case: the addition is used. A B that names a shipped row this app does
       // not have means the addition was made by a newer app, since ids never
-      // leave the shipped library (9). From here that row is as absent as R, so
+      // leave the shipped library. From here that row is as absent as R, so
       // the addition is used and nothing is written; dropping it or flagging it
       // would act on a library that is merely out of date.
       used.set(id, mine);

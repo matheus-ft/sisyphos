@@ -1,7 +1,7 @@
 import type { Instant } from '../../model';
 
 /**
- * The device's side of the log repo (docs/STORAGE.md sections 2 and 3).
+ * The device's side of the log repo.
  *
  * The store keeps, for every log-repo path, the device's current content as
  * text, plus the sync bookkeeping for that path. It knows nothing about what the
@@ -13,7 +13,7 @@ import type { Instant } from '../../model';
  * (the app). Both must behave identically.
  */
 
-/** Sync bookkeeping for one log-repo path (section 3). */
+/** Sync bookkeeping for one log-repo path. */
 export interface SyncEntry {
   path: string;
   /** Blob sha of the remote content at the last point this device agreed with it. Null: never agreed. */
@@ -29,7 +29,7 @@ export interface SyncEntry {
 export interface SyncMeta {
   /**
    * The newest commit the bases were moved against: every base describes that
-   * commit or its history. The history check (4.2 step 2) asks whether the head
+   * commit or its history. The history check asks whether the head
    * still holds it.
    */
   last_synced_head: string | null;
@@ -41,7 +41,7 @@ export interface SyncMeta {
   last_synced_tree: string | null;
 }
 
-/** A commit this device is trying to land, recorded before moving the branch (4.5). */
+/** A commit this device is trying to land, recorded before moving the branch. */
 export interface Inflight {
   commit: string;
   tree: string;
@@ -58,12 +58,12 @@ export interface Settings {
    * GitHub's id for the repo (`RepoInfo.id`), saved by setup; null or absent
    * until then. The name alone cannot say whether a repo is the one the bases
    * describe: one deleted and created again under the same name holds another
-   * history, and gets a new id (section 8). Optional, so a settings record
+   * history, and gets a new id. Optional, so a settings record
    * saved without it still reads as settings; setup treats absent as unknown.
    */
   repo_id?: number | null;
   token: string | null;
-  /** Random, generated once per install, never copied between devices (2.1). */
+  /** Random, generated once per install, never copied between devices. */
   device_id: string;
 }
 
@@ -104,7 +104,7 @@ export interface Exclusive extends StoreReader {
 
 export interface LocalStore extends StoreReader {
   /**
-   * Runs `fn` in the write queue (2.2): first in, first out, with no other write
+   * Runs `fn` in the write queue: first in, first out, with no other write
    * interleaving. Resolves once `fn` has finished and everything it applied has
    * committed. `fn` must not call `exclusive` itself, which would deadlock.
    */
@@ -115,14 +115,13 @@ export interface LocalStore extends StoreReader {
 
   /**
    * Forgets every base, `sync_meta` and `inflight`, keeping all content: the
-   * device now shares nothing with any remote (pointing at a different repo,
-   * section 8). Every path with content then needs syncing.
+   * device now shares nothing with any remote (pointing at a different repo). Every path with content then needs syncing.
    */
   resetSync(): Promise<void>;
 }
 
 /**
- * How `apply` keeps `unsynced_since` (section 3): set when a path starts to
+ * How `apply` keeps `unsynced_since`: set when a path starts to
  * differ from its base, left alone while it keeps differing, cleared when they
  * agree. Shared so both stores do exactly the same thing.
  */

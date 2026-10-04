@@ -5,7 +5,7 @@ import type { Remote, RepoInfo } from './remote/remote';
 import type { LocalStore, Settings } from './store/store';
 
 /**
- * Pointing a device at a log repo (docs/STORAGE.md section 8): read the repo,
+ * Pointing a device at a log repo: read the repo,
  * refuse a public one, store the default branch, initialise an empty or
  * README-only repo with `sisyphos.json`, refuse a repo that is not a log, check
  * the format. Pointing at a different repo than before calls `store.resetSync()`
@@ -47,7 +47,7 @@ const ROUNDS = 5;
 
 /**
  * What GitHub's "Add a README", license and .gitignore options put in a new
- * repository. A repo holding nothing else is new, not someone else's (section 8).
+ * repository. A repo holding nothing else is new, not someone else's.
  */
 const SCAFFOLDING = /^(README|LICENSE)[^/]*$|^\.gitignore$/i;
 
@@ -79,7 +79,7 @@ export async function setUp(input: SetupInput, deps: SetupDeps): Promise<SetupRe
   }
 }
 
-/** Step 3 of section 8. Loops only when the repo changes under it. */
+/** Reads the head and tree and marks the repo as a log. Loops only when the repo changes under it. */
 async function prepare(remote: Remote, name: string): Promise<SetupResult> {
   const marker = serializeFormatMarker({ format: FORMAT_VERSION });
 
@@ -168,7 +168,7 @@ function checkFormat(text: string, name: string): SetupResult {
 /**
  * Saves the settings. Bases, the last synced head and the in-flight commit all
  * describe the previous repo's history; compared with another repo's files they
- * would read as deletions, so they are forgotten first (section 8). Were the
+ * would read as deletions, so they are forgotten first. Were the
  * app killed between the two writes, the old repo would be merged from null
  * bases next time, which is safe; the other order would not be.
  */
@@ -185,7 +185,7 @@ async function save(store: LocalStore, input: SetupInput, info: RepoInfo): Promi
 
 /**
  * Whether the device already syncs with this log. A new token for it changes
- * nothing else (section 8). GitHub names ignore case, so `Me/Log` is `me/log`.
+ * nothing else. GitHub names ignore case, so `Me/Log` is `me/log`.
  *
  * The name is not enough. A repo deleted and created again under the same name
  * holds another history, against which the old bases would read as deletions,
@@ -209,7 +209,7 @@ function sameName(a: string | null, b: string): boolean {
 }
 
 /**
- * A failure from the remote, by class (section 6). A 404 at any step means the
+ * A failure from the remote, by class. A 404 at any step means the
  * repo, or the token's view of it, is not what the lifter thinks. Any other
  * `repo` error comes from a repo GitHub found, and calling it not found would
  * send the lifter to check a name that is right.

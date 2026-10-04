@@ -32,7 +32,8 @@ import {
 } from './sync-harness';
 
 /**
- * Races and crashes (docs/STORAGE.md 4.2 steps 7 to 10, 4.5, 10 "Crash-safe").
+ * Races and crashes: committing, moving the branch, settling, and recovering an
+ * unfinished commit (steps 7 to 10 of `runSync`).
  *
  * A device is killed at every await of a sync in turn: a remote operation that
  * never answers (`failNext`), or the store dying on its Nth `apply`. It is then
@@ -53,7 +54,7 @@ const T_B = template(T1.id, 'b');
 /**
  * Two devices that agreed on a log, then each changed it. B has synced; A has
  * not. A's sync takes, pushes, deletes, merges a table key by key and finds one
- * conflict, so every step of 4.2 has work to do.
+ * conflict, so every step of a sync has work to do.
  */
 async function diverged() {
   const { remote, a, b } = await synced();
@@ -76,9 +77,9 @@ async function diverged() {
  * and syncs. Then both sync until quiet.
  */
 /**
- * What recovery (4.5) was told about this device's recorded commit. It must ask
- * exactly once; the sync's other `contains` calls are history checks (4.2 step
- * 2), about the last synced head, never about a recorded commit.
+ * What recovery was told about this device's recorded commit. It must ask
+ * exactly once; the sync's other `contains` calls are history checks (step 2 of
+ * `runSync`), about the last synced head, never about a recorded commit.
  */
 async function recoveryAnswer(
   contains: { mock: { calls: unknown[][]; results: Array<{ value: unknown }> } },
@@ -358,7 +359,7 @@ describe('racing another device', () => {
     );
     remote.failNext('moveBranch', refusal);
     expect(await rejection(a.sync())).toBe(refusal);
-    // Whether the branch moved is not known, so the commit stays recorded for 4.5.
+    // Whether the branch moved is not known, so the commit stays recorded for recovery.
     expect(await a.disk.inflight()).not.toBeNull();
 
     const commit = (await a.disk.inflight())!.commit;

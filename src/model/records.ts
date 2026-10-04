@@ -260,7 +260,7 @@ export type TableRow = Record<string, string>;
 
 /**
  * The version that did not stand when two devices changed the same record
- * differently (docs/STORAGE.md section 5). The version that stands is whatever
+ * differently. The version that stands is whatever
  * the data holds now; it is not copied here. Written once, only ever deleted.
  */
 export interface ConflictRecord {

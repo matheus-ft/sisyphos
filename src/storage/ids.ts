@@ -1,7 +1,7 @@
 import type { Id, IsoDate } from '../model';
 
 /**
- * Readable ids for the records that name files (docs/STORAGE.md 1.2).
+ * Readable ids for the records that name files (DATA.md, Ids).
  *
  * `taken` reports ids the device already holds; a generator never returns one.
  * `random` is injectable so tests and the simulation are deterministic; it

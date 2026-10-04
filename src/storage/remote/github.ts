@@ -3,11 +3,11 @@ import { blobSha } from '../hash';
 import type { NewCommit, Remote, RemoteChange, RemoteTree, RepoInfo } from './remote';
 
 /**
- * The log repo on GitHub, through the Git Data API (docs/STORAGE.md 4.1).
+ * The log repo on GitHub, through the Git Data API.
  *
  * Requirements the implementation must meet:
  * - every request is sent with `cache: 'no-store'`;
- * - every failure becomes a `SyncError` of the right kind (section 6), including
+ * - every failure becomes a `SyncError` of the right kind, including
  *   rate limits (403/429 with `x-ratelimit-remaining: 0` or `retry-after`);
  * - `blob` verifies the content against its sha;
  * - `tree` rejects a truncated tree;
@@ -33,7 +33,7 @@ export interface GitHubRemoteOptions {
   fetch?: typeof fetch;
   /**
    * How long a request may take, body included, before it counts as no network.
-   * Without a limit, a request that hangs holds the sync lock (7.2) indefinitely.
+   * Without a limit, a request that hangs holds the sync lock indefinitely.
    * Default 30 seconds.
    */
   timeoutMs?: number;
@@ -127,7 +127,7 @@ export class GitHubRemote implements Remote {
       );
     }
     // Past 100,000 entries or 7 MB GitHub lists part of the tree and says so.
-    // Syncing part of the log is worse than not syncing (STORAGE.md 4.1).
+    // Syncing part of the log is worse than not syncing.
     if (pick(data, 'truncated') === true) {
       throw this.error(
         'repo',
@@ -163,7 +163,7 @@ export class GitHubRemote implements Remote {
     } catch {
       // No log file can be anything but UTF-8 text, so this is a file that does
       // not parse, not a broken repo: the sync leaves that one path alone and
-      // syncs the rest (section 6), as it does for any unreadable file.
+      // syncs the rest, as it does for any unreadable file.
       throw new FormatError(`A file in ${this.name()} (blob ${sha}) is not UTF-8 text`);
     }
     const actual = blobSha(text);
@@ -217,7 +217,7 @@ export class GitHubRemote implements Remote {
     if (res.status === 422 || res.status === 409) {
       // GitHub answers 422 for a non-fast-forward and for validation failures
       // alike, so only a fresh read of the head can tell a race from a real
-      // refusal (STORAGE.md 4.2). Treating every 422 as a race retries forever.
+      // refusal. Treating every 422 as a race retries forever.
       const said = await githubMessage(res);
       if ((await this.head()) !== from) return 'raced';
       throw this.error(
@@ -248,7 +248,7 @@ export class GitHubRemote implements Remote {
 
   async initEmpty(path: string, content: string, message: string): Promise<string> {
     // No `branch`: the file goes to the repository's default branch, which is
-    // the branch setup stores (STORAGE.md section 8), and an empty repository
+    // the branch setup stores, and an empty repository
     // has no branch yet to name.
     const res = await this.send('PUT', `${this.repoPath()}/contents/${encodePath(path)}`, {
       message,
@@ -283,7 +283,7 @@ export class GitHubRemote implements Remote {
     const request = this.options.fetch ?? fetch;
     try {
       // `no-store`: GitHub marks responses cacheable for 60 seconds, and a cached
-      // head makes every push look like a lost race (STORAGE.md 4.1).
+      // head makes every push look like a lost race.
       return await request(`${API}${path}`, {
         method,
         headers,
@@ -315,7 +315,7 @@ export class GitHubRemote implements Remote {
   }
 
   /**
-   * The error for a response GitHub refused, by class (STORAGE.md section 6).
+   * The error for a response GitHub refused, by class.
    * `notFound` says what a 404 means for this request.
    */
   private async failure(res: Response, notFound: string): Promise<SyncError> {
@@ -340,7 +340,7 @@ export class GitHubRemote implements Remote {
     }
     if (status === 403) {
       // Reading or writing, the permission a log token can lack here is
-      // Contents: Metadata is granted with any access (STORAGE.md section 8).
+      // Contents: Metadata is granted with any access.
       // But a 403 is also how GitHub refuses a write to an archived repository,
       // a token an organisation has not approved, or one not authorised for its
       // SAML single sign-on, where a token with more permissions changes

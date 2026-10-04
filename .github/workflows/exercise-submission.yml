@@ -11,7 +11,7 @@
 #
 # Everything in the issue is typed by whoever opened it, and the form applies
 # its label for anyone, so this workflow handles text anyone can write while
-# holding write access. What keeps that text data (docs/STORAGE.md 9.2):
+# holding write access. What keeps that text data:
 #
 #   - It reaches a shell only through `env:`, used as a quoted variable. Never
 #     write `${{ }}` inside `run:`: the runner pastes the value into the script

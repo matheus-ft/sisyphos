@@ -2,7 +2,7 @@ import { FormatError } from './storage/errors';
 
 /**
  * The CSV reader and writer, for the shipped library and charts and for the
- * tables in the log repo (docs/STORAGE.md 1.4). No dependency.
+ * tables in the log repo (DATA.md, Serialisation). No dependency.
  *
  * RFC 4180 quoting: a quoted cell may hold commas, doubled quotes and line
  * breaks. The shipped files never quote anything (list cells use `/` for that
@@ -159,7 +159,7 @@ export function wellFormed(value: string): string {
 /**
  * One cell as the writer emits it: quoted exactly when the value holds a comma,
  * a double quote, CR or LF, starts with `#`, or has whitespace at either end
- * (1.4). "Whitespace" is whatever `trim` removes, since that is what the reader
+ * (DATA.md, Serialisation). "Whitespace" is whatever `trim` removes, since that is what the reader
  * would strip from an unquoted cell. Lone surrogates are written as U+FFFD
  * (`wellFormed`).
  */

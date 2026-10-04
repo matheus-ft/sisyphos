@@ -20,19 +20,30 @@ sisyphos-log/                      ← your own PRIVATE repo. Your training.
 
 Nothing personal is committed here. Your bodyweight is not a project asset.
 
-How the two are kept in step — writing, syncing, conflicts — is specified in
-[`STORAGE.md`](STORAGE.md).
+How the two are kept in step is the code in `src/storage/`, starting at
+`sync.ts`; why it works that way is in [`DESIGN.md`](DESIGN.md#storage).
 
 ## Setup: you create the log repo
 
-On github.com you create a private repository (any name; `sisyphos-log` is
-suggested) and a fine-grained token that can read and write Contents on that one
-repository and nothing else. In the app you enter the repo's name and paste the
-token. The app marks the repo as a log, and its first sync restores whatever the
-repo already holds. `STORAGE.md` section 8 has the details.
+On github.com:
 
-The app never creates the repo: a token allowed to do that is allowed far more
-than one repository.
+1. Create a private repository, any name (`sisyphos-log` is suggested), with
+   "Add a README" ticked so it has a first commit.
+2. Create a fine-grained personal access token: resource owner yourself,
+   repository access only that repository, permissions Contents: read and write.
+   GitHub adds Metadata: read by itself. The expiry is your choice.
+
+In the app, enter `owner/repo` and paste the token. The app marks the repo as a
+log by writing `sisyphos.json`, and its first sync restores whatever the repo
+already holds. It refuses a public repository, and one holding anything but a
+README, LICENSE or `.gitignore` without a `sisyphos.json`, which is somebody
+else's repository.
+
+A new token can be pasted at any time. Pointing the app at a different repo is a
+fresh start with that repo: nothing from the old one is compared against it.
+
+The token stays on the device: it is sent only to `api.github.com`, and never
+logged or synced.
 
 ## Shipped with the app
 
@@ -58,28 +69,81 @@ or replacing the row in the shipped file.
 
 Your change to a shipped exercise wins until the shipped exercise itself
 changes. If it then matches yours, your submission was merged and nothing
-happens. If it doesn't, the app flags a conflict and you choose. `STORAGE.md`
-section 9 has the exact rule.
+happens. If it doesn't, the app flags a conflict and you choose. The exact rule
+is `src/library/assemble.ts`.
+
+An id never leaves the shipped library once it is in it, since logs reference it
+permanently.
 
 ## The log repo's files
+
+This is a contract: you read these files on github.com, a notebook reads them,
+and a newer version of the app must read what an older one wrote.
 
 Every table has a **key**: the columns that identify a row, and there is exactly
 one row per key. The data files only ever hold one version of anything. When
 two devices disagree, the version already in the log stays, and the other waits
 in `conflicts/` until you choose; no file carries any marker for it.
 
+### Ids
+
+Sessions, templates and conflict records are named by their ids, so those ids
+are meant to be read.
+
+| Record          | Id                                                                   | Example            |
+| --------------- | -------------------------------------------------------------------- | ------------------ |
+| Session         | The session's date when it was created, then four random characters  | `2026-09-14-k3f9`  |
+| Template        | Its name when it was created, as a slug, then four random characters | `squat-day-a-k3f9` |
+| Conflict record | The date it was found, then four random characters                   | `2026-09-27-7xq2`  |
+
+- Dates are `YYYY-MM-DD`, so file listings sort chronologically.
+- The random characters are lowercase Crockford base 32
+  (`0123456789abcdefghjkmnpqrstvwxyz`): about a million possibilities per date or
+  name, enough for two devices creating records on the same day without talking
+  to each other.
+- A slug is the name lowercased, every run of characters other than ASCII
+  letters and digits replaced by one hyphen, trimmed of hyphens, and cut to 40
+  characters (then trimmed again). A name that leaves nothing has the slug
+  `template`.
+- An id never changes. A session moved to another date, or a template renamed,
+  keeps its id: the file name is a label, and the record's fields are the truth.
+  A path therefore depends only on the id.
+- Ids that never appear in a path (exercise instances, sets) are random UUIDs.
+
+### Serialisation
+
+The same data always produces the same bytes, because sync compares files by
+their git blob hash.
+
+- **All files:** UTF-8, no byte-order mark, `\n` line endings, ending in exactly
+  one `\n`.
+- **JSON:** two-space indentation, keys in a fixed order per type, absent values
+  as `null`, never omitted.
+- **CSV:** a header row, then one row per record, sorted by the table's key
+  (numbers numerically, everything else by code point). A cell containing a
+  comma, a double quote, `\r` or `\n`, starting with `#`, or starting or ending
+  with whitespace, is wrapped in double quotes with inner quotes doubled
+  (RFC 4180); no other cell is quoted. `null` is an empty cell, booleans are
+  `true` or empty, numbers are JavaScript's shortest round-trip form, dates
+  `YYYY-MM-DD`, instants ISO-8601 UTC with milliseconds.
+
+A table whose header is not exactly its format's is unreadable, and so is any
+file that does not parse: sync leaves it alone and the app names it. A file that
+parses but is formatted differently (hand-edited JSON, say) is rewritten in the
+app's form by the next sync.
+
+### The files
+
 `sisyphos.json` — `{ "format": 1 }`. Marks the repo as a log and says which
-format its files are in.
+format its files are in. An app that finds a newer format stops syncing and asks
+to be updated; logging on the device carries on. An older format is migrated, in
+one commit, before anything else.
 
-`sessions/<YYYY>/<id>.json` — one session, with its exercises and sets. The id is
-the session's date when it was created plus four random characters, such as
-`2026-09-14-k3f9`, and the folder is that date's year. An id never changes, so
-moving a session to another date edits the file and moves nothing. Nested,
-machine-written, never edited by hand.
+`sessions/<YYYY>/<id>.json` — one session, with its exercises and sets. The folder
+is the year in the id, so moving a session to another date edits the file and
+moves nothing. Nested, machine-written, never edited by hand.
 
-`templates/<id>.json` — one template: the skeleton a session starts from. The id
-is its name when created plus four random characters, such as
-`squat-day-a-k3f9`, and it survives renaming.
+`templates/<id>.json` — one template: the skeleton a session starts from.
 
 `lifter/bodyweight.csv` — `date, weight_kg, source`. Key: `date`, since there is
 at most one weigh-in a day. Needed for `bw_plus` loads.
@@ -102,21 +166,32 @@ Note this is a different thing again from the 1RM history. The 1RM history drive
 prescriptions and is a decision you make; records are observations.
 
 `library/additions.csv` — the columns of the shipped `src/library/exercises.csv`,
-then `based_on`: empty for an exercise the shipped library didn't have, or a
-short hash of the shipped row you changed. Key: `id`. The same parser reads both
-files, and apart from `based_on` an addition is the very row the shipped library
-would hold.
+then `based_on`: empty for an exercise the shipped library didn't have, or the
+first 12 hex characters of the SHA-1 of the shipped row you changed, as the app
+writes that row. Key: `id`. The same parser reads both files, and apart from
+`based_on` an addition is the very row the shipped library would hold. A format
+change that alters how rows are written must recompute every `based_on`, or every
+change you made becomes a false conflict.
 
-`conflicts/<id>.json` — one per unresolved conflict: which file (and for a
-table, which row), when it was found, which device's version it is, and that
-version. The app shows these the moment it finds them and until you choose;
-`STORAGE.md` section 5 has the rules. Nothing that reads your data needs to look
-here.
+`conflicts/<id>.json` — one per unresolved conflict, written once and only ever
+deleted. Nothing that reads your data needs to look here.
+
+| Field       | Meaning                                                                                               |
+| ----------- | ----------------------------------------------------------------------------------------------------- |
+| `id`        | See Ids                                                                                               |
+| `path`      | The file in conflict                                                                                  |
+| `key`       | For a table, the row's key as `{ column: value }`; null for sessions and templates                    |
+| `found_at`  | When the sync found it                                                                                |
+| `device_id` | The device whose version this is                                                                      |
+| `version`   | That device's version: the whole record, or the row as `{ column: value }`; null if it had deleted it |
+
+The version that stands is not copied there: it is whatever the data holds now.
 
 Any other file you put in the log repo is yours: the app never touches it.
 
 ## Exports
 
+Not built yet; the screen that will make them is in `UI.md`, Sync and settings.
 Generated on demand, never a source of truth, and they carry no library-derived
 data — no muscles, no tier, no base lift. Exports reference `exercise_id` and the
 consumer joins against `exercises.csv`, which is the whole point of having a
@@ -141,11 +216,22 @@ df = pd.read_csv('sets.csv').merge(pd.read_csv('exercises.csv'), on='exercise_id
 | `model/taxonomy.ts`      | Muscles and exercises: what `src/library/*.csv` describes                        |
 | `model/records.ts`       | What you record: sessions, sets, templates, reference maxes, records, bodyweight |
 | `model/index.ts`         | Re-exports the three; import from here, not from the parts                       |
-| `csv.ts`                 | The CSV reader. No dependency                                                    |
+| `csv.ts`                 | The CSV reader and writer (RFC 4180). No dependency                              |
 | `library/parse.ts`       | CSV rows → `Muscle` and `Exercise`, with validation and defaults                 |
+| `library/assemble.ts`    | The shipped library and the lifter's additions combined, and which version wins  |
+| `library/submission.ts`  | The prefilled issue that proposes an exercise for everyone                       |
 | `metrics/definitions.ts` | Reads `definitions.json`: weight presets and warm-up rules                       |
 | `metrics/rpe-chart.ts`   | The RPE→%1RM chart, and `e1rm()`                                                 |
 | `metrics/stress.ts`      | The fatigue chart, stress index, central balance                                 |
 | `metrics/load.ts`        | Unit conversion, effective load, tonnage                                         |
 | `metrics/volume.ts`      | Volume by muscle, by tier and by event                                           |
-| `storage/`               | The device store, sync and scheduling, specified in `STORAGE.md`                 |
+| `storage/app.ts`         | What the UI calls: `startStorage()` wires everything below                       |
+| `storage/log.ts`         | Sessions, templates, rows and conflicts, read and written as records             |
+| `storage/formats.ts`     | Every log-repo file to and from its record (see Serialisation above)             |
+| `storage/paths.ts`       | Which path holds what; `ids.ts` makes the readable ids; `hash.ts` the blob hash  |
+| `storage/store/`         | The device's copy of the log repo, in IndexedDB, behind one write queue          |
+| `storage/sync.ts`        | One sync, step by step; `decide.ts` is its three-way rule                        |
+| `storage/remote/`        | GitHub (`github.ts`) and the in-memory GitHub the tests use (`memory.ts`)        |
+| `storage/scheduler.ts`   | When syncs run, one at a time, with backoff                                      |
+| `storage/setup.ts`       | Connecting a log repo                                                            |
+| `storage/status.ts`      | Sync status for the UI; `durability.ts` exposure and persistent storage          |

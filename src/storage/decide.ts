@@ -1,5 +1,5 @@
 /**
- * The three-way decision (docs/STORAGE.md 4.3, 4.4). Pure: no I/O, no clock, no
+ * The three-way decision. Pure: no I/O, no clock, no
  * randomness. The sync gathers the versions and applies the result; this only
  * decides.
  *
@@ -65,7 +65,7 @@ export interface TableDecision {
   /** The rows the device must hold afterwards. */
   result: Map<string, string>;
   /**
-   * The base after this decision, key by key (4.2 step 5): the remote row for
+   * The base after this decision, key by key: the remote row for
    * every key whose result equals the remote's (absent if both are absent), the
    * old base row for every other key.
    */

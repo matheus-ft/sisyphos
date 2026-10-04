@@ -21,7 +21,8 @@ years.
 
 ## Storage
 
-The full specification is `docs/STORAGE.md`. What follows is why.
+How it works is the code in `src/storage/`, mapped in `DATA.md` (Source layout),
+and the log repo's format is in `DATA.md`. What follows is why.
 
 **JSON on device, one document per session.** A session is roughly 4KB; five
 sessions a week is about 1MB a year. SQLite-in-the-browser was considered and
@@ -91,8 +92,8 @@ per-record changed-since-sync marker, which reintroduces the kind of stored
 flag this design removed, and only covers the deleting device's side. Rejected:
 tombstones in the files, which catch both sides but make every file carry its
 deleted entries forever, and need a purge rule. Neither is worth it for a race
-this narrow in one lifter's log. STORAGE.md 4.3 states the limit exactly, and
-the simulation checks nothing wider.
+this narrow in one lifter's log. The simulation (`tests/sim/`) allows exactly
+this case and fails on anything wider.
 
 **Local writes are immediate; the log repo is written at three moments.** Every
 change is on the device the moment it is complete. The log repo is written when
@@ -143,8 +144,8 @@ volume, regardless of transfer.
 considered and rejected as more machinery than the problem deserves. Retag an
 exercise and every past analysis reads the new way.
 
-**The muscle vocabulary is not user-editable.** There is no writer for it in
-`StorageAdapter`, on purpose: exercises reference muscle ids permanently, so a
+**The muscle vocabulary is not user-editable.** Nothing in the storage layer
+writes it, on purpose: exercises reference muscle ids permanently, so a
 rename would silently break every exercise pointing at it. Adding an exercise is
 a submission that becomes a pull request; changing the vocabulary is a change to
 the app.
@@ -296,3 +297,30 @@ which means HTTPS, which means a real deploy — a LAN address will load the pag
 but never install it. `.github/workflows/deploy.yml` publishes on every push to
 master; the manifest uses relative `start_url` and `scope` so the same build works
 at the domain root or under `/<repo>/`.
+
+## Hosting
+
+The app is served from `https://matheus-ft.github.io/sisyphos/`, and the GitHub
+token lives in that origin's storage. Every GitHub Pages site under
+`matheus-ft.github.io` shares the origin, so the JavaScript of any of them could
+read the token.
+
+**It stays there while it is the only Pages site on that account.** It is today,
+so the risk is nil, and moving costs a setup on every device.
+
+**Before any other Pages site is published under `matheus-ft.github.io`**,
+including a personal site in a repo named `matheus-ft.github.io`, the app moves
+to an origin of its own: a free GitHub organisation (`<org>.github.io`), or a
+custom domain. In this order:
+
+1. On every device, sync until the status says synced. Storage does not follow
+   the app to a new origin, so anything only on the device stays behind.
+2. Transfer the repository, and update what names `matheus-ft/sisyphos`:
+   `APP_REPO` in `src/library/submission.ts`, and the README's address.
+3. On each device, install from the new address and connect the same log repo.
+   The first sync restores everything.
+4. Delete the old home-screen app, which deletes its storage and the token in it,
+   and replace the token. GitHub does not redirect a project site whose
+   repository moved, and the old app keeps running from its cache until deleted.
+
+The log repo is untouched: only the app's repository moves.
