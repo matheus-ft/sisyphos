@@ -75,10 +75,22 @@ Requires Node 24.5 or newer: the tests need its Web Locks (`navigator.locks`).
 npm install
 npm run dev      # dev server
 npm run build    # production bundle + service worker
-npm run verify   # typecheck, tests, formatting
+npm run verify   # formatting, lint, typecheck, tests: what CI checks
 npm run smoke    # the storage layer against real GitHub; see tests/smoke.live.test.ts
 npm run hooks:install   # formatting on commit
 ```
+
+## Repository settings
+
+Set on github.com, not in the repo:
+
+- **Settings → Rules → Rulesets:** `master` takes changes only through pull
+  requests, squash-merged, with the `build` check of
+  `.github/workflows/ci.yml` passing. No approval is required while there is one
+  maintainer, who cannot approve their own pull request; and a branch need not
+  be current with `master`, since `master`'s own run still checks the merge
+  before deploying.
+- **Settings → General:** head branches are deleted automatically once merged.
 
 ## Data model
 
