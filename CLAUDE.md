@@ -9,6 +9,7 @@
 | The log repo's files: layout, ids, serialisation, columns, setup | `docs/DATA.md`       |
 | What the lifter is told about keeping their data safe            | `docs/DURABILITY.md` |
 | Why each muscle group covers what it does                        | `docs/MUSCLES.md`    |
+| Screens not built yet, pruned section by section as each ships   | `docs/UI.md`         |
 | How anything works                                               | The code             |
 
 The exercises and muscle groups are `src/library/exercises.csv` and

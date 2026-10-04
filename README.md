@@ -13,7 +13,8 @@ squat variation working quads and glutes — that lives in the exercise library 
 is resolved when you query.
 
 **Status: pre-alpha.** The schema, the metrics and the storage layer (device
-store and GitHub sync) are in place; no logging UI yet.
+store and GitHub sync) are in place; no logging UI yet. What it will be is in
+[`docs/UI.md`](docs/UI.md).
 
 Live at **<https://matheus-ft.github.io/sisyphos/>**, deployed from `master` on
 every push. On iOS, open it in Safari and use Share → Add to Home Screen; it then
