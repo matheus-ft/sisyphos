@@ -4,12 +4,25 @@
   import { startStorage, type AppStorage } from './storage/app';
   import type { SetupInput, SetupResult } from './storage/setup';
   import type { StatusSnapshot } from './storage/status';
+  import { submissionUrl } from './library/submission';
+  import ExerciseHistory from './ui/ExerciseHistory.svelte';
   import Home from './ui/Home.svelte';
+  import NewExercise from './ui/NewExercise.svelte';
   import SessionView from './ui/SessionView.svelte';
   import Setup from './ui/Setup.svelte';
+  import SyncView from './ui/SyncView.svelte';
   import TemplateView from './ui/TemplateView.svelte';
-  import { finish, fromTemplate, localDate, newSession, setDate, templateFrom } from './ui/session';
-  import { newTemplate } from './ui/template';
+  import {
+    addExercise,
+    start as begin,
+    finish,
+    fromTemplate,
+    localDate,
+    newSession,
+    setDate,
+    templateFrom,
+  } from './ui/session';
+  import { addTemplateExercise, newTemplate } from './ui/template';
   import { statusLine } from './ui/status';
 
   /** Set once the lifter chose to go without sync, so setup stops greeting them. */
@@ -26,8 +39,19 @@
   let sessions = $state<Session[]>([]);
   let templates = $state<Template[]>([]);
   let library = $state<Exercise[]>([]);
+  /** Screens over the others: an exercise's history, sync, a new exercise's form. */
+  let history = $state<Exercise | null>(null);
+  let showSync = $state(false);
+  let creating = $state<string | null>(null);
 
-  const inSession = $derived(session !== null && session.ended_at === null);
+  /** Every session, with the one on screen as it is now rather than as last loaded. */
+  const current = $derived(
+    session ? [...sessions.filter((s) => s.id !== session?.id), session] : sessions,
+  );
+
+  const inSession = $derived(
+    session !== null && session.started_at !== null && session.ended_at === null,
+  );
   const line = $derived(status ? statusLine(status, inSession) : null);
 
   onMount(() => {
@@ -49,8 +73,9 @@
         started = s;
         storage = s;
         await load(s);
+        // A session left running reopens; a planned one waits on the home screen.
         const open = await s.log.listOpenSessions();
-        session = open.at(-1) ?? null;
+        session = open.filter((o) => o.started_at !== null).at(-1) ?? null;
         const settings = await s.store.settings();
         showSetup = settings.owner === null && !skipped();
         await s.scheduler.status();
@@ -110,21 +135,49 @@
     }
   }
 
-  async function start(from: Template | null, date?: IsoDate): Promise<void> {
+  /**
+   * A new session: started now, or `planned` to fill in ahead; on `date` for one
+   * logged after the fact; with a template's targets, or a past session's sets
+   * as targets for doing it again.
+   */
+  async function create(
+    from: Template | Session | null,
+    options: { planned?: boolean; date?: IsoDate } = {},
+  ): Promise<void> {
     const s = storage;
     if (!s) return;
     const at = new Date();
-    const id = await s.log.newSessionId(date ?? localDate(at));
     let fresh = newSession({
-      id,
+      id: await s.log.newSessionId(options.date ?? localDate(at)),
       at,
       tz: Intl.DateTimeFormat().resolvedOptions().timeZone,
       deviceId: s.log.options.deviceId,
+      planned: options.planned,
     });
-    if (date) fresh = setDate(fresh, date);
-    if (from) fresh = fromTemplate(fresh, from, () => crypto.randomUUID());
+    if (options.date) fresh = setDate(fresh, options.date);
+    const plan = from && 'started_at' in from ? templateFrom(from, { id: '', name: '', at }) : from;
+    if (plan) fresh = fromTemplate(fresh, plan, () => crypto.randomUUID());
     template = null;
     await save(fresh);
+  }
+
+  async function startPlanned(): Promise<void> {
+    if (session) await save(begin(session, new Date()));
+  }
+
+  /** Saves a new exercise, adds it where it was asked for, and opens its proposal. */
+  async function createExercise(exercise: Exercise): Promise<void> {
+    const s = storage;
+    if (!s) return;
+    // Opened within the tap, as Safari requires, and pointed at the proposal after.
+    const tab = window.open('', '_blank');
+    const kind = await s.log.saveExercise(exercise);
+    if (tab && kind) tab.location.href = submissionUrl(exercise, kind);
+    else tab?.close();
+    creating = null;
+    await load(s);
+    if (session) await save(addExercise(session, exercise, () => crypto.randomUUID()));
+    else if (template) await saveTemplate(addTemplateExercise(template, exercise));
   }
 
   async function finishSession(): Promise<void> {
@@ -143,7 +196,11 @@
 
   async function remove(): Promise<void> {
     const s = storage;
-    if (!s || !session || !confirm('Delete this session? It is deleted from the log too.')) return;
+    const question =
+      session?.started_at === null
+        ? 'Discard this plan?'
+        : 'Delete this session? It is deleted from the log too.';
+    if (!s || !session || !confirm(question)) return;
     await s.log.deleteSession(session.id);
     await close();
   }
@@ -195,11 +252,11 @@
     return result;
   }
 
-  /** The status line leads to what fixes it: setup, or a sync now. */
+  /** The status line leads to setup until there is a repo, and to the sync screen after. */
   function onStatusTap(): void {
     if (!status) return;
-    if (['not_set_up', 'needs_token', 'repo_problem'].includes(status.status)) showSetup = true;
-    else void storage?.scheduler.trigger('manual');
+    if (status.status === 'not_set_up') showSetup = true;
+    else showSync = true;
   }
 </script>
 
@@ -215,6 +272,26 @@
     {#if !failure}<p class="opening">Opening…</p>{/if}
   {:else if showSetup}
     <Setup onconnect={connect} onskip={skipSetup} onclose={() => (showSetup = false)} />
+  {:else if creating !== null}
+    <NewExercise
+      name={creating}
+      {library}
+      onsave={createExercise}
+      onclose={() => (creating = null)}
+    />
+  {:else if history}
+    <ExerciseHistory exercise={history} sessions={current} onclose={() => (history = null)} />
+  {:else if showSync}
+    <SyncView
+      {storage}
+      {status}
+      {library}
+      onsetup={() => {
+        showSync = false;
+        showSetup = true;
+      }}
+      onclose={() => (showSync = false)}
+    />
   {:else if session}
     <SessionView
       {session}
@@ -225,22 +302,28 @@
       onclose={close}
       ondelete={remove}
       onsavetemplate={saveAsTemplate}
+      onstart={startPlanned}
+      ondoagain={() => session && create(session, { planned: true })}
+      onhistory={(e: Exercise) => (history = e)}
+      oncreate={(name: string) => (creating = name)}
     />
   {:else if template}
     <TemplateView
       {template}
       {library}
       onchange={saveTemplate}
-      onstart={() => template && start(template)}
+      onstart={() => template && create(template)}
       onclose={() => (template = null)}
       ondelete={deleteTemplate}
+      oncreate={(name: string) => (creating = name)}
     />
   {:else}
     <Home
       {sessions}
       {templates}
       {library}
-      onstart={start}
+      onstart={(t: Template | null, date?: IsoDate) => create(t, { date })}
+      onplan={(t: Template | null) => create(t, { planned: true })}
       onopen={(s: Session) => (session = s)}
       onopentemplate={(t: Template) => (template = t)}
       onnewtemplate={createTemplate}

@@ -150,7 +150,11 @@ export interface Session {
    * stored explicitly, so moving a session to another date is one edit.
    */
   date: IsoDate;
-  started_at: Instant;
+  /**
+   * Null while the session is planned: filled in ahead (at lunch, for tonight)
+   * and not started yet. Starting it sets this, and its date to that day.
+   */
+  started_at: Instant | null;
   /** IANA zone, e.g. "Europe/Lisbon". Never a fixed offset — offsets break across DST. */
   tz: string;
   /**

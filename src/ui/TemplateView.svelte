@@ -22,8 +22,9 @@
     onstart: () => void;
     onclose: () => void;
     ondelete: () => void;
+    oncreate: (name: string) => void;
   }
-  let { template, library, onchange, onstart, onclose, ondelete }: Props = $props();
+  let { template, library, onchange, onstart, onclose, ondelete, oncreate }: Props = $props();
 
   const byId = $derived(new Map(library.map((e) => [e.id, e])));
   const measureAt = (index: number) => {
@@ -161,6 +162,7 @@
     {library}
     recentIds={[]}
     onpick={(exercise) => onchange(addTemplateExercise(template, exercise))}
+    {oncreate}
   />
 
   <p class="hint">Tap a set's number to remove it. Changes are saved as you go.</p>

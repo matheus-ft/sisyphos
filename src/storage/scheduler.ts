@@ -49,10 +49,15 @@ const MAX_RETRY_MS = 15 * 60_000;
 /** Failures after which automatic syncing stops until the lifter acts. */
 const STOPS: ReadonlySet<SyncErrorKind> = new Set(['token', 'repo', 'update', 'bug']);
 
-/** True when any session has `ended_at` null and was written (`updated_at`) within IN_PROGRESS_MS. */
+/**
+ * True when any session has started, has `ended_at` null and was written
+ * (`updated_at`) within IN_PROGRESS_MS. A planned session has not started:
+ * filling one in at lunch holds nothing back.
+ */
 export function sessionInProgress(sessions: Session[], now: Date): boolean {
   return sessions.some(
     (session) =>
+      session.started_at !== null &&
       session.ended_at === null &&
       // Within, either side of now: a session stamped by another device whose
       // clock runs a little ahead is still being written right now.

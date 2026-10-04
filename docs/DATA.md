@@ -141,7 +141,9 @@ one commit, before anything else.
 
 `sessions/<YYYY>/<id>.json` — one session, with its exercises and sets. The folder
 is the year in the id, so moving a session to another date edits the file and
-moves nothing. Nested, machine-written, never edited by hand.
+moves nothing. Nested, machine-written, never edited by hand. A session planned ahead
+has `started_at` null until it starts; an app older than that rule leaves such a
+file alone rather than misreading it.
 
 `templates/<id>.json` — one template: the skeleton a session starts from.
 
@@ -227,6 +229,7 @@ df = pd.read_csv('sets.csv').merge(pd.read_csv('exercises.csv'), on='exercise_id
 | `metrics/volume.ts`      | Volume by muscle, by tier and by event                                           |
 | `ui/session.ts`          | Every change the session screen makes, as pure functions over a session          |
 | `ui/template.ts`         | The same for the template screen                                                 |
+| `ui/conflicts.ts`        | A conflict as short lines to compare, for the sync screen                        |
 | `ui/*.svelte`            | The screens; `App.svelte` at the root of `src/` wires them to the storage layer  |
 | `storage/app.ts`         | What the UI calls: `startStorage()` wires everything below                       |
 | `storage/log.ts`         | Sessions, templates, rows and conflicts, read and written as records             |

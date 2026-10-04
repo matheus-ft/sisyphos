@@ -7,15 +7,31 @@
     library: Exercise[];
     /** Starts a session today, or on `date` for one logged after the fact. */
     onstart: (template: Template | null, date?: IsoDate) => void;
+    /** Plans a session to fill in ahead and start later. */
+    onplan: (template: Template | null) => void;
     onopen: (session: Session) => void;
     onopentemplate: (template: Template) => void;
     onnewtemplate: () => void;
   }
-  let { sessions, templates, library, onstart, onopen, onopentemplate, onnewtemplate }: Props =
-    $props();
+  let {
+    sessions,
+    templates,
+    library,
+    onstart,
+    onplan,
+    onopen,
+    onopentemplate,
+    onnewtemplate,
+  }: Props = $props();
 
   const names = $derived(new Map(library.map((e) => [e.id, e.name])));
-  const recent = $derived([...sessions].reverse().slice(0, 30));
+  const planned = $derived(sessions.filter((s) => s.started_at === null && s.ended_at === null));
+  const recent = $derived(
+    [...sessions]
+      .reverse()
+      .filter((s) => s.started_at !== null)
+      .slice(0, 30),
+  );
 
   function summary(session: Session): string {
     const list = session.exercises.map((e) => names.get(e.exercise_id) ?? e.exercise_id);
@@ -36,7 +52,22 @@
 </script>
 
 <article>
+  {#if planned.length}
+    <h2 class="first">Planned</h2>
+    <ul>
+      {#each planned as session (session.id)}
+        <li>
+          <button class="session" onclick={() => onopen(session)}>
+            <span class="date">{day(session.date)}</span>
+            <span class="what">{summary(session)}</span>
+          </button>
+        </li>
+      {/each}
+    </ul>
+  {/if}
+
   <button class="start" onclick={() => onstart(null)}>Start session</button>
+  <button class="link" onclick={() => onplan(null)}>or plan one to fill in ahead</button>
   <label class="past">
     or log a past session on
     <input
@@ -51,7 +82,10 @@
     {#each templates as template (template.id)}
       <li class="template">
         <button class="name" onclick={() => onopentemplate(template)}>{template.name}</button>
-        <button class="link" onclick={() => onstart(template)}>start</button>
+        <span class="go">
+          <button class="link" onclick={() => onplan(template)}>plan</button>
+          <button class="link" onclick={() => onstart(template)}>start</button>
+        </span>
       </li>
     {/each}
   </ul>
@@ -79,6 +113,15 @@
     border-radius: 0.5rem;
     font-size: 1.1rem;
     font-weight: 600;
+  }
+
+  .first {
+    margin-top: 0;
+  }
+
+  .go {
+    display: flex;
+    gap: 1rem;
   }
 
   .past {

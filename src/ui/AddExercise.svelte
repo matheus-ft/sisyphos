@@ -6,8 +6,10 @@
     /** Shown before anything is typed, most recent first. */
     recentIds: string[];
     onpick: (exercise: Exercise) => void;
+    /** Creates an exercise the library lacks, named from what was typed. */
+    oncreate: (name: string) => void;
   }
-  let { library, recentIds, onpick }: Props = $props();
+  let { library, recentIds, onpick, oncreate }: Props = $props();
 
   let query = $state('');
   let focused = $state(false);
@@ -46,11 +48,18 @@
     onfocus={() => (focused = true)}
     onblur={() => setTimeout(() => (focused = false), 200)}
   />
-  {#if results.length}
+  {#if results.length || query.trim()}
     <ul>
       {#each results as exercise (exercise.id)}
         <li><button onclick={() => pick(exercise)}>{exercise.name}</button></li>
       {/each}
+      {#if query.trim()}
+        <li>
+          <button class="create" onclick={() => oncreate(query.trim())}
+            >new exercise “{query.trim()}”…</button
+          >
+        </li>
+      {/if}
     </ul>
   {/if}
 </div>
@@ -81,5 +90,9 @@
     padding-left: 1rem;
     border-bottom: 1px solid var(--line);
     text-align: left;
+  }
+
+  .create {
+    color: var(--accent);
   }
 </style>

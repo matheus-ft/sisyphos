@@ -7,6 +7,13 @@ import type { StatusSnapshot } from '../src/storage/status';
 import {
   addExercise,
   addSet,
+  doneCount,
+  exerciseIdFrom,
+  historyOf,
+  nameProblem,
+  setExerciseNotes,
+  skipSet,
+  start,
   editSet,
   finish,
   formatSet,
@@ -28,6 +35,8 @@ import {
   templateFrom,
 } from '../src/ui/session';
 import { statusLine } from '../src/ui/status';
+import { parseSession, serializeSession } from '../src/storage/formats';
+import { sessionInProgress } from '../src/storage/scheduler';
 
 const muscles = parseMuscles(musclesCsv);
 const library = parseExercises(exercisesCsv, new Set(muscles.map((m) => m.id)));
@@ -303,5 +312,91 @@ describe('the order of exercises', () => {
     const moved = moveExercise(s, plankId, -1);
     expect(moved.exercises.map((e) => e.exercise_id)).toEqual(['plank', 'low_bar_squat']);
     expect(moveExercise(moved, plankId, -1)).toEqual(moved);
+  });
+});
+
+describe('a planned session', () => {
+  const at = new Date(2026, 9, 4, 12, 30);
+  const planned = () =>
+    newSession({
+      id: '2026-10-04-p1an',
+      at,
+      tz: 'Europe/Lisbon',
+      deviceId: 'phone',
+      planned: true,
+    });
+
+  it('has no start until it is started, and holds no sync back meanwhile', () => {
+    expect(planned().started_at).toBeNull();
+    expect(sessionInProgress([planned()], at)).toBe(false);
+  });
+
+  it('starts now and today, whenever it was planned for', () => {
+    const tonight = new Date(2026, 9, 5, 19, 0);
+    const s = start({ ...planned(), date: '2026-10-01', time_precision: 'date_only' }, tonight);
+    expect(s).toMatchObject({
+      started_at: tonight.toISOString(),
+      date: '2026-10-05',
+      time_precision: 'instant',
+    });
+    // Starting it is a write, which stamps updated_at.
+    expect(sessionInProgress([{ ...s, updated_at: tonight.toISOString() }], tonight)).toBe(true);
+  });
+
+  it('reads back from the log exactly as written', () => {
+    const s = addExercise(planned(), squat, ids());
+    expect(parseSession(serializeSession(s))).toEqual(s);
+  });
+});
+
+describe('skipping, notes and counting', () => {
+  it('skips a set, emptying it, and unskips it to pending', () => {
+    const s = withSquat();
+    const [e] = s.exercises;
+    const skipped = skipSet(s, e.id, e.performed[0].id, true);
+    expect(skipped.exercises[0].performed[0]).toMatchObject({
+      state: 'skipped',
+      load: null,
+      rpe: null,
+    });
+    expect(skipSet(skipped, e.id, e.performed[0].id, false).exercises[0].performed[0].state).toBe(
+      'pending',
+    );
+  });
+
+  it('keeps a note per exercise, empty meaning none', () => {
+    const s = withSquat();
+    const id = s.exercises[0].id;
+    expect(setExerciseNotes(s, id, 'belt from set 3').exercises[0].notes).toBe('belt from set 3');
+    expect(setExerciseNotes(s, id, '  ').exercises[0].notes).toBeNull();
+  });
+
+  it('counts done sets, so a new one shows as a set just finished', () => {
+    expect(doneCount(started())).toBe(0);
+    expect(doneCount(withSquat())).toBe(1);
+  });
+});
+
+describe("an exercise's history", () => {
+  it('lists every session with it, newest first, with its done sets', () => {
+    const older: Session = { ...withSquat(), id: '2026-09-28-a1b2', date: '2026-09-28' };
+    const newer: Session = { ...withSquat(), id: '2026-10-01-c3d4', date: '2026-10-01' };
+    const history = historyOf(squat, [older, started(), newer]);
+    expect(history.map((h) => h.session.date)).toEqual(['2026-10-01', '2026-09-28']);
+    expect(history[0].sets).toEqual(['140 × 5 @ 8']);
+  });
+});
+
+describe('a new exercise', () => {
+  it('takes its id from its name', () => {
+    expect(exerciseIdFrom('Pin Squat (high)')).toBe('pin_squat_high');
+    expect(exerciseIdFrom('Agachamento Búlgaro')).toBe('agachamento_bulgaro');
+  });
+
+  it('refuses names the submission workflow would refuse', () => {
+    expect(nameProblem('Pin Squat')).toBeNull();
+    expect(nameProblem('Squat, paused')).not.toBeNull();
+    expect(nameProblem('#1 squat')).not.toBeNull();
+    expect(nameProblem('  ')).not.toBeNull();
   });
 });

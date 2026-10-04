@@ -13,6 +13,8 @@
     parseSeconds,
     removeExercise,
     removeSet,
+    setExerciseNotes,
+    skipSet,
     targetsOf,
     unitOf,
     type SetEdit,
@@ -28,16 +30,19 @@
     /** The unit a new set starts in. */
     unit: LoadUnit;
     onchange: (next: Session) => void;
+    /** Opens the exercise's history. */
+    onhistory: (exercise: Exercise) => void;
   }
-  let { session, instance, exercise, last, unit, onchange }: Props = $props();
+  let { session, instance, exercise, last, unit, onchange, onhistory }: Props = $props();
 
   const timed = $derived(exercise ? measureOf(exercise) === 'time' : false);
   const measure = $derived(timed ? 'time' : 'weight');
   const missingBodyweight = $derived(exercise ? needsBodyweight(session, exercise) : false);
   const UNITS: LoadUnit[] = ['kg', 'lb', 'pins'];
   const position = $derived(session.exercises.findIndex((e) => e.id === instance.id));
-  /** The set whose actions (warm-up, remove) are open, from a tap on its number. */
+  /** The set whose actions (warm-up, skip, remove) are open, from a tap on its number. */
   let opened = $state<string | null>(null);
+  let noting = $state(false);
 
   function edit(set: PerformedSet, change: SetEdit): void {
     onchange(editSet(session, instance.id, set.id, change, measure, unit));
@@ -97,7 +102,11 @@
 
 <section>
   <header>
-    <h2>{exercise?.name ?? instance.exercise_id}</h2>
+    {#if exercise}
+      <button class="name" onclick={() => onhistory(exercise)}><h2>{exercise.name}</h2></button>
+    {:else}
+      <h2>{instance.exercise_id}</h2>
+    {/if}
     <div class="order">
       <button
         class="quiet"
@@ -111,14 +120,25 @@
         disabled={position === session.exercises.length - 1}
         onclick={() => onchange(moveExercise(session, instance.id, 1))}>↓</button
       >
+      <button class="quiet" onclick={() => (noting = !noting)}>note</button>
       <button class="quiet" onclick={removeExerciseAsked}>remove</button>
     </div>
   </header>
   {#if last}<p class="last tabular">last: {last}</p>{/if}
+  {#if noting || instance.notes}
+    <input
+      class="note"
+      aria-label="Note on {exercise?.name ?? 'this exercise'}"
+      placeholder="note…"
+      value={instance.notes ?? ''}
+      onchange={(e) => onchange(setExerciseNotes(session, instance.id, e.currentTarget.value))}
+    />
+  {/if}
 
   {#each instance.performed as set, i (set.id)}
     {@const target = targetsOf(instance, set)}
-    <div class="row tabular" class:timed class:pending={set.state !== 'done'}>
+    {@const skipped = set.state === 'skipped'}
+    <div class="row tabular" class:timed class:skipped class:pending={set.state === 'pending'}>
       <button
         class="n"
         aria-label="Set {i + 1} actions"
@@ -177,6 +197,12 @@
       <div class="actions">
         <button class="link" onclick={() => edit(set, { is_warmup: !set.is_warmup })}>
           {set.is_warmup ? 'not a warm-up' : 'warm-up'}
+        </button>
+        <button
+          class="link"
+          onclick={() => onchange(skipSet(session, instance.id, set.id, !skipped))}
+        >
+          {skipped ? 'not skipped' : 'skip'}
         </button>
         <button class="link" onclick={() => onchange(removeSet(session, instance.id, set.id))}>
           remove set
@@ -255,6 +281,29 @@
   }
 
   .n {
+    color: var(--muted);
+  }
+
+  /* The name opens the exercise's history; it reads as a heading, not a button. */
+  .name {
+    min-height: 0;
+    text-align: left;
+  }
+
+  .note {
+    width: 100%;
+    margin-bottom: 0.25rem;
+    font-size: 0.9rem;
+    color: var(--ink-2);
+  }
+
+  /* A skipped set was planned and deliberately not done: it stays, struck through. */
+  .row.skipped input {
+    text-decoration: line-through;
+  }
+
+  .row.skipped .n {
+    text-decoration: line-through;
     color: var(--muted);
   }
 

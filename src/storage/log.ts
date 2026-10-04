@@ -376,7 +376,12 @@ function compare(a: string, b: string): number {
 }
 
 function bySessionOrder(a: Session, b: Session): number {
-  return compare(a.date, b.date) || compare(a.started_at, b.started_at) || compare(a.id, b.id);
+  return (
+    compare(a.date, b.date) ||
+    // A planned session has no start yet, and sorts before the day's started ones.
+    compare(a.started_at ?? '', b.started_at ?? '') ||
+    compare(a.id, b.id)
+  );
 }
 
 /** A table's file and rows, read in the queue. A missing file is an empty table. */

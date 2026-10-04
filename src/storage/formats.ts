@@ -762,7 +762,7 @@ const session: Read<Session> = (v, path) => {
   return {
     id: field('id', str),
     date: field('date', date),
-    started_at: field('started_at', str),
+    started_at: field('started_at', nullable(str)),
     tz: field('tz', str),
     time_precision: field('time_precision', oneOf(TIME_PRECISIONS)),
     ended_at: field('ended_at', nullable(str)),

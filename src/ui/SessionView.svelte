@@ -2,7 +2,15 @@
   import type { Exercise, Session } from '../model';
   import AddExercise from './AddExercise.svelte';
   import ExerciseCard from './ExerciseCard.svelte';
-  import { addExercise, lastTime, lastUnit, parseNumber, setDate } from './session';
+  import {
+    addExercise,
+    doneCount,
+    formatSeconds,
+    lastTime,
+    lastUnit,
+    parseNumber,
+    setDate,
+  } from './session';
 
   interface Props {
     session: Session;
@@ -14,12 +22,31 @@
     onclose: () => void;
     ondelete: () => void;
     onsavetemplate: (name: string) => void;
+    /** Starts a planned session. */
+    onstart: () => void;
+    /** Plans a new session repeating this one. */
+    ondoagain: () => void;
+    onhistory: (exercise: Exercise) => void;
+    oncreate: (name: string) => void;
   }
-  let { session, library, sessions, onchange, onfinish, onclose, ondelete, onsavetemplate }: Props =
-    $props();
+  let {
+    session,
+    library,
+    sessions,
+    onchange,
+    onfinish,
+    onclose,
+    ondelete,
+    onsavetemplate,
+    onstart,
+    ondoagain,
+    onhistory,
+    oncreate,
+  }: Props = $props();
 
   const byId = $derived(new Map(library.map((e) => [e.id, e])));
   const open = $derived(session.ended_at === null);
+  const planned = $derived(session.started_at === null);
   const hasBodyweightWork = $derived(
     session.exercises.some((e) => byId.get(e.exercise_id)?.load_type === 'bw_plus'),
   );
@@ -30,33 +57,66 @@
 
   let now = $state(Date.now());
   $effect(() => {
-    const timer = setInterval(() => (now = Date.now()), 30_000);
+    const timer = setInterval(() => (now = Date.now()), 1_000);
     return () => clearInterval(timer);
   });
 
-  /** How long it has run, or ran; nothing for a session logged after the fact. */
+  /**
+   * When the last set was finished, for the rest timer. Kept for the tab, so a
+   * reload between sets keeps counting; never saved, since nothing needs it.
+   */
+  const restKey = $derived(`sisyphos.rest.${session.id}`);
+  let restFrom = $state<number | null>(null);
+  $effect(() => {
+    try {
+      const kept = Number(sessionStorage.getItem(restKey));
+      restFrom = kept > 0 ? kept : null;
+    } catch {
+      restFrom = null;
+    }
+  });
+  const rest = $derived(
+    open && !planned && restFrom !== null
+      ? formatSeconds(Math.floor((now - restFrom) / 1000))
+      : null,
+  );
+
+  /** Every change passes here: a set newly done starts the rest timer. */
+  function change(next: Session): void {
+    if (doneCount(next) > doneCount(session)) {
+      restFrom = Date.now();
+      try {
+        sessionStorage.setItem(restKey, String(restFrom));
+      } catch {
+        // The timer still runs; it only forgets on reload.
+      }
+    }
+    onchange(next);
+  }
+
+  /** How long it has run, or ran; nothing for a session planned or logged after the fact. */
   const duration = $derived.by(() => {
-    if (session.time_precision === 'date_only') return '';
+    if (session.started_at === null || session.time_precision === 'date_only') return '';
     const end = session.ended_at ? Date.parse(session.ended_at) : now;
-    const minutes = Math.max(0, Math.round((end - Date.parse(session.started_at)) / 60_000));
+    const minutes = Math.max(0, Math.floor((end - Date.parse(session.started_at)) / 60_000));
     return minutes < 60 ? `${minutes} min` : `${Math.floor(minutes / 60)} h ${minutes % 60} min`;
   });
 
   function pick(exercise: Exercise): void {
-    onchange(addExercise(session, exercise, () => crypto.randomUUID()));
+    change(addExercise(session, exercise, () => crypto.randomUUID()));
   }
 
   function changeDate(value: string): void {
-    if (/^\d{4}-\d{2}-\d{2}$/.test(value)) onchange(setDate(session, value));
+    if (/^\d{4}-\d{2}-\d{2}$/.test(value)) change(setDate(session, value));
   }
 
   function setBodyweight(text: string): void {
     const kg = parseNumber(text);
-    if (kg !== undefined) onchange({ ...session, bodyweight_kg: kg });
+    if (kg !== undefined) change({ ...session, bodyweight_kg: kg });
   }
 
   function setNotes(text: string): void {
-    onchange({ ...session, notes: text.trim() === '' ? null : text });
+    change({ ...session, notes: text.trim() === '' ? null : text });
   }
 
   function saveTemplate(): void {
@@ -67,7 +127,7 @@
 
 <article>
   <header>
-    {#if !open}<button class="link" onclick={onclose}>‹ back</button>{/if}
+    {#if !open || planned}<button class="link" onclick={onclose}>‹ back</button>{/if}
     <div class="when">
       <input
         class="date"
@@ -76,9 +136,15 @@
         value={session.date}
         onchange={(e) => changeDate(e.currentTarget.value)}
       />
+      {#if planned}<span class="duration">planned</span>{/if}
       {#if duration}<span class="duration tabular">{duration}{open ? ' so far' : ''}</span>{/if}
     </div>
+    {#if rest}<p class="rest tabular">rest {rest}</p>{/if}
   </header>
+
+  {#if planned}
+    <button class="primary" onclick={onstart}>Start</button>
+  {/if}
 
   {#if hasBodyweightWork}
     <label class="bodyweight">
@@ -101,11 +167,12 @@
       {exercise}
       last={exercise ? lastTime(exercise, sessions, session.id) : null}
       unit={exercise ? lastUnit(exercise, sessions, session.id) : 'kg'}
-      {onchange}
+      onchange={change}
+      {onhistory}
     />
   {/each}
 
-  <AddExercise {library} {recentIds} onpick={pick} />
+  <AddExercise {library} {recentIds} onpick={pick} {oncreate} />
 
   <textarea
     class="notes"
@@ -114,12 +181,17 @@
     value={session.notes ?? ''}
     onchange={(e) => setNotes(e.currentTarget.value)}></textarea>
 
-  {#if open}
-    <button class="finish" onclick={onfinish}>Finish</button>
+  {#if planned}
+    <div class="after">
+      <button class="link" onclick={ondelete}>discard plan</button>
+    </div>
+  {:else if open}
+    <button class="primary" onclick={onfinish}>Finish</button>
   {:else}
     <div class="after">
+      <button class="link" onclick={ondoagain}>do this again</button>
       <button class="link" onclick={saveTemplate}>save as template</button>
-      <button class="link" onclick={ondelete}>delete session</button>
+      <button class="link" onclick={ondelete}>delete</button>
     </div>
   {/if}
 </article>
@@ -161,7 +233,13 @@
     resize: vertical;
   }
 
-  .finish {
+  .rest {
+    margin: 0.25rem 0 0;
+    font-size: 1.6rem;
+    font-weight: 600;
+  }
+
+  .primary {
     width: 100%;
     margin-top: 2rem;
     border: 1px solid var(--ink);

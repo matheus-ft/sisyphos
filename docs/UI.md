@@ -30,8 +30,11 @@ shown as saved only once its write resolves. Only setup waits on GitHub.
 
 ## v0: logging a session
 
-Built, in `src/App.svelte` and `src/ui/`: the session screen, setup, the status
-line, and templates with exact targets.
+Built, in `src/App.svelte` and `src/ui/`: logging a session, planned ahead or
+started at once, with a rest timer counting up, skipped sets, notes per exercise
+and each exercise's history; past sessions, repeated with "do this again";
+templates with exact targets; creating an exercise; setup, the status line, and
+a sync screen that resolves conflicts.
 
 ## v0.5: the bridge
 
@@ -60,9 +63,8 @@ then the previous set. RPE is never pre-filled.
 
 ### Rest timer
 
-Once a set is complete, a timer shows on screen, large enough to read from a
-bench. It counts up by default; an exercise can have a target rest, counted
-down instead and turning red at zero. It is not saved. An iPhone web app cannot
+v0's counts up from the last completed set. v0.5 adds a target rest per
+exercise, counted down instead and turning red at zero. An iPhone web app cannot
 ring or vibrate, so it never claims to.
 
 ### Templates
@@ -77,10 +79,8 @@ percentage of a reference max, RPE-driven or bodyweight plus.
 
 ### History and past sessions
 
-Sessions by week, newest first, with a marker on any still holding pending
-sets. **Log a past session** picks a date and saves it with
-`time_precision: 'date_only'`, ended on saving, so it never counts as a session
-in progress.
+Every session by week, newest first, filtered by exercise, with a marker on any
+still holding pending sets. v0 lists the 30 most recent.
 
 ### Lifter data
 
@@ -93,10 +93,9 @@ in progress.
 
 ### Library
 
-Search and filter by base lift, tier and muscle. Creating or changing an
-exercise saves it at once and opens its prefilled submission on github.com.
-Safari opens a window only within the tap, so the tap opens it empty and the
-save then points it at the submission.
+v0 creates exercises. v0.5 adds filtering the search by base lift, tier and
+muscle, and changing an existing exercise, which opens a proposal to change the
+shipped row.
 
 ### Analysis
 
@@ -107,19 +106,18 @@ the unit they were logged in; analysis shows kilograms.
 
 ### Conflicts
 
-When a sync finds or brings conflicts, a full-screen notice lists them, again at
-every launch, with a banner on every screen until none is left. During a
-session only the banner shows. The resolution screen sets the log's version
-beside the saved one, differences highlighted, set by set for a session and
-field by field for a row, with each version's device by name: every device can
-be named in settings, a name kept on that device.
+v0 lists them on the sync screen, each version as short lines, with a button to
+keep either. v0.5 announces them: a full-screen notice when a sync finds or
+brings one, again at every launch, and a banner on every screen until none is
+left; during a session only the banner. Differences are highlighted, and each
+version's device is shown by name: every device can be named in settings, a
+name kept on that device.
 
 ### Settings and sync
 
-Sync status and exposure in full, **Sync now**, the files left alone because
-they do not parse, the repo and the masked token, replacing the token, moving
-to another repo (confirmed: the device forgets what it shared with the old
-one), the device's name, plate increments, persistent storage, and export of
+v0's sync screen has the status, **Sync now**, the repo and masked token, a way
+to change either, and the files left alone because they do not parse. v0.5
+adds the device's name, plate increments, persistent storage, and export of
 `sets.csv` and `sessions.csv`.
 
 ### Decided against

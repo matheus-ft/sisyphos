@@ -28,12 +28,19 @@ export function localDate(at: Date): IsoDate {
   return `${at.getFullYear()}-${pad(at.getMonth() + 1)}-${pad(at.getDate())}`;
 }
 
-export function newSession(input: { id: Id; at: Date; tz: string; deviceId: string }): Session {
+/** A session started now, or with `planned`, one filled in ahead and started later. */
+export function newSession(input: {
+  id: Id;
+  at: Date;
+  tz: string;
+  deviceId: string;
+  planned?: boolean;
+}): Session {
   const now = input.at.toISOString();
   return {
     id: input.id,
     date: localDate(input.at),
-    started_at: now,
+    started_at: input.planned ? null : now,
     tz: input.tz,
     time_precision: 'instant',
     ended_at: null,
@@ -176,6 +183,33 @@ export function unitOf(set: PerformedSet): LoadUnit | null {
   return set.load?.kind === 'weight' ? set.load.unit : null;
 }
 
+/**
+ * Skips a set: planned, deliberately not done. A skipped set holds no numbers;
+ * typing into it again makes it an ordinary set.
+ */
+export function skipSet(session: Session, instanceId: Id, setId: Id, skipped: boolean): Session {
+  return updateSet(session, instanceId, setId, (set) =>
+    skipped
+      ? { ...set, state: 'skipped', load: null, reps: null, rpe: null }
+      : { ...set, state: 'pending' },
+  );
+}
+
+export function setExerciseNotes(session: Session, instanceId: Id, notes: string): Session {
+  return updateInstance(session, instanceId, (e) => ({
+    ...e,
+    notes: notes.trim() === '' ? null : notes,
+  }));
+}
+
+/** How many sets are done: one more than before means a set was just finished. */
+export function doneCount(session: Session): number {
+  return session.exercises.reduce(
+    (n, e) => n + e.performed.filter((s) => s.state === 'done').length,
+    0,
+  );
+}
+
 export function removeSet(session: Session, instanceId: Id, setId: Id): Session {
   return updateInstance(session, instanceId, (e) => ({
     ...e,
@@ -208,8 +242,19 @@ export function moveExercise(session: Session, instanceId: Id, by: number): Sess
  * when it happened, and analysis must not read it as if it did.
  */
 export function setDate(session: Session, date: IsoDate): Session {
-  const sameDay = date === localDate(new Date(session.started_at));
+  // A planned session gets its clock time when it starts.
+  const sameDay = session.started_at === null || date === localDate(new Date(session.started_at));
   return { ...session, date, time_precision: sameDay ? 'instant' : 'date_only' };
+}
+
+/** Starts a planned session: it happens now, today, whenever it was planned for. */
+export function start(session: Session, at: Date): Session {
+  return {
+    ...session,
+    started_at: at.toISOString(),
+    date: localDate(at),
+    time_precision: 'instant',
+  };
 }
 
 export function finish(session: Session, at: Date): Session {
@@ -252,7 +297,8 @@ function lastInstance(
   except: Id,
 ): ExerciseInstance | null {
   const ordered = [...sessions].sort(
-    (a, b) => b.date.localeCompare(a.date) || b.started_at.localeCompare(a.started_at),
+    (a, b) =>
+      b.date.localeCompare(a.date) || (b.started_at ?? '').localeCompare(a.started_at ?? ''),
   );
   for (const session of ordered) {
     if (session.id === except) continue;
@@ -272,6 +318,28 @@ export function lastTime(exercise: Exercise, sessions: Session[], except: Id): s
     .filter((s) => s.state === 'done')
     .map((s) => formatSet(s, exercise))
     .join(', ');
+}
+
+export interface HistoryEntry {
+  session: Session;
+  /** The exercise's done sets that day, as `formatSet` writes them. */
+  sets: string[];
+}
+
+/** Every session that did this exercise, newest first, with its done sets. */
+export function historyOf(exercise: Exercise, sessions: Session[]): HistoryEntry[] {
+  return [...sessions]
+    .sort(
+      (a, b) =>
+        b.date.localeCompare(a.date) || (b.started_at ?? '').localeCompare(a.started_at ?? ''),
+    )
+    .flatMap((session) => {
+      const sets = session.exercises
+        .filter((e) => e.exercise_id === exercise.id)
+        .flatMap((e) => e.performed.filter((s) => s.state === 'done'))
+        .map((s) => formatSet(s, exercise));
+      return sets.length ? [{ session, sets }] : [];
+    });
 }
 
 /** The unit this exercise was last logged in; gyms differ, so a habit beats the library's hint. */
@@ -386,4 +454,28 @@ export function parseRpe(text: string): number | null | undefined {
   const n = parseNumber(text);
   if (n === null || n === undefined) return n;
   return n >= 1 && n <= 10 && Number.isInteger(n * 2) ? n : undefined;
+}
+
+// --- new exercises ------------------------------------------------------------------
+
+/** An exercise's id from its name, as the library spells ids: `low_bar_squat`. */
+export function exerciseIdFrom(name: string): string {
+  return name
+    .normalize('NFD')
+    .replace(/\p{Diacritic}/gu, '')
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, '_')
+    .replace(/^_+|_+$/g, '');
+}
+
+/**
+ * Why a name cannot be an exercise's, or null. The submission workflow refuses
+ * commas and quotes, which would split the library's row, and `#` and `@`,
+ * which GitHub would read as a link or a mention.
+ */
+export function nameProblem(name: string): string | null {
+  if (name.trim() === '') return 'Give it a name.';
+  if (/[,"#@]/.test(name)) return 'No commas, double quotes, # or @ in the name.';
+  if (exerciseIdFrom(name) === '') return 'The name needs a letter or a digit.';
+  return null;
 }
