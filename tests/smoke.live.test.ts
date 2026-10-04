@@ -67,7 +67,7 @@ if (SMOKE && !CONFIGURED) {
 // --- this run ----------------------------------------------------------------------------
 
 const ALPHABET = '0123456789abcdefghjkmnpqrstvwxyz';
-/** Four characters, as a readable id's random part (STORAGE.md 1.2). */
+/** Four characters, as a readable id's random part (DATA.md, Ids). */
 const RUN = Array.from(crypto.getRandomValues(new Uint8Array(4)), (b) => ALPHABET[b % 32]).join('');
 const DAY = 86_400_000;
 const TODAY = new Date().toISOString().slice(0, 10);

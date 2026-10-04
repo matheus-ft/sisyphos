@@ -113,7 +113,7 @@ describe('setUp: reading the repo', () => {
   });
 
   it('reports a token refused a write as a token problem', async () => {
-    // Write access is proven by the first commit (section 8).
+    // Write access is proven by the first commit.
     const h = harness();
     const message =
       'GitHub refused the token access to me/sisyphos-log: it needs the Contents permission, read and write';

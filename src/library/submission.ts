@@ -1,7 +1,7 @@
 import type { Exercise } from '../model';
 
 /**
- * Proposing an exercise for the shared library (docs/STORAGE.md 9.2): GitHub's
+ * Proposing an exercise for the shared library: GitHub's
  * new-issue page for the `new-exercise` form, every field filled in through the
  * query string. The lifter taps Submit, signed in on github.com.
  *

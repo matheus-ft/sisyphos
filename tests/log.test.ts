@@ -502,7 +502,7 @@ describe.each(BACKENDS)('Log over %s', (_name, backend) => {
     });
 
     it('keeps every change of several made to a table at once', async () => {
-      // Each write reads the table in the write queue (2.2). One that read it
+      // Each write reads the table in the write queue. One that read it
       // before its turn would write back rows as they were then, undoing every
       // write that landed in between.
       const { log } = await setup();

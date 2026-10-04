@@ -45,7 +45,7 @@ import {
 import type { Fault, Kind, Schedule, Step, Write } from './schedule';
 
 /**
- * The simulated world (docs/STORAGE.md section 10): two or three devices, each
+ * The simulated world: two or three devices, each
  * a `Log` over its own `MemoryStore`, all syncing through one `MemoryRemote`,
  * on one clock that moves a minute per step, and the lifter editing the log on
  * github.com besides. `run` plays a schedule, then heals the network and lets
@@ -54,7 +54,7 @@ import type { Fault, Kind, Schedule, Step, Write } from './schedule';
  *
  * Each sync runs through a store and a remote of its own that wrap the device's
  * and the log's. They inject the schedule's faults, and they tell the oracle
- * what the sync decided (4.2 step 5) and what it committed, which is all it
+ * what the sync decided and what it committed, which is all it
  * needs to know who has seen what.
  */
 
@@ -107,7 +107,7 @@ function suffix(n: number): string {
 
 /**
  * A file as the lifter leaves it after editing it on github.com. By hand, or
- * when only rewriting it, it is not in the app's form (1.4): JSON on one line,
+ * when only rewriting it, it is not in the app's form (DATA.md, Serialisation): JSON on one line,
  * table rows in reverse order with Windows line endings.
  */
 function edited(
@@ -194,9 +194,9 @@ class Device {
  * the oracle, never used otherwise.
  */
 export interface Sabotage {
-  /** The store never records the commit in flight (4.2 step 8). */
+  /** The store never records the commit in flight. */
   forgetInflight?: boolean;
-  /** Recovery is told no recorded commit ever landed (4.5). */
+  /** Recovery is told no recorded commit ever landed. */
   denyLanding?: boolean;
   /** Conflict records a sync saves never reach the device. */
   dropConflicts?: boolean;
@@ -472,7 +472,7 @@ export class World {
    * One sync, with faults. An injected failure is expected, and a kill relaunches
    * the device; anything else the sync throws is a failure of the simulation.
    * Null when the sync failed, or did not run because the device was already
-   * syncing (the lock, 7.2).
+   * syncing (the sync lock).
    */
   async sync(device: Device, mode: Mode, faults: Fault[]): Promise<SyncResult | null> {
     if (this.syncing.has(device)) return null;
@@ -759,7 +759,7 @@ class SyncStore implements LocalStore {
 
   exclusive<T>(fn: (store: Exclusive) => Promise<T>): Promise<T> {
     return this.disk.exclusive(async (s) => {
-      // Only deciding (4.2 step 5) lists the paths, and it does so before writing.
+      // Only deciding lists the paths, and it does so before writing.
       let before: Map<Place, Value> | null = null;
       let bases: Map<Place, Value> | null = null;
       const result = await fn({

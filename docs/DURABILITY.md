@@ -37,8 +37,8 @@ Safari generally grants it to installed apps and declines it for pages in a tab 
 one more reason to install rather than bookmark. It does nothing about deliberate
 deletion, and is not a substitute for sync.
 
-**Manual export.** One tap, no network, hands you the file. For the moments when
-you want a copy in your hand right now.
+**Manual export** (not built yet). One tap, no network, hands
+you the file. For the moments when you want a copy in your hand right now.
 
 ## Exposure
 
@@ -83,10 +83,9 @@ does not sync: the phone cannot tell closing the app from locking it between
 sets, and a commit per set would be noise. The accepted cost: lose the phone
 mid-session and that session is lost.
 
-A failed sync retries from thirty seconds, doubling to a cap of fifteen minutes,
-and at once when the connection returns. An expired or revoked token stops
-syncing and asks for a new one rather than retrying forever. `STORAGE.md`
-section 7 has the exact rules.
+A failed sync retries, waiting longer each time, and at once when the connection
+returns. An expired or revoked token stops syncing and asks for a new one rather
+than retrying forever. The exact rules are in `src/storage/scheduler.ts`.
 
 ## Restoring
 
@@ -99,4 +98,4 @@ your bodyweight history, because they were never only on the old phone.
 If two devices change the same thing before either syncs, the version already in
 the repo counts and the other is saved for you. The app tells you at once, full
 screen, and keeps a banner up until you pick one; you lose nothing, and sync
-never stops to ask. `STORAGE.md` section 5 has the rules.
+never stops to ask.

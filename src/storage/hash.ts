@@ -1,5 +1,5 @@
 /**
- * Content hashing (docs/STORAGE.md section 3).
+ * Content hashing.
  *
  * Synchronous on purpose. The browser's SubtleCrypto is asynchronous only, and
  * an `await` between two requests of one IndexedDB transaction lets it commit

@@ -198,7 +198,7 @@ describe('startStorage', () => {
   });
 });
 
-// --- pointing the device at another repo (section 8) ------------------------------------
+// --- pointing the device at another repo ------------------------------------
 
 /** A remote whose next `head` waits until the test lets it answer: a sync caught partway. */
 class GatedRemote extends MemoryRemote {

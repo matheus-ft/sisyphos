@@ -185,7 +185,7 @@ function conflict(id: string): ConflictRecord {
   };
 }
 
-/** A library conflict (9.1) on the exercise with this id; only the id matters here. */
+/** A library conflict on the exercise with this id; only the id matters here. */
 function libraryConflict(id: string): LibraryConflict {
   return { id } as LibraryConflict;
 }
@@ -296,7 +296,7 @@ describe('sessionInProgress', () => {
   });
 });
 
-// --- triggers (7.1) -------------------------------------------------------------------
+// --- triggers -------------------------------------------------------------------
 
 describe('Scheduler: triggers', () => {
   const table: Array<[Trigger, Mode | null, Mode | null]> = [
@@ -366,7 +366,7 @@ describe('Scheduler: triggers', () => {
   });
 });
 
-// --- one at a time (7.2) ----------------------------------------------------------------
+// --- one at a time ----------------------------------------------------------------
 
 describe('Scheduler: one sync at a time', () => {
   it('folds every request made during a sync into exactly one more', async () => {
@@ -536,7 +536,7 @@ describe('Scheduler: the sync lock', () => {
   );
 });
 
-// --- what must not overlap a sync (section 8) -------------------------------------------
+// --- what must not overlap a sync -------------------------------------------
 
 /** A promise the test settles by hand. */
 function gate() {
@@ -663,7 +663,7 @@ describe('Scheduler: whileNotSyncing', () => {
   });
 });
 
-// --- retries (7.2) ----------------------------------------------------------------------
+// --- retries ----------------------------------------------------------------------
 
 describe('Scheduler: retrying a failed full sync', () => {
   it('backs off from 30 seconds, doubling, capped at 15 minutes', async () => {
@@ -771,7 +771,7 @@ describe('Scheduler: retrying a failed full sync', () => {
   });
 });
 
-// --- failure classes (section 6) ----------------------------------------------------------
+// --- failure classes ----------------------------------------------------------
 
 describe('Scheduler: what each failure does', () => {
   /** Automatic triggers, outside a session: each would sync if nothing held it back. */
@@ -833,7 +833,7 @@ describe('Scheduler: what each failure does', () => {
     h.startSession();
     h.sync.then(rateLimited(T0 + 30 * MINUTE));
     await h.scheduler.trigger('manual');
-    // No retries during a session (7.2): nothing is armed, and the lifter is told so.
+    // No retries during a session: nothing is armed, and the lifter is told so.
     expect(h.timers.due()).toBeNull();
     expect(h.last()).toMatchObject({ status: 'retrying', nextRetryAt: null });
     expect(h.last().message).toMatch(/when you end the session/);
@@ -1151,7 +1151,7 @@ describe('Scheduler: attach', () => {
   });
 });
 
-// --- conflicts (5.2) ----------------------------------------------------------------------
+// --- conflicts ----------------------------------------------------------------------
 
 describe('Scheduler: telling the lifter about conflicts', () => {
   it('announces the conflicts a sync created', async () => {
@@ -1263,7 +1263,7 @@ describe('Scheduler: telling the lifter about conflicts', () => {
   });
 });
 
-// --- status (7.3) -------------------------------------------------------------------------
+// --- status -------------------------------------------------------------------------
 
 describe('Scheduler: status', () => {
   it('says syncing while a sync runs, then idle', async () => {

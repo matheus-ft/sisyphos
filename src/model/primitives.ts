@@ -3,7 +3,7 @@
 /**
  * Stable client-generated id. Sessions, templates and conflict records are named
  * by theirs, so those are readable (`2026-09-14-k3f9`, `squat-day-a-k3f9`; see
- * docs/STORAGE.md 1.2). Everything else is a random UUID.
+ * docs/DATA.md, Ids). Everything else is a random UUID.
  */
 export type Id = string;
 

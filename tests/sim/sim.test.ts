@@ -4,11 +4,30 @@ import { breaks, shrink } from './shrink';
 import { failureOf, play, type Sabotage } from './world';
 
 /**
- * The sync, simulated (docs/STORAGE.md section 10). Each seed generates a
+ * The sync, simulated. Each seed generates a
  * schedule of writes, conflicting edits, resolutions, syncs and pulls on two or
  * three devices, with the network dropping and devices killed at every await of
  * a sync; then the network heals, every device syncs until nothing changes, and
- * every invariant is checked.
+ * every invariant is checked:
+ *
+ *   1. Convergence. Every device and the remote hold identical content.
+ *   2. Nothing lost. Every version a device wrote survives, in the data or in a
+ *      conflict record, unless a write made by a device that had seen it
+ *      replaced or deleted it. A deletion is a version too, with one exception:
+ *      a deletion may be undone by a write made without seeing it, when the
+ *      deleting side's content returned to its base in between (docs/DESIGN.md,
+ *      Storage). Those cases are counted, and any other fails.
+ *   3. Nothing comes back. A record deleted on a device that had seen all its
+ *      versions stays deleted.
+ *   4. Conflicts only when concurrent. A conflict record appears only where two
+ *      devices changed the same unit without either having seen the other's.
+ *   5. Quiet when idle. A sync with nothing to do makes no commit.
+ *   6. Crash-safe. None of the above depends on where a device was killed; a
+ *      device killed between moving the branch and recording it never sees its
+ *      own commit as a conflict.
+ *
+ * `oracle.ts` keeps its own record of which device had seen which version, which
+ * is what 2 to 4 are checked against.
  *
  * `npm test` runs a few thousand seeds. For a soak run:
  *
@@ -16,7 +35,7 @@ import { failureOf, play, type Sabotage } from './world';
  *
  * with `SIM_FIRST_SEED` to start elsewhere. A soak run prints what the schedules
  * exercised, including how often a deletion was undone by a concurrent write,
- * the one limit invariant 2 allows (docs/STORAGE.md 4.3, 10). A failing seed is
+ * the one limit invariant 2 allows. A failing seed is
  * shrunk to the shortest schedule that still breaks the same invariant, and
  * reported with it, ready to keep in regressions.test.ts.
  */

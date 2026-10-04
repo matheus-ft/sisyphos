@@ -83,7 +83,7 @@ export type ExposureLevel =
 
 export interface Exposure {
   level: ExposureLevel;
-  /** Log-repo files changed on this device and not yet accepted by the remote (STORAGE.md 3). */
+  /** Log-repo files changed on this device and not yet accepted by the remote. */
   unsyncedDocuments: number;
   /** Age of the oldest unsynced change, in minutes. Null when nothing is pending. */
   oldestUnsyncedMinutes: number | null;
@@ -95,11 +95,11 @@ export interface ExposureInput {
   syncConfigured: boolean;
   /**
    * Every path's sync entry (`store.entries()`). A path needs syncing when its
-   * `local_sha` differs from its `base_sha` (STORAGE.md section 3): derived
+   * `local_sha` differs from its `base_sha`: derived
    * afresh every time, never recorded, so it cannot fall out of step.
    */
   entries: Pick<SyncEntry, 'local_sha' | 'base_sha' | 'unsynced_since'>[];
-  /** A session is in progress (STORAGE.md 7.1), so syncing is paused on purpose. */
+  /** A session is in progress, so syncing is paused on purpose. */
   sessionInProgress: boolean;
   now?: Date;
 }
@@ -108,7 +108,7 @@ export interface ExposureInput {
 export const AT_RISK_AFTER_MINUTES = 60;
 
 /**
- * How bad things are if this phone disappears right now (STORAGE.md 7.3).
+ * How bad things are if this phone disappears right now.
  *
  * Deliberately never returns `safe` when sync is unconfigured, however tidy the
  * local state looks: zero unsynced changes on a device with nowhere to sync to
@@ -117,7 +117,7 @@ export const AT_RISK_AFTER_MINUTES = 60;
  * Age is measured from the oldest `unsynced_since`, the first change that has
  * not reached the remote, so repeated edits or failed syncs never make old work
  * look new. While a session is in progress the level is at most `pending`:
- * leaving the app does not sync then (7.1), so changes growing old is the
+ * leaving the app does not sync then, so changes growing old is the
  * design working, not a sync falling behind.
  */
 export function exposure(input: ExposureInput): Exposure {

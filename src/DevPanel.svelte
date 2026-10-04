@@ -20,7 +20,7 @@
 
   // A plain developer panel over the storage layer, so it can be exercised end
   // to end on a phone before the real UI exists: setup, the live status, test
-  // data to sync, and the conflict notice, banner and resolution (STORAGE.md 5.2).
+  // data to sync, and the conflict notice, banner and resolution.
 
   /** One version of a record in conflict, as the lifter is shown it. */
   interface Side {
@@ -31,7 +31,7 @@
     value: unknown;
   }
 
-  /** An unresolved conflict: a sync conflict record, or a library conflict (9.1). */
+  /** An unresolved conflict: a sync conflict record, or a library conflict. */
   type Pending =
     | { kind: 'sync'; id: string; title: string; standing: Side; other: Side }
     | {
@@ -51,7 +51,7 @@
 
   const ISO_DATE = /^\d{4}-\d{2}-\d{2}$/;
 
-  /** Every setup failure, in words (STORAGE.md section 8). */
+  /** Every setup failure, in words. */
   const REFUSED: Record<SetupFailure, string> = {
     not_found: 'Repository not found',
     repo_problem: 'The repository cannot be used as it is',
@@ -105,7 +105,7 @@
     let started: AppStorage | null = null;
     let timer: ReturnType<typeof setInterval> | undefined;
 
-    /** A sync found or pulled conflicts: the full-screen notice, listing every one (5.2). */
+    /** A sync found or pulled conflicts: the full-screen notice, listing every one. */
     const announce = () => {
       openNotice();
       if (started) void loadData(started);
@@ -119,7 +119,7 @@
         if (started) void loadData(started);
       },
       onConflicts: announce,
-      // Library conflicts are announced like sync ones (5.2).
+      // Library conflicts are announced like sync ones.
       onLibraryConflicts: announce,
     }).then(
       async (s) => {
@@ -133,7 +133,7 @@
         pickExercise((s.shipped.find((e) => e.id === 'low_bar_squat') ?? s.shipped[0])?.id ?? '');
         void s.persisted.then((granted) => (persisted = granted));
         await loadData(s);
-        // Every launch shows the notice again while any conflict is unresolved (5.2).
+        // Every launch shows the notice again while any conflict is unresolved.
         if (syncConflicts.length + libraryConflicts.length > 0) view = 'notice';
         await refreshStatus(s);
         // Exposure ages with the clock, not only with writes.
@@ -350,7 +350,7 @@
   }
 
   function deleteWeight(date: string): Promise<void> {
-    // Rows are replaced and deleted by key (2.3); the weight is not read.
+    // Rows are replaced and deleted by key; the weight is not read.
     return act('Deleting the weigh-in', (s) =>
       s.log.deleteRow('bodyweight', { date, weight_kg: 0, source: 'manual' }),
     );
@@ -386,7 +386,7 @@
   function resolveLibrary(conflict: LibraryConflict, choice: LibraryConflictChoice): Promise<void> {
     return act('Resolving the library conflict', async (s) => {
       const kind = await s.log.resolveLibraryConflict(conflict.id, choice);
-      // Keeping mine opens a new submission (9.1).
+      // Keeping mine opens a new submission.
       if (kind !== null) {
         submission = {
           kind,
@@ -397,7 +397,7 @@
     });
   }
 
-  /** A conflict record beside the version that stands in the data now (5.2). */
+  /** A conflict record beside the version that stands in the data now. */
   async function describeConflict(log: Log, record: ConflictRecord): Promise<Pending> {
     const target = classify(record.path);
     const written = (record.version as { updated_at?: unknown } | null)?.updated_at;
@@ -1074,7 +1074,7 @@
     flex: none;
   }
 
-  /* Cannot be dismissed: it stays while any conflict is unresolved (5.2). */
+  /* Cannot be dismissed: it stays while any conflict is unresolved. */
   .banner {
     position: sticky;
     top: env(safe-area-inset-top, 0px);

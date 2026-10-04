@@ -43,7 +43,7 @@ export type Fault =
   | { kind: 'lose'; at: number }
   /** The device dies at the sync's `at`th write to its store. */
   | { kind: 'crash'; at: number }
-  /** The device dies after the branch moved, before settling (4.5). */
+  /** The device dies after the branch moved, before settling. */
   | { kind: 'settle' }
   /** Before the `at`th remote request, these run to completion: another device syncs, a lifter writes. */
   | { kind: 'race'; at: number; steps: Step[] }
@@ -61,7 +61,7 @@ export type Step =
   | { do: 'restart'; device: number }
   /**
    * The lifter changes the log on github.com: a record's version, a deletion, or
-   * the same record written in another form (`hand`: not the app's form, 1.4).
+   * the same record written in another form (`hand`: not the app's form).
    */
   | { do: 'web'; op: 'edit' | 'reformat' | 'delete'; pick: number; hand: boolean };
 

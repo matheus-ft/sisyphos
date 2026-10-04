@@ -12,7 +12,7 @@ import {
 } from './store';
 
 /**
- * The store on the device, in IndexedDB (docs/STORAGE.md section 2). Must
+ * The store on the device, in IndexedDB. Must
  * behave exactly like `MemoryStore`; both run the same contract test suite.
  *
  * - One write queue: `exclusive` runs callbacks first in, first out, and holds
@@ -52,7 +52,7 @@ type Upgrade = (
 /**
  * `MIGRATIONS[n]` takes the database from version n to n + 1, inside the
  * upgrade transaction. A later version appends a step: it may add stores and
- * rewrite records, and must carry every record forward (2.1).
+ * rewrite records, and must carry every record forward.
  */
 const MIGRATIONS: Upgrade[] = [
   (db, tx) => {

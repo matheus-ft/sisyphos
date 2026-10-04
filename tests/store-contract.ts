@@ -3,7 +3,7 @@ import { blobSha } from '../src/storage/hash';
 import type { Inflight, LocalStore } from '../src/storage/store/store';
 
 /**
- * The store contract (docs/STORAGE.md sections 2 and 3), written once and run
+ * The store contract (`src/storage/store/store.ts`), written once and run
  * against every store: `MemoryStore` stands in for the device in the sync's
  * tests, so anything it does that `IndexedDbStore` does not would pass there
  * and fail on a phone.

@@ -33,7 +33,7 @@ import type { Exclusive, LocalStore, StoreOp, StoreReader, SyncEntry } from './s
  * The lifter's records, over the store: what the app reads and writes.
  *
  * Every write goes through `store.exclusive` and is one `apply`, so it is on
- * disk when the promise resolves, and nothing is held in memory (2.2). Records
+ * disk when the promise resolves, and nothing is held in memory. Records
  * are serialised with formats.ts into the file content the store keeps; reads
  * parse it back, cached by content sha.
  */
@@ -102,14 +102,14 @@ export class Log {
     return rows ?? [];
   }
 
-  /** Every unresolved sync conflict (section 5), ordered by id: oldest first. */
+  /** Every unresolved sync conflict, ordered by id: oldest first. */
   async getConflicts(): Promise<ConflictRecord[]> {
     const conflicts = await this.readAll('conflict', parseConflict);
     return conflicts.sort((a, b) => compare(a.id, b.id));
   }
 
   /**
-   * The exercise library with the lifter's additions applied (9.1). Applies the
+   * The exercise library with the lifter's additions applied. Applies the
    * rule's fixes (rebase, drop) as writes before returning.
    */
   async library(): Promise<AssembledLibrary> {
@@ -147,7 +147,7 @@ export class Log {
 
   /**
    * Sets `updated_at` and `device_id`. A write whose only change would be a new
-   * `updated_at` is skipped (2.2).
+   * `updated_at` is skipped.
    */
   async putSession(session: Session): Promise<void> {
     const path = pathOf('session', session.id);
@@ -200,7 +200,7 @@ export class Log {
     await this.deleteFile(pathOf('template', id));
   }
 
-  /** Replaces the row with the record's key (2.3). Not for additions: use `saveExercise`. */
+  /** Replaces the row with the record's key. Not for additions: use `saveExercise`. */
   async putRow<K extends Exclude<TableKind, 'additions'>>(
     kind: K,
     record: RecordOf<K>,
@@ -228,8 +228,8 @@ export class Log {
 
   /**
    * Saves an exercise the lifter created or changed as an addition, with
-   * `based_on` set to the current shipped row with its id (9.1). Returns the
-   * submission to open (9.2): 'new', 'change', or null when it equals the shipped row.
+   * `based_on` set to the current shipped row with its id. Returns the
+   * submission to open: 'new', 'change', or null when it equals the shipped row.
    *
    * An exercise equal to its shipped row needs no addition, and any addition
    * the lifter had made for it is removed: otherwise the change they just
@@ -256,7 +256,7 @@ export class Log {
   // --- conflicts ------------------------------------------------------------------
 
   /**
-   * Section 5.3: keep the log's version, or write the saved one; either way the
+   * Keep the log's version, or write the saved one; either way the
    * record goes, in the same apply. A record that is already gone was resolved,
    * here or on another device, and resolving it again does nothing.
    */
@@ -273,7 +273,7 @@ export class Log {
   }
 
   /**
-   * Section 9.1: 'use_shipped' deletes the addition; 'keep_mine' moves its
+   * 'use_shipped' deletes the addition; 'keep_mine' moves its
    * `based_on` to the current shipped row and returns 'change' so the caller opens
    * a new submission. Without both an addition and a shipped row with this id
    * there is no conflict, and nothing is written.
@@ -410,7 +410,7 @@ function fixed(rows: TableRow[], fixes: AdditionFix[]): TableRow[] {
   });
 }
 
-/** The ops that write a conflict record's saved version into the data (5.3). */
+/** The ops that write a conflict record's saved version into the data. */
 async function savedVersionOps(store: StoreReader, conflict: ConflictRecord): Promise<StoreOp[]> {
   const target = classify(conflict.path);
   switch (target.kind) {
