@@ -117,11 +117,9 @@ built. Absent values are `null`, never omitted.
   field in the order listed: numbers numerically, everything else by code point.
 
 A table whose header row is not exactly the one its format defines is
-unreadable (section 6). The CSV reader must accept everything the writer
-produces, including quoted cells with embedded newlines. The current
-`src/csv.ts` splits on newlines and does not handle quoting, so it must be
-replaced. The shipped library files are read with the same reader and are
-unaffected: they contain no quoted cells.
+unreadable (section 6). The CSV reader (`src/csv.ts`) must accept everything the
+writer produces, including quoted cells with embedded newlines. The shipped
+library files are read with the same reader.
 
 **Files the app did not write.** A remote file that parses but does not
 serialise back to the same bytes (hand-formatted JSON, say) is taken, then
@@ -140,7 +138,7 @@ IndexedDB holds, per install:
 | `sync`      | One entry per log-repo path: `base_sha`, `local_sha`, `unsynced_since`, and for tables `base_body`                                                                                 |
 | `sync_meta` | `last_synced_head`: the newest commit the bases were moved against, which the history check anchors at. `last_synced_tree`: its tree, recorded only when every base agrees with it |
 | `inflight`  | At most one entry: the commit this device is trying to land (4.5)                                                                                                                  |
-| `settings`  | Repo owner and name, branch, token, device id. Never synced                                                                                                                        |
+| `settings`  | Repo owner and name, GitHub's id for the repo (section 8), branch, token, device id. Never synced                                                                                  |
 
 The store keeps files, not records, and knows nothing about what they mean. That
 is what lets the sync treat every path the same way. Sessions, rows and the rest
@@ -648,18 +646,18 @@ existing id. The lifter only taps Submit, signed in on github.com. It cannot be
 filed without that tap: the log token is scoped to the log repo, and a
 fine-grained token cannot write to a repository its owner does not own.
 
-The workflow validates the row as it does now, except that an id already in the
-shipped library is accepted when the submission says it is a change: the pull
-request then replaces that row instead of adding one. Only the shipped columns
-are submitted; `based_on` never leaves the log.
+The workflow (`.github/workflows/exercise-submission.yml`) validates the row and
+opens a pull request adding it. An id already in the shipped library is accepted
+when the submission says it is a change: the pull request then replaces that row
+instead of adding one. Only the shipped columns are submitted; `based_on` never
+leaves the log.
 
 The submission workflow runs with write access to the app's repository and reads
 text anyone can type. Every value from the issue (title, body, or anything
 derived from them, including the validated row) must reach its shell steps only
 through `env:`, referenced as quoted variables, never interpolated with
-`${{ }}` into a `run:` script. The workflow on `master` today interpolates the
-issue title and the row, which lets any GitHub user run commands with that
-access. This is fixed as part of the rebuild.
+`${{ }}` into a `run:` script. Interpolating them would let any GitHub user run
+commands with that access.
 
 ## 10. Tests
 
@@ -711,28 +709,42 @@ regular test.
 an empty repo, a 422 that is not a non-fast-forward, a truncated tree and a
 rate-limit response.
 
-## 11. Build order
+**Against GitHub itself**, `npm run smoke` runs two devices through setup,
+syncs, a race, a conflict and the edge cases of trees, on a throwaway private
+repo, and deletes what it wrote. It is skipped by `npm test`, and is how
+behaviour GitHub does not document (such as 4.1's tree listing) is checked. The
+test file says how to run it.
 
-1. Model changes: readable ids for sessions and templates (1.2); manual records
-   keyed by date, exercise and reps instead of an id; `based_on` on additions
-   (9.1); the conflict record type.
-2. Formats: serialisers, the CSV reader with quoting, the blob hash, id
-   generation.
-3. The decision (4.3, 4.4), as pure functions.
-4. The device store: records, the write queue, `sync` entries.
-5. The sync (4.2, 4.5) against the in-memory remote, with the simulation.
-6. The GitHub adapter and the error classes.
-7. Setup, status, triggers and scheduling.
-8. The conflict notice, banner and resolution screen (5.2, 5.3).
-9. The library rule (9.1), the submission workflow fix, and the automatic
-   prefilled-issue link (9.2).
+## 11. Hosting
 
-The current `src/storage/` is replaced, not adapted: its interfaces are built
-around a dirty queue that this design does not have.
+The app is served from `https://matheus-ft.github.io/sisyphos/`, and the token
+lives in that origin's storage (section 8). Every GitHub Pages site under
+`matheus-ft.github.io` shares that origin, so the JavaScript of any of them can
+read the token.
+
+**Decided: it stays there while it is the only Pages site on that account.** It
+is today, so the risk is nil, and moving now would cost a setup on every device
+for no gain.
+
+**Before any other Pages site is published under `matheus-ft.github.io`**,
+including a personal site in a repo named `matheus-ft.github.io`, the app moves
+to an origin of its own: a free GitHub organisation (`<org>.github.io`) is the
+plan, a custom domain the alternative. The move, in this order:
+
+1. On every device, sync until the status says synced. Storage does not follow
+   the app to a new origin, so anything only on the device stays behind.
+2. Transfer the repository to the organisation, and update what names
+   `matheus-ft/sisyphos`: `APP_REPO` in `src/library/submission.ts`, the
+   README's address.
+3. On each device, install from the new address and connect the same log repo.
+   The first sync restores everything (section 8).
+4. Delete the old home-screen app, which deletes its storage and the token in
+   it. GitHub does not redirect a project site whose repository moved, and the
+   old app keeps running from its cache until deleted. Replace the token too.
+
+The log repo is not affected: it stays where it is, and its id, which is what
+the device knows it by, does not change.
 
 ## Not decided yet
 
-- **Where the app is hosted.** Every Pages site under `matheus-ft.github.io`
-  shares one origin, so any of them can read the tokens stored by this one. A
-  custom domain, or a Pages site under a separate account or organisation, would
-  isolate it.
+Nothing at the moment.

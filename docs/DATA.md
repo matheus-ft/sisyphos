@@ -117,6 +117,7 @@ Any other file you put in the log repo is yours: the app never touches it.
 
 ## Exports
 
+Not built yet; the screen that will make them is in `UI.md` section 10.
 Generated on demand, never a source of truth, and they carry no library-derived
 data — no muscles, no tier, no base lift. Exports reference `exercise_id` and the
 consumer joins against `exercises.csv`, which is the whole point of having a
@@ -141,8 +142,10 @@ df = pd.read_csv('sets.csv').merge(pd.read_csv('exercises.csv'), on='exercise_id
 | `model/taxonomy.ts`      | Muscles and exercises: what `src/library/*.csv` describes                        |
 | `model/records.ts`       | What you record: sessions, sets, templates, reference maxes, records, bodyweight |
 | `model/index.ts`         | Re-exports the three; import from here, not from the parts                       |
-| `csv.ts`                 | The CSV reader. No dependency                                                    |
+| `csv.ts`                 | The CSV reader and writer (RFC 4180). No dependency                              |
 | `library/parse.ts`       | CSV rows → `Muscle` and `Exercise`, with validation and defaults                 |
+| `library/assemble.ts`    | The shipped library and the lifter's additions combined (`STORAGE.md` 9.1)       |
+| `library/submission.ts`  | The prefilled issue that proposes an exercise for everyone (`STORAGE.md` 9.2)    |
 | `metrics/definitions.ts` | Reads `definitions.json`: weight presets and warm-up rules                       |
 | `metrics/rpe-chart.ts`   | The RPE→%1RM chart, and `e1rm()`                                                 |
 | `metrics/stress.ts`      | The fatigue chart, stress index, central balance                                 |

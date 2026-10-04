@@ -143,8 +143,8 @@ volume, regardless of transfer.
 considered and rejected as more machinery than the problem deserves. Retag an
 exercise and every past analysis reads the new way.
 
-**The muscle vocabulary is not user-editable.** There is no writer for it in
-`StorageAdapter`, on purpose: exercises reference muscle ids permanently, so a
+**The muscle vocabulary is not user-editable.** Nothing in the storage layer
+writes it, on purpose: exercises reference muscle ids permanently, so a
 rename would silently break every exercise pointing at it. Adding an exercise is
 a submission that becomes a pull request; changing the vocabulary is a change to
 the app.

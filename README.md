@@ -12,7 +12,9 @@ squats at 150kg for 3 at RPE 7.5. It does not record that paused squats are a
 squat variation working quads and glutes — that lives in the exercise library and
 is resolved when you query.
 
-**Status: pre-alpha.** Schema and metric layer are in place; no logging UI yet.
+**Status: pre-alpha.** The schema, the metrics and the storage layer (device
+store and GitHub sync) are in place; no logging UI yet. What it will be is in
+[`docs/UI.md`](docs/UI.md).
 
 Live at **<https://matheus-ft.github.io/sisyphos/>**, deployed from `master` on
 every push. On iOS, open it in Safari and use Share → Add to Home Screen; it then
@@ -51,9 +53,10 @@ tree that has to be kept in step with it.
 ```
 src/
   model/      the schema — primitives, taxonomy, records
-  library/    muscles.csv, exercises.csv, and the parser for them
+  library/    muscles.csv, exercises.csv, the parser for them, and how the
+              lifter's own exercises combine with them
   metrics/    definitions.json, the two lookup charts, and the code reading them
-  storage/    getting data onto disk and off the device: adapters, scheduler,
+  storage/    the device store, sync with the log repo, setup, scheduling,
               durability
 ```
 
@@ -75,6 +78,7 @@ npm install
 npm run dev      # dev server
 npm run build    # production bundle + service worker
 npm run verify   # typecheck, tests, formatting
+npm run smoke    # the storage layer against real GitHub; see tests/smoke.live.test.ts
 npm run hooks:install   # formatting on commit
 ```
 

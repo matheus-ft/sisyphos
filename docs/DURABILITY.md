@@ -37,8 +37,8 @@ Safari generally grants it to installed apps and declines it for pages in a tab 
 one more reason to install rather than bookmark. It does nothing about deliberate
 deletion, and is not a substitute for sync.
 
-**Manual export.** One tap, no network, hands you the file. For the moments when
-you want a copy in your hand right now.
+**Manual export** (not built yet; `UI.md` section 10). One tap, no network, hands
+you the file. For the moments when you want a copy in your hand right now.
 
 ## Exposure
 

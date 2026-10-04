@@ -397,9 +397,12 @@ Each has a recommendation; the spec above assumes it until decided otherwise.
    its `device_id`, and shown in conflicts. It is not synced, so a name only
    shows on the device that gave it.
 8. **Interrupting during a session.** `STORAGE.md` 5.2 interrupts the moment a
-   conflict is found. During a session only a launch pull can find one.
-   Recommended: interrupt anyway; it is rare and it is the rule.
+   conflict arrives. During a session the only sync is the launch pull, which
+   finds none itself but can bring in ones another device found. Recommended:
+   interrupt anyway; it is rare and it is the rule.
 9. **Display units.** Recommended: each set keeps the unit it was logged in, and
    analysis shows kilograms. A setting to show pounds everywhere can come later.
-10. **Hosting origin.** `STORAGE.md` lists it. It decides where the token lives,
-    and it must be settled before the first real token goes on a phone.
+
+Hosting is decided, not open: the app stays at `matheus-ft.github.io` while it
+is the only Pages site there, and moves to an origin of its own before another
+one is published. `STORAGE.md` section 11 has the why and the steps.
