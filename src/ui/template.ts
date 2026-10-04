@@ -1,5 +1,5 @@
 import type { Exercise, Id, LoadPrescription, PrescribedSet, Template } from '../model';
-import { measureOf } from './session';
+import { measureOf, move } from './session';
 
 /**
  * What the template screen does to a template, as pure functions, like
@@ -40,6 +40,10 @@ export function addTemplateExercise(template: Template, exercise: Exercise): Tem
 
 export function removeTemplateExercise(template: Template, index: number): Template {
   return { ...template, exercises: template.exercises.filter((_, i) => i !== index) };
+}
+
+export function moveTemplateExercise(template: Template, index: number, by: number): Template {
+  return { ...template, exercises: move(template.exercises, index, by) };
 }
 
 function updateTargets(
