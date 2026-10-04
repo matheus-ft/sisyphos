@@ -15,10 +15,10 @@ an exercise can be tagged without guessing at individual heads.
   the incline-biased clavicular head does not add a second `pecs` entry.
 - **The whole adductor magnus is `adductors`.** Its posterior part extends the
   hip alongside the hamstrings, but crediting it there would make a squat read as
-  hamstring work when what it loads is the adductor. Hinges credit `adductors` as
-  `aux` instead.
-- **Squats do not credit `hip_flexors`.** Rectus femoris is barely loaded by a
-  squat; leg extensions and leg raises are what train it.
+  hamstring work when what it loads is the adductor. A hinge that loads it
+  credits `adductors` as `aux` instead.
+- **Bilateral squats do not credit `hip_flexors`.** Rectus femoris is barely
+  loaded by a squat; leg extensions and leg raises are what train it.
 - **Credit serratus through `front_delts`**, which is where upward scapular
   rotation lives. That is why planks list it as `aux`.
 
@@ -97,7 +97,7 @@ Muscles:
 
 Joint actions: hip adduction, plus hip extension (posterior adductor magnus).
 
-Exercises: adductor machine, Copenhagen planks, squats and sumo deadlifts. Conventional deadlifts and other hinges load it through hip extension, as `aux`.
+Exercises: adductor machine, Copenhagen planks, squats and sumo deadlifts. Hinges that load it through hip extension credit it as `aux`.
 
 ### 6. Calves (`calves`)
 

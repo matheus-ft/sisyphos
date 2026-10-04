@@ -191,7 +191,7 @@ Any other file you put in the log repo is yours: the app never touches it.
 
 ## Exports
 
-Not built yet; the screen that will make them is in `UI.md`, Sync and settings.
+Not built yet.
 Generated on demand, never a source of truth, and they carry no library-derived
 data — no muscles, no tier, no base lift. Exports reference `exercise_id` and the
 consumer joins against `exercises.csv`, which is the whole point of having a
