@@ -147,7 +147,19 @@ class App {
     };
   };
 
-  /** Rereads sessions, templates and the library from storage. */
+  /**
+   * Records shown before their write resolved. A read can start before a queued
+   * write lands, so `load` keeps these over what storage returns: otherwise the
+   * lists, and the next edit made from them, would go back a step.
+   */
+  #unsavedSessions = new Map<Id, Session>();
+  #unsavedTemplates = new Map<Id, Template>();
+
+  /**
+   * Rereads sessions, templates and the library from storage. Runs after every
+   * sync, so the session or template on screen is replaced by what the sync
+   * brought, unless the lifter's own write of it is still on its way.
+   */
   load = async (): Promise<void> => {
     const s = this.storage;
     if (!s) return;
@@ -156,9 +168,19 @@ class App {
       s.log.getTemplates(),
       s.log.library(),
     ]);
-    this.sessions = all;
-    this.templates = saved;
+    this.sessions = overlay(all, this.#unsavedSessions);
+    this.templates = overlay(saved, this.#unsavedTemplates);
     this.library = assembled.exercises;
+    const open = this.session;
+    if (open && !this.#unsavedSessions.has(open.id)) {
+      const stored = this.sessions.find((x) => x.id === open.id);
+      if (stored && stored.updated_at !== open.updated_at) this.session = stored;
+    }
+    const template = this.template;
+    if (template && !this.#unsavedTemplates.has(template.id)) {
+      const stored = this.templates.find((x) => x.id === template.id);
+      if (stored && stored.updated_at !== template.updated_at) this.template = stored;
+    }
     await this.#loadLifter(s);
   };
 
@@ -236,6 +258,7 @@ class App {
     if (this.session?.id === next.id) this.session = next;
     this.sessions = upsert(this.sessions, next);
     if (!this.storage) return false;
+    this.#unsavedSessions.set(next.id, next);
     try {
       await this.storage.log.putSession(next);
       this.failure = null;
@@ -243,6 +266,9 @@ class App {
     } catch (error) {
       this.failure = `Not saved: ${messageOf(error)}`;
       return false;
+    } finally {
+      // A later edit of the same session may be on its way; only this one has landed.
+      if (this.#unsavedSessions.get(next.id) === next) this.#unsavedSessions.delete(next.id);
     }
   };
 
@@ -251,10 +277,21 @@ class App {
    * `date` for one logged after the fact; with a template's targets, or a past
    * session's sets as targets for doing it again.
    */
-  create = async (
+  create = (
     from: Template | Session | null,
     options: { planned?: boolean; date?: IsoDate } = {},
   ): Promise<void> => {
+    // A second tap while the first is still writing would make a second session.
+    this.#creating ??= this.#create(from, options).finally(() => (this.#creating = null));
+    return this.#creating;
+  };
+
+  #creating: Promise<void> | null = null;
+
+  async #create(
+    from: Template | Session | null,
+    options: { planned?: boolean; date?: IsoDate },
+  ): Promise<void> {
     const s = this.storage;
     if (!s) return;
     const at = new Date();
@@ -271,7 +308,7 @@ class App {
     this.session = fresh;
     await this.save(fresh);
     this.go({ name: 'session', id: fresh.id });
-  };
+  }
 
   openSession = (session: Session): void => {
     this.session = session;
@@ -382,14 +419,18 @@ class App {
     this.template = next;
     this.templates = upsert(this.templates, next);
     if (!this.storage) return false;
+    this.#unsavedTemplates.set(next.id, next);
     try {
       await this.storage.log.putTemplate(next);
-      this.templates = await this.storage.log.getTemplates();
+      if (this.#unsavedTemplates.get(next.id) === next) this.#unsavedTemplates.delete(next.id);
+      this.templates = overlay(await this.storage.log.getTemplates(), this.#unsavedTemplates);
       this.failure = null;
       return true;
     } catch (error) {
       this.failure = `Not saved: ${messageOf(error)}`;
       return false;
+    } finally {
+      if (this.#unsavedTemplates.get(next.id) === next) this.#unsavedTemplates.delete(next.id);
     }
   };
 
@@ -583,6 +624,13 @@ function skipped(): boolean {
 
 function messageOf(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
+}
+
+/** What storage returned, with each record still being written shown as it will be. */
+function overlay<T extends { id: Id }>(stored: T[], unsaved: ReadonlyMap<Id, T>): T[] {
+  let out = stored;
+  for (const item of unsaved.values()) out = upsert(out, item);
+  return out;
 }
 
 /** The list with `item` in place of the one with its id, or added at the end. */
