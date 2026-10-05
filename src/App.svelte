@@ -6,7 +6,6 @@
   import DialogHost from './ui/kit/DialogHost.svelte';
   import TabBar from './ui/kit/TabBar.svelte';
   import ToastHost from './ui/kit/ToastHost.svelte';
-  import { showToast } from './ui/overlays.svelte';
   import { routeHash, tabOf } from './ui/route';
   import Agora from './ui/screens/Agora.svelte';
   import Conflicts from './ui/screens/agora/Conflicts.svelte';
@@ -92,7 +91,6 @@
         sessions={app.current}
         ondone={app.closeFinish}
         onsavetemplate={app.saveAsTemplate}
-        onshare={() => showToast({ message: 'Sharing is not built yet' })}
       />
     {:else if route.name === 'template' && app.template}
       <Template template={app.template} />
