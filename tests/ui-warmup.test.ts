@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { isComplete } from '../src/model';
-import { addExercise, editSet } from '../src/ui/session';
+import { addExercise, addSet, editSet } from '../src/ui/session';
 import { BAR, insertWarmups, warmupLadder, warmupSets } from '../src/ui/warmup';
 import { byId, ids, sessionOn, withSets } from './ui-fixtures';
 
@@ -106,6 +106,39 @@ describe('adding warm-ups to an exercise', () => {
     const performed = s.exercises[0].performed;
     expect(performed.map((p) => p.is_warmup)).toEqual([true, true, true, true, false]);
     expect(performed.at(-1)).toBe(blank);
+  });
+
+  it('keeps the warm-ups to do climbing when rungs are added one at a time, heavy first', () => {
+    const newId = ids();
+    let s = addExercise(sessionOn(4), squat, newId);
+    const id = s.exercises[0].id;
+    const [bar, , rung85] = warmupSets(140, 'kg', 2.5, newId);
+    s = insertWarmups(s, id, [rung85]);
+    s = insertWarmups(s, id, [bar]);
+    const performed = s.exercises[0].performed;
+    expect(performed.map((p) => (p.load?.kind === 'weight' ? p.load.value : null))).toEqual([
+      20,
+      85,
+      null,
+    ]);
+    expect(performed.at(-1)?.is_warmup).toBe(false);
+  });
+
+  it('slots a rung between those to do, after the warm-ups already done', () => {
+    const newId = ids();
+    let s = withSets(sessionOn(4), squat, [{ amount: 20, reps: 8, warmup: true }], newId);
+    const id = s.exercises[0].id;
+    s = addSet(s, id, newId);
+    const working = s.exercises[0].performed.at(-1)!;
+    s = editSet(s, id, working.id, { is_warmup: false, amount: null }, 'weight', 'kg');
+    const [, rung55, rung85, rung112] = warmupSets(140, 'kg', 2.5, newId);
+    s = insertWarmups(s, id, [rung112]);
+    s = insertWarmups(s, id, [rung55, rung85]);
+    const weights = s.exercises[0].performed.map((p) =>
+      p.load?.kind === 'weight' ? p.load.value : null,
+    );
+    expect(weights).toEqual([20, 55, 85, 112.5, null]);
+    expect(s.exercises[0].performed[0].state).toBe('done');
   });
 
   it('goes after warm-ups already there, and before the working sets already logged', () => {

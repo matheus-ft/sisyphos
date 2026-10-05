@@ -1,3 +1,4 @@
+import { toKg } from '../metrics/load';
 import type { Id, PerformedSet, Session } from '../model';
 import { roundToPlate } from './suggest';
 import type { NewId } from './session';
@@ -67,18 +68,37 @@ export function warmupSets(
 }
 
 /**
- * Puts warm-ups into an exercise just ahead of its first working set, after any
- * warm-up it already has: a fresh exercise holds one blank working set, and the
- * ladder belongs before it.
+ * Puts warm-ups into an exercise ahead of its first working set: a fresh
+ * exercise holds one blank working set, and the ladder belongs before it. Rungs
+ * come in one at a time as often as all at once, so each goes in by its load,
+ * ahead of the first pending warm-up heavier than it, and the warm-ups still to
+ * do climb from light to heavy whatever order they were added in. Those already
+ * done stay where they are: they are behind the lifter.
  */
 export function insertWarmups(session: Session, instanceId: Id, sets: PerformedSet[]): Session {
   return {
     ...session,
-    exercises: session.exercises.map((e) => {
-      if (e.id !== instanceId) return e;
-      const firstWorking = e.performed.findIndex((s) => !s.is_warmup);
-      const at = firstWorking < 0 ? e.performed.length : firstWorking;
-      return { ...e, performed: [...e.performed.slice(0, at), ...sets, ...e.performed.slice(at)] };
-    }),
+    exercises: session.exercises.map((e) =>
+      e.id === instanceId ? { ...e, performed: sets.reduce(placeWarmup, e.performed) } : e,
+    ),
   };
+}
+
+function placeWarmup(performed: PerformedSet[], set: PerformedSet): PerformedSet[] {
+  const firstWorking = performed.findIndex((s) => !s.is_warmup);
+  const end = firstWorking < 0 ? performed.length : firstWorking;
+  const kg = kgOf(set);
+  const heavier =
+    kg === null
+      ? -1
+      : performed
+          .slice(0, end)
+          .findIndex((s) => s.state === 'pending' && (kgOf(s) ?? -Infinity) > kg);
+  const at = heavier < 0 ? end : heavier;
+  return [...performed.slice(0, at), set, ...performed.slice(at)];
+}
+
+/** A pin setting or a blank set has no weight to order by. */
+function kgOf(set: PerformedSet): number | null {
+  return set.load?.kind === 'weight' ? toKg(set.load.value, set.load.unit) : null;
 }
