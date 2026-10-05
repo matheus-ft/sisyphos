@@ -42,6 +42,7 @@
     savedSet,
     sessionsBefore,
     savedToast,
+    startsRest,
     targetOf,
     weighInOffer,
   } from './flow';
@@ -152,9 +153,11 @@
       : undefined;
     void app.save(next);
     if (!saved) return;
-    if (live && !saved.warmup) {
-      startRest(restStarted(saved, byId.get(saved.instance.exercise_id), Date.now()));
-    }
+    const rested =
+      live && startsRest(saved)
+        ? restStarted(saved, byId.get(saved.instance.exercise_id), Date.now())
+        : null;
+    if (rested) startRest(rested);
     if (options.toast === false) return;
 
     const exercise = byId.get(saved.instance.exercise_id);
@@ -165,7 +168,8 @@
             label: 'Undo',
             run: () => {
               void app.save(restoreSet(session, saved.instance.id, before));
-              if (rest?.setId === saved.set.id) endRest();
+              // Only the rest this save started goes with it; one already running stays.
+              if (rested !== null && rest === rested) endRest();
             },
           }
         : undefined,

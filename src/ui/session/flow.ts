@@ -106,6 +106,19 @@ export function targetOf(instance: ExerciseInstance, exercise: Exercise | undefi
   return restTargetS(exercise?.tier ?? 'low_spec', instance.rest_s);
 }
 
+/**
+ * Whether saving this set starts a rest: a working set with no later working
+ * set of its exercise done yet, so the latest one lifted. Giving an earlier set
+ * its missing RPE while a later one's rest runs is a correction, not a lift, and
+ * leaves that rest running as it was.
+ */
+export function startsRest(saved: SavedSet): boolean {
+  if (saved.warmup) return false;
+  const sets = saved.instance.performed;
+  const at = sets.findIndex((s) => s.id === saved.set.id);
+  return !sets.slice(at + 1).some((s) => s.state === 'done' && !s.is_warmup);
+}
+
 export function restStarted(
   saved: SavedSet,
   exercise: Exercise | undefined,

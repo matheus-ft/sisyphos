@@ -15,6 +15,7 @@ import {
   savedSet,
   savedToast,
   sessionsBefore,
+  startsRest,
   suggestionShows,
   targetOf,
   weighInOffer,
@@ -134,6 +135,26 @@ describe('the rest a set starts', () => {
     });
     expect(targetOf({ ...i, rest_s: 200 }, bench)).toBe(200);
     expect(targetOf(i, undefined)).toBe(REST_BY_TIER.low_spec);
+  });
+
+  it('starts from the latest working set lifted', () => {
+    const lifted = done(90, 5, 8);
+    const i = instance([done(90, 5, 8), lifted, set()]);
+    expect(startsRest({ instance: i, set: lifted, number: 2, warmup: false })).toBe(true);
+  });
+
+  it('is not restarted by an earlier set given its missing RPE while a later rest runs', () => {
+    const second = done(90, 5, 8);
+    const i = instance([done(90, 5, 8), second, done(90, 5, 8)]);
+    expect(startsRest({ instance: i, set: second, number: 2, warmup: false })).toBe(false);
+  });
+
+  it('starts from no warm-up, and not from a working set behind one', () => {
+    const warm = done(60, 5, null, { is_warmup: true });
+    const lifted = done(90, 5, 8);
+    const i = instance([warm, lifted, done(40, 8, null, { is_warmup: true })]);
+    expect(startsRest({ instance: i, set: warm, number: 1, warmup: true })).toBe(false);
+    expect(startsRest({ instance: i, set: lifted, number: 1, warmup: false })).toBe(true);
   });
 
   it('is kept per session', () => {
