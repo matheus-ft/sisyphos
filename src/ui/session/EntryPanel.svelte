@@ -4,16 +4,17 @@
    * from the end button of a set row. Load and reps on −/+ steppers that step
    * by the plate increment, then the RPE chips 6 to 10 in halves, laid out in
    * two staggered courses: tapping one saves the set. A warm-up takes Done (or
-   * Skip) instead of an RPE. The owner (SessionView) applies `onsave`'s edit
-   * with `editSet`, closes the panel and opens the rest.
+   * Skip) instead of an RPE, and a set of a session only planned takes a plain
+   * Save. The owner (SessionView) applies `onsave`'s edit with `editSet` (or
+   * `planSet`), closes the panel and opens the rest.
    */
   import { untrack } from 'svelte';
-  import type { LoadUnit, PerformedSet } from '../../model';
-  import { stepAmount, type Prefill } from '../entry';
+  import type { Id, LoadUnit, PerformedSet } from '../../model';
+  import { convertLoad, stepAmount, type Prefill } from '../entry';
   import Button from '../kit/Button.svelte';
   import Sheet from '../kit/Sheet.svelte';
   import { parseNumber, parseSeconds, type SetEdit } from '../session';
-  import { panelFigure, RPE_COURSES, stepText } from './panel';
+  import { otherUnit, panelFigure, panelSave, RPE_COURSES, stepText } from './panel';
   import Stepper from './Stepper.svelte';
 
   interface Props {
@@ -41,6 +42,14 @@
     unit: LoadUnit;
     /** How far − and + move the load, in `unit`. */
     plateStep: number;
+    /** The session is planned, not started: the set's numbers are saved, never its RPE. */
+    planning?: boolean;
+    /**
+     * Switches the load between kg and lb (a pin setting stays pins). The owner
+     * passes the new `unit` and its `plateStep` back; the figure on the steppers
+     * is converted, so it stays the same weight. Without it there is no switch.
+     */
+    onunit?: (unit: LoadUnit) => void;
     /** Saves the set: amount and reps, and the RPE tapped (none for a warm-up). */
     onsave: (edit: SetEdit) => void;
     /** A warm-up's Skip: the owner marks the set skipped. */
@@ -59,6 +68,8 @@
     measure,
     unit,
     plateStep,
+    planning = false,
+    onunit,
     onsave,
     onskip,
     onclose,
@@ -67,12 +78,23 @@
   let amount = $state('');
   let reps = $state('');
 
-  // A different set starts from its own prefill; the same set keeps what was stepped to.
+  /** The set and unit the figures were last written for. */
+  let shown: { setId: Id; unit: LoadUnit } | null = null;
+
+  // A different set starts from its own prefill; the same set keeps what was stepped to, and a
+  // switch of unit converts it.
   $effect(() => {
-    void set.id;
+    const now = { setId: set.id, unit };
+    const step = plateStep;
     untrack(() => {
-      amount = prefill.amount === null ? '' : panelFigure(measure, prefill.amount, unit).text;
-      reps = prefill.reps === null ? '' : String(prefill.reps);
+      if (shown?.setId !== now.setId) {
+        amount = prefill.amount === null ? '' : panelFigure(measure, prefill.amount, unit).text;
+        reps = prefill.reps === null ? '' : String(prefill.reps);
+      } else if (shown.unit !== now.unit && typeof amountValue === 'number') {
+        const converted = convertLoad(amountValue, shown.unit, now.unit, step);
+        amount = converted === null ? '' : panelFigure(measure, converted, now.unit).text;
+      }
+      shown = now;
     });
   });
 
@@ -84,6 +106,7 @@
   const ready = $derived(
     typeof amountValue === 'number' && (measure === 'time' || typeof repsValue === 'number'),
   );
+  const saving = $derived(panelSave(set, planning));
 
   function stepAmountBy(direction: 1 | -1): void {
     const now = typeof amountValue === 'number' ? amountValue : 0;
@@ -103,10 +126,13 @@
     if (!ready) return;
     onsave({
       amount: amountValue as number,
-      ...(measure === 'weight' ? { reps: repsValue as number } : {}),
+      // The unit goes with the number: the set may hold a load in the unit just switched from.
+      ...(measure === 'weight' ? { reps: repsValue as number, unit } : {}),
       ...(rpe !== null ? { rpe } : {}),
     });
   }
+
+  const switchTo = $derived(measure === 'weight' && onunit ? otherUnit(unit) : null);
 
   const unitLabel = $derived(
     panelFigure(measure, typeof amountValue === 'number' ? amountValue : 0, unit).unit,
@@ -127,13 +153,21 @@
       label={measure === 'time' ? 'Time' : 'Load'}
       inputmode="decimal"
       onstep={stepAmountBy}
+      onunit={switchTo ? () => onunit?.(switchTo) : undefined}
+      unitLabel="Unit, {unit}. Switch to {switchTo}"
     />
     {#if measure === 'weight'}
       <Stepper bind:value={reps} unit="reps" label="Reps" inputmode="numeric" onstep={stepReps} />
     {/if}
   </div>
 
-  {#if set.is_warmup}
+  {#if saving === 'save'}
+    <p class="meta planned">Planned: the RPE comes when the set is lifted.</p>
+    <Button variant="primary" bench full disabled={!ready} onclick={() => save(null)}>Save</Button>
+    {#if !ready}
+      <p class="meta need">Enter the {measure === 'weight' ? 'load and reps' : 'time'} to save.</p>
+    {/if}
+  {:else if saving === 'done'}
     <p class="hint caps">Warm-ups take no RPE</p>
     <div class="warm">
       <Button bench onclick={onskip}>Skip</Button>
@@ -258,6 +292,10 @@
   .need {
     margin: var(--space-2) 0 0;
     text-align: center;
+  }
+
+  .planned {
+    margin: var(--space-2) 0 var(--space-3);
   }
 
   .warm {

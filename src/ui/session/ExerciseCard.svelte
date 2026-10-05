@@ -25,6 +25,7 @@
     parseNumber,
     parseRpe,
     parseSeconds,
+    planSet,
     removeExercise,
     removeSet,
     setExerciseNotes,
@@ -60,8 +61,8 @@
     mode: CardMode;
     /** The last other session's visit to this exercise. */
     last: ExerciseInstance | null;
-    /** The unit a new set starts in. */
-    unit: LoadUnit;
+    /** The unit the lifter picked for this exercise in this session, which its empty rows take. */
+    chosenUnit: LoadUnit | null;
     /** The set being entered in the whole session, drawn inverted; at most one. */
     active: Id | null;
     /** The sets that were records when lifted: the laurel and the gilded wash. */
@@ -74,6 +75,8 @@
     onhistory: (exercise: Exercise) => void;
     /** Opens the entry panel on a set. */
     onentry: (set: PerformedSet) => void;
+    /** A unit picked on one of the rows: the owner keeps it for the exercise's rows to come. */
+    onunit: (unit: LoadUnit) => void;
   }
   let {
     session,
@@ -81,7 +84,7 @@
     exercise,
     mode,
     last,
-    unit,
+    chosenUnit,
     active,
     records,
     warmupsHidden,
@@ -89,6 +92,7 @@
     onhidewarmups,
     onhistory,
     onentry,
+    onunit,
   }: Props = $props();
 
   const timed = $derived(exercise ? measureOf(exercise) === 'time' : false);
@@ -129,6 +133,7 @@
             sessions: earlier,
             oneRms: app.oneRms,
             prefs: app.prefs,
+            chosen: chosenUnit,
           }),
         ]),
     ),
@@ -157,8 +162,16 @@
 
   // --- editing ---------------------------------------------------------------------
 
+  /** A session not started yet is being planned: what is typed is to be lifted, so nothing is done. */
+  const planning = $derived(session.started_at === null);
+
+  /** The unit a row shows and is typed in: its own, else the entry panel's for that set (`unitFor`). */
+  const unitOfRow = (set: PerformedSet): LoadUnit =>
+    unitOf(set) ?? contexts.get(set.id)?.unit ?? 'kg';
+
   function edit(set: PerformedSet, change: SetEdit): void {
-    onchange(editSet(session, instance.id, set.id, change, measure, unit));
+    const apply = planning ? planSet : editSet;
+    onchange(apply(session, instance.id, set.id, change, measure, unitOfRow(set)));
   }
 
   /** A field that does not hold a valid number is put back as it was. */
@@ -195,9 +208,15 @@
     requestAnimationFrame(() => input.select());
   }
 
-  function nextUnit(set: PerformedSet): LoadUnit {
-    const now = unitOf(set) ?? unit;
-    return UNITS[(UNITS.indexOf(now) + 1) % UNITS.length];
+  /**
+   * The unit button: the pick is kept for the exercise's rows to come, and so
+   * for an empty row, which has no load to hold it; a row with a number takes
+   * the unit at once.
+   */
+  function switchUnit(set: PerformedSet): void {
+    const next = UNITS[(UNITS.indexOf(unitOfRow(set)) + 1) % UNITS.length];
+    onunit(next);
+    if (amountOf(set) !== null) edit(set, { unit: next });
   }
 
   function shownAmount(set: PerformedSet): string {
@@ -396,10 +415,8 @@
               )}
           />
           {#if !timed}
-            <button
-              class="unit"
-              aria-label="Unit, {unitOf(set) ?? unit}"
-              onclick={() => edit(set, { unit: nextUnit(set) })}>{unitOf(set) ?? unit}</button
+            <button class="unit" aria-label="Unit, {unitOfRow(set)}" onclick={() => switchUnit(set)}
+              >{unitOfRow(set)}</button
             >
             <span class="x">×</span>
             <input
@@ -425,6 +442,7 @@
             <input
               inputmode="decimal"
               aria-label="RPE"
+              disabled={planning}
               placeholder={isActive ? '—' : target.rpe || '—'}
               value={set.rpe ?? ''}
               onchange={(e) =>
@@ -667,7 +685,7 @@
     display: inline-flex;
     align-items: center;
     gap: 6px;
-    min-height: 36px;
+    min-height: var(--tap);
     padding: 0 var(--space-3);
     border: var(--stroke) solid var(--accent);
     border-radius: var(--radius-pill);

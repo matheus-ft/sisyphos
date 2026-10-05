@@ -3,6 +3,7 @@ import type {
   Exercise,
   ExerciseInstance,
   Id,
+  LoadUnit,
   PerformedSet,
   Session,
 } from '../../model';
@@ -96,6 +97,22 @@ export function restoreSet(session: Session, instanceId: Id, before: PerformedSe
   };
 }
 
+/**
+ * The undo of a set saved a moment ago, put into the session as it is now. The
+ * toast outlives the screen it came from, so the session is looked up by id
+ * among those held now (the lifter may have gone back to Train), and the undo
+ * is nothing once the session is gone.
+ */
+export function undoSet(
+  sessions: Session[],
+  sessionId: Id,
+  instanceId: Id,
+  before: PerformedSet,
+): Session | null {
+  const now = sessions.find((s) => s.id === sessionId);
+  return now ? restoreSet(now, instanceId, before) : null;
+}
+
 // --- the rest it starts -------------------------------------------------------------
 
 /** Kept for the tab, per session, so a reload between sets keeps counting. */
@@ -104,6 +121,19 @@ export const restKey = (sessionId: Id) => `${REST_STORAGE_KEY}.${sessionId}`;
 /** The target rest of an exercise now: its own, else its tier's (an unknown exercise rests like a low-spec one). */
 export function targetOf(instance: ExerciseInstance, exercise: Exercise | undefined): number {
   return restTargetS(exercise?.tier ?? 'low_spec', instance.rest_s);
+}
+
+/**
+ * Whether saving this set starts a rest: a working set with no later working
+ * set of its exercise done yet, so the latest one lifted. Giving an earlier set
+ * its missing RPE while a later one's rest runs is a correction, not a lift, and
+ * leaves that rest running as it was.
+ */
+export function startsRest(saved: SavedSet): boolean {
+  if (saved.warmup) return false;
+  const sets = saved.instance.performed;
+  const at = sets.findIndex((s) => s.id === saved.set.id);
+  return !sets.slice(at + 1).some((s) => s.state === 'done' && !s.is_warmup);
 }
 
 export function restStarted(
@@ -117,6 +147,11 @@ export function restStarted(
     setId: saved.set.id,
     targetS: targetOf(saved.instance, exercise),
   };
+}
+
+/** The same rest: one started by the same save, whatever object holds it now. */
+export function sameRest(a: RestState | null, b: RestState): boolean {
+  return a !== null && a.startedAt === b.startedAt && a.setId === b.setId;
 }
 
 /**
@@ -237,6 +272,36 @@ export function applySuggestion(session: Session, instanceId: Id, s: Suggestion)
   return instance.performed
     .filter((x) => x.state === 'pending' && !x.is_warmup)
     .reduce((next, x) => editSet(next, instanceId, x.id, edit, 'weight', s.unit), session);
+}
+
+// --- units picked for the session ---------------------------------------------------
+
+/**
+ * The unit the lifter last picked for each exercise in a session, by exercise
+ * id. An empty set holds no load to carry a unit, so the pick is kept here, in
+ * the tab's sessionStorage beside the rest, until a number typed in that unit
+ * puts it into the log.
+ */
+export const unitsKey = (sessionId: Id) => `sisyphos.units.${sessionId}`;
+
+const UNITS: readonly LoadUnit[] = ['kg', 'lb', 'pins'];
+
+/** The picks kept for a session; junk, and anything that is not a unit, reads as none. */
+export function parseUnits(text: string | null | undefined): Map<string, LoadUnit> {
+  if (!text) return new Map();
+  try {
+    const raw: unknown = JSON.parse(text);
+    if (typeof raw !== 'object' || raw === null || Array.isArray(raw)) return new Map();
+    return new Map(
+      Object.entries(raw).filter((e): e is [string, LoadUnit] => UNITS.includes(e[1])),
+    );
+  } catch {
+    return new Map();
+  }
+}
+
+export function serializeUnits(units: ReadonlyMap<string, LoadUnit>): string {
+  return JSON.stringify(Object.fromEntries(units));
 }
 
 // --- the weigh-in -------------------------------------------------------------------

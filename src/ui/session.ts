@@ -187,6 +187,25 @@ export function editSet(
   });
 }
 
+/**
+ * A set filled in ahead, in a session not started yet. Its numbers are what is
+ * to be lifted, not what was, so it stays pending whatever it holds (a warm-up
+ * or a hold would otherwise count as done) and takes no RPE, which is what the
+ * set will feel like once it is lifted.
+ */
+export function planSet(
+  session: Session,
+  instanceId: Id,
+  setId: Id,
+  edit: SetEdit,
+  measure: 'weight' | 'time',
+  defaultUnit: LoadUnit,
+): Session {
+  const { rpe: _felt, ...numbers } = edit;
+  const next = editSet(session, instanceId, setId, numbers, measure, defaultUnit);
+  return updateSet(next, instanceId, setId, (set) => ({ ...set, state: 'pending' }));
+}
+
 /** The number a set's load holds, whatever it measures. */
 export function amountOf(set: PerformedSet): number | null {
   if (!set.load) return null;
@@ -270,6 +289,17 @@ export function start(session: Session, at: Date): Session {
     date: localDate(at),
     time_precision: 'instant',
   };
+}
+
+/**
+ * A session being lifted now: started, not finished, and timed to the instant.
+ * One logged after the fact is open too, but dated by the day only, its clock
+ * says nothing about now: nothing in it rests, rings or keeps the screen on.
+ */
+export function isLive(session: Session): boolean {
+  return (
+    session.started_at !== null && session.ended_at === null && session.time_precision === 'instant'
+  );
 }
 
 export function finish(session: Session, at: Date): Session {
@@ -362,6 +392,40 @@ export function lastUnit(exercise: Exercise, sessions: Session[], except: Id): L
   const found = lastInstance(exercise.id, sessions, except);
   const unit = found?.performed.map(unitOf).find((u) => u !== null);
   return unit ?? exercise.default_unit;
+}
+
+/**
+ * The unit a set is entered in: its own, else today's. A lifter who switched
+ * units in this session means it for the sets still to come, so this session
+ * speaks before the past: the unit last picked for the exercise (`chosen`, which
+ * an empty set cannot hold), else the nearest earlier weighted set of the
+ * instance, else the latest weighted set of the exercise anywhere in the
+ * session. Only then the habit of past sessions (`lastUnit`), and last the
+ * library's hint.
+ */
+export function unitFor(input: {
+  session: Session;
+  instance: ExerciseInstance;
+  set: PerformedSet;
+  exercise: Exercise | undefined;
+  sessions: Session[];
+  chosen?: LoadUnit | null;
+}): LoadUnit {
+  const { session, instance, set, exercise } = input;
+  const picked = unitOf(set) ?? input.chosen;
+  if (picked) return picked;
+  const at = instance.performed.findIndex((s) => s.id === set.id);
+  const earlier = instance.performed
+    .slice(0, Math.max(at, 0))
+    .map(unitOf)
+    .findLast((u) => u !== null);
+  if (earlier) return earlier;
+  const today = session.exercises
+    .filter((e) => e.exercise_id === instance.exercise_id)
+    .flatMap((e) => e.performed.map(unitOf))
+    .findLast((u) => u !== null);
+  if (today) return today;
+  return exercise ? lastUnit(exercise, input.sessions, session.id) : 'kg';
 }
 
 // --- templates ----------------------------------------------------------------------

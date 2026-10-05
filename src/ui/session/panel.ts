@@ -1,4 +1,10 @@
-import { formatInterval, type ExerciseInstance, type Id, type PerformedSet } from '../../model';
+import {
+  formatInterval,
+  type ExerciseInstance,
+  type Id,
+  type LoadUnit,
+  type PerformedSet,
+} from '../../model';
 import { formatSeconds } from '../session';
 import { targetRpeOf, type Suggestion } from '../suggest';
 
@@ -44,11 +50,27 @@ export function activeSetId(
   return entering ?? firstPendingId;
 }
 
+/**
+ * How the panel saves a set. A working set is saved by the RPE it felt like and
+ * a warm-up by Done; but a set of a session not started yet has not been
+ * lifted, so it takes a plain Save of its numbers and its RPE waits for the gym.
+ */
+export function panelSave(set: PerformedSet, planning: boolean): 'save' | 'done' | 'rpe' {
+  if (planning) return 'save';
+  return set.is_warmup ? 'done' : 'rpe';
+}
+
 /** The nine RPE chips as the panel lays them out: two courses of ashlar, five over four. */
 export const RPE_COURSES: readonly (readonly number[])[] = [
   [6, 6.5, 7, 7.5, 8],
   [8.5, 9, 9.5, 10],
 ];
+
+/** Where the panel's unit switch goes: kg and lb trade places; a pin setting has no other. */
+export function otherUnit(unit: LoadUnit): LoadUnit | null {
+  if (unit === 'kg') return 'lb';
+  return unit === 'lb' ? 'kg' : null;
+}
 
 /** "± 2.5 kg", or "± 5 s" for time: the size of one tap of − or +, said under the chips. */
 export function stepText(measure: 'weight' | 'time', step: number, unit: string): string {

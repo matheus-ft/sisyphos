@@ -1,5 +1,5 @@
 <script lang="ts">
-  import type { Exercise, Id, PerformedSet, Session } from '../../model';
+  import type { Exercise, Id, LoadUnit, PerformedSet, Session } from '../../model';
   import AddExercise from '../AddExercise.svelte';
   import { app } from '../app.svelte';
   import { entryContext, entryPrefill } from '../entry';
@@ -12,13 +12,15 @@
   import Switch from '../kit/Switch.svelte';
   import { dismissToast, promptDialog, showToast } from '../overlays.svelte';
   import { adjustRest, parseRest, serializeRest } from '../rest';
+  import { bellAt, type BellState } from '../restview';
   import {
     addExercise,
     editSet,
+    isLive,
     lastInstance,
-    lastUnit,
     measureOf,
     parseNumber,
+    planSet,
     setDate,
     setRest,
     skipSet,
@@ -29,6 +31,7 @@
   import ExerciseCard from './ExerciseCard.svelte';
   import {
     climb,
+    parseUnits,
     restContext,
     restFresh,
     restKey,
@@ -36,11 +39,15 @@
     restNextSet,
     restReadout,
     restStarted,
-    restoreSet,
     savedSet,
     sessionsBefore,
     savedToast,
+    sameRest,
+    serializeUnits,
+    startsRest,
     targetOf,
+    undoSet,
+    unitsKey,
     weighInOffer,
   } from './flow';
   import { activeSetId, ringedRpe, setLabel, suggestionLine, targetText } from './panel';
@@ -59,9 +66,15 @@
   let { session }: Props = $props();
 
   const byId = $derived(new Map(app.library.map((e) => [e.id, e])));
+  /**
+   * What the tab keeps for the session (the rest, hidden warm-ups, picked units)
+   * reloads when another session comes on screen, not at every edit of this one.
+   */
+  const sessionId = $derived(session.id);
   const open = $derived(session.ended_at === null);
   const planned = $derived(session.started_at === null);
-  const running = $derived(open && !planned);
+  /** Lifted now: only then does a set start a rest, the rest ring, the screen stay on. */
+  const live = $derived(isLive(session));
   const hasBodyweightWork = $derived(
     session.exercises.some((e) => byId.get(e.exercise_id)?.load_type === 'bw_plus'),
   );
@@ -91,16 +104,17 @@
     collapsed = collapsed ? y > 8 : y > 24;
   }
 
-  // Awake while the session runs and the lifter asked for it.
+  // Awake while the session is lifted and the lifter asked for it.
   $effect(() => {
     const wake = screenAwake();
-    wake.set(running && app.prefs.keepAwake);
+    wake.set(live && app.prefs.keepAwake);
     return () => wake.dispose();
   });
 
   // --- the entry panel --------------------------------------------------------------
 
-  let entry = $state<{ instanceId: Id; setId: Id } | null>(null);
+  /** The set the panel is open on, and the unit it was switched to, if it was. */
+  let entry = $state<{ instanceId: Id; setId: Id; unit?: LoadUnit } | null>(null);
   const entering = $derived.by(() => {
     if (!entry) return null;
     const instance = session.exercises.find((e) => e.id === entry?.instanceId);
@@ -117,6 +131,8 @@
       sessions: earlier,
       oneRms: app.oneRms,
       prefs: app.prefs,
+      chosen: units.get(entering.instance.exercise_id),
+      unit: entry?.unit,
     });
   });
 
@@ -140,6 +156,8 @@
    */
   function change(next: Session, options: { toast?: boolean } = {}): void {
     if (app.prefs.chime) restBell().prime();
+    // The undo toast outlives this screen, whose `session` is gone once the lifter leaves.
+    const savedIn = session.id;
     const saved = open ? savedSet(session, next) : null;
     // The set as it was, taken before the save: `session` shows the new one the moment it is saved.
     const before = saved
@@ -149,9 +167,11 @@
       : undefined;
     void app.save(next);
     if (!saved) return;
-    if (running && !saved.warmup) {
-      startRest(restStarted(saved, byId.get(saved.instance.exercise_id), Date.now()));
-    }
+    const rested =
+      live && startsRest(saved)
+        ? restStarted(saved, byId.get(saved.instance.exercise_id), Date.now())
+        : null;
+    if (rested) startRest(rested);
     if (options.toast === false) return;
 
     const exercise = byId.get(saved.instance.exercise_id);
@@ -161,8 +181,10 @@
         ? {
             label: 'Undo',
             run: () => {
-              void app.save(restoreSet(session, saved.instance.id, before));
-              if (rest?.setId === saved.set.id) endRest();
+              const undone = undoSet(app.current, savedIn, saved.instance.id, before);
+              if (undone) void app.save(undone);
+              // Only the rest this save started goes with it; one already running stays.
+              if (rested !== null && sameRest(rest, rested)) endRest(savedIn);
             },
           }
         : undefined,
@@ -176,7 +198,8 @@
     const exercise = byId.get(at.instance.exercise_id);
     const measure = exercise ? measureOf(exercise) : 'weight';
     const unit = enteringContext?.unit ?? 'kg';
-    const next = editSet(session, at.instance.id, at.set.id, edit, measure, unit);
+    const apply = planned ? planSet : editSet;
+    const next = apply(session, at.instance.id, at.set.id, edit, measure, unit);
     entry = null;
     // A warm-up is followed by the next warm-up of the ladder, with no tap to reopen the panel between,
     // and no toast either: it would cover that panel's Done.
@@ -205,7 +228,7 @@
   let restOpen = $state(false);
   $effect(() => {
     try {
-      const kept = parseRest(sessionStorage.getItem(restKey(session.id)));
+      const kept = parseRest(sessionStorage.getItem(restKey(sessionId)));
       rest = kept && restFresh(kept, Date.now()) ? kept : null;
     } catch {
       rest = null;
@@ -216,17 +239,18 @@
     rest = state;
     restOpen = true;
     try {
-      sessionStorage.setItem(restKey(session.id), serializeRest(state));
+      sessionStorage.setItem(restKey(sessionId), serializeRest(state));
     } catch {
       // The timer still runs; it only forgets on reload.
     }
   }
 
-  function endRest(): void {
+  /** Takes the session's id rather than reading `session`: an undo may end a rest after the screen is gone. */
+  function endRest(of: Id): void {
     rest = null;
     restOpen = false;
     try {
-      sessionStorage.removeItem(restKey(session.id));
+      sessionStorage.removeItem(restKey(of));
     } catch {
       // Nothing kept, nothing to forget.
     }
@@ -240,9 +264,9 @@
     restInstance ? targetOf(restInstance, byId.get(restInstance.exercise_id)) : null,
   );
   const restReading = $derived(
-    running && rest && restTarget !== null ? restReadout(rest.startedAt, restTarget, now) : null,
+    live && rest && restTarget !== null ? restReadout(rest.startedAt, restTarget, now) : null,
   );
-  const restUp = $derived(restOpen && running && rest !== null && restInstance !== null);
+  const restUp = $derived(restOpen && live && rest !== null && restInstance !== null);
 
   const restFollowing = $derived.by(() => {
     if (!rest) return null;
@@ -257,8 +281,33 @@
       sessions: earlier,
       oneRms: app.oneRms,
       prefs: app.prefs,
+      chosen: units.get(next.instance.exercise_id),
     });
     return { next, view: restNext(next, exercise, ctx) };
+  });
+
+  // The bell at zero rings from here, whether the takeover is up, closed, or never
+  // opened since a reload; the takeover has none, so it cannot ring twice.
+  let bell: BellState = { rung: false };
+  $effect(() => {
+    if (!live || !rest || restTarget === null) return;
+    const kept = { startedAt: rest.startedAt, targetS: restTarget };
+    function tick(): void {
+      const visible = document.visibilityState === 'visible';
+      const step = bellAt(bell, kept, Date.now(), visible, app.prefs.chime);
+      bell = step.state;
+      if (step.ring) restBell().play();
+    }
+    tick();
+    const timer = setInterval(tick, 250);
+    // iOS suspends a backgrounded app: timers stop, and the first thing back is one of these.
+    document.addEventListener('visibilitychange', tick);
+    window.addEventListener('pageshow', tick);
+    return () => {
+      clearInterval(timer);
+      document.removeEventListener('visibilitychange', tick);
+      window.removeEventListener('pageshow', tick);
+    };
   });
 
   function adjustTarget(delta: number): void {
@@ -271,7 +320,7 @@
   let hidden = $state.raw<Set<Id>>(new Set());
   $effect(() => {
     try {
-      hidden = parseHidden(sessionStorage.getItem(hiddenKey(session.id)));
+      hidden = parseHidden(sessionStorage.getItem(hiddenKey(sessionId)));
     } catch {
       hidden = new Set();
     }
@@ -280,10 +329,37 @@
   function hideWarmups(instanceId: Id): void {
     hidden = new Set([...hidden, instanceId]);
     try {
-      sessionStorage.setItem(hiddenKey(session.id), serializeHidden(hidden));
+      sessionStorage.setItem(hiddenKey(sessionId), serializeHidden(hidden));
     } catch {
       // Hidden until the card is next drawn; nothing worse.
     }
+  }
+
+  // --- units picked for an exercise, for this session only ----------------------------
+
+  let units = $state.raw<Map<string, LoadUnit>>(new Map());
+  $effect(() => {
+    try {
+      units = parseUnits(sessionStorage.getItem(unitsKey(sessionId)));
+    } catch {
+      units = new Map();
+    }
+  });
+
+  function pickUnit(exerciseId: string, unit: LoadUnit): void {
+    units = new Map([...units, [exerciseId, unit]]);
+    try {
+      sessionStorage.setItem(unitsKey(sessionId), serializeUnits(units));
+    } catch {
+      // Picked until the screen is next drawn; a number typed in it keeps it in the log.
+    }
+  }
+
+  function switchEntryUnit(unit: LoadUnit): void {
+    const at = entering;
+    if (!entry || !at) return;
+    entry = { ...entry, unit };
+    pickUnit(at.instance.exercise_id, unit);
   }
 
   // --- the session's own fields -----------------------------------------------------
@@ -390,7 +466,7 @@
         {exercise}
         mode={cardMode(instance, active)}
         last={exercise ? lastInstance(exercise.id, earlier, session.id) : null}
-        unit={exercise ? lastUnit(exercise, earlier, session.id) : 'kg'}
+        chosenUnit={units.get(instance.exercise_id) ?? null}
         {active}
         {records}
         warmupsHidden={hidden.has(instance.id)}
@@ -398,6 +474,7 @@
         onhidewarmups={() => hideWarmups(instance.id)}
         onhistory={app.openExercise}
         onentry={(set) => openEntry(instance.id, set)}
+        onunit={(unit) => pickUnit(instance.exercise_id, unit)}
       />
     {/each}
   </div>
@@ -440,7 +517,7 @@
         value={session.notes ?? ''}
         onchange={(e) => setNotes(e.currentTarget.value)}></textarea>
     </div>
-    {#if running}
+    {#if live}
       <div class="switch-row">
         <span id="awake-label">Keep screen on</span>
         <Switch
@@ -481,6 +558,8 @@
     measure={exercise ? measureOf(exercise) : 'weight'}
     unit={enteringContext.unit}
     plateStep={enteringContext.step}
+    planning={planned}
+    onunit={switchEntryUnit}
     onsave={saveEntry}
     onskip={skipEntry}
     onclose={() => (entry = null)}
@@ -499,7 +578,7 @@
     chime={app.prefs.chime}
     awake={app.prefs.keepAwake}
     onadjust={adjustTarget}
-    onskip={endRest}
+    onskip={() => endRest(sessionId)}
     onclose={() => (restOpen = false)}
     onlognext={restFollowing
       ? () => {

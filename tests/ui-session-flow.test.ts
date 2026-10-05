@@ -12,11 +12,17 @@ import {
   restReadout,
   restStarted,
   restoreSet,
+  sameRest,
   savedSet,
   savedToast,
   sessionsBefore,
+  startsRest,
   suggestionShows,
   targetOf,
+  parseUnits,
+  serializeUnits,
+  undoSet,
+  unitsKey,
   weighInOffer,
 } from '../src/ui/session/flow';
 
@@ -121,6 +127,23 @@ describe('undo', () => {
   });
 });
 
+describe('undo from a toast that outlived its screen', () => {
+  it('puts the set back into the session as it is now, found by id', () => {
+    const before = set({ load: kg(90), reps: 5 });
+    const i = instance([{ ...before, rpe: 8, state: 'done' }]);
+    const now = session([i], { notes: 'typed after' });
+    const other = session([], { id: 'other' });
+    const undone = undoSet([other, now], 'now', i.id, before);
+    expect(undone?.exercises[0].performed[0]).toEqual(before);
+    expect(undone?.notes).toBe('typed after');
+  });
+
+  it('is nothing once the session is gone', () => {
+    const before = set();
+    expect(undoSet([session([], { id: 'other' })], 'now', 'i', before)).toBeNull();
+  });
+});
+
 describe('the rest a set starts', () => {
   it("follows the set, with its exercise's target or its tier's", () => {
     const s = done(90, 5, 8);
@@ -134,6 +157,35 @@ describe('the rest a set starts', () => {
     });
     expect(targetOf({ ...i, rest_s: 200 }, bench)).toBe(200);
     expect(targetOf(i, undefined)).toBe(REST_BY_TIER.low_spec);
+  });
+
+  it('starts from the latest working set lifted', () => {
+    const lifted = done(90, 5, 8);
+    const i = instance([done(90, 5, 8), lifted, set()]);
+    expect(startsRest({ instance: i, set: lifted, number: 2, warmup: false })).toBe(true);
+  });
+
+  it('is not restarted by an earlier set given its missing RPE while a later rest runs', () => {
+    const second = done(90, 5, 8);
+    const i = instance([done(90, 5, 8), second, done(90, 5, 8)]);
+    expect(startsRest({ instance: i, set: second, number: 2, warmup: false })).toBe(false);
+  });
+
+  it('starts from no warm-up, and not from a working set behind one', () => {
+    const warm = done(60, 5, null, { is_warmup: true });
+    const lifted = done(90, 5, 8);
+    const i = instance([warm, lifted, done(40, 8, null, { is_warmup: true })]);
+    expect(startsRest({ instance: i, set: warm, number: 1, warmup: true })).toBe(false);
+    expect(startsRest({ instance: i, set: lifted, number: 1, warmup: false })).toBe(true);
+  });
+
+  it('is the same rest when read back from the tab, and another once a later set starts one', () => {
+    const s = done(90, 5, 8);
+    const i = instance([s]);
+    const started = restStarted({ instance: i, set: s, number: 1, warmup: false }, bench, 1000);
+    expect(sameRest({ ...started }, started)).toBe(true);
+    expect(sameRest({ ...started, startedAt: 9000, setId: 'later' }, started)).toBe(false);
+    expect(sameRest(null, started)).toBe(false);
   });
 
   it('is kept per session', () => {
@@ -297,5 +349,23 @@ describe('what came before a session', () => {
       'old',
       'same',
     ]);
+  });
+});
+
+describe('units picked for the session', () => {
+  it('are kept per session and read back as written', () => {
+    expect(unitsKey('2026-10-05-abcd')).toBe('sisyphos.units.2026-10-05-abcd');
+    const units = new Map([
+      ['bench', 'lb' as const],
+      ['leg_press', 'pins' as const],
+    ]);
+    expect(parseUnits(serializeUnits(units))).toEqual(units);
+  });
+
+  it('read junk, and anything that is not a unit, as none', () => {
+    expect(parseUnits(null).size).toBe(0);
+    expect(parseUnits('not json').size).toBe(0);
+    expect(parseUnits('["kg"]').size).toBe(0);
+    expect(parseUnits('{"bench":"stone","squat":"kg"}')).toEqual(new Map([['squat', 'kg']]));
   });
 });
