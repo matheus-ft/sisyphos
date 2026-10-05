@@ -39,12 +39,12 @@
     restNextSet,
     restReadout,
     restStarted,
-    restoreSet,
     savedSet,
     sessionsBefore,
     savedToast,
     startsRest,
     targetOf,
+    undoSet,
     weighInOffer,
   } from './flow';
   import { activeSetId, ringedRpe, setLabel, suggestionLine, targetText } from './panel';
@@ -145,6 +145,8 @@
    */
   function change(next: Session, options: { toast?: boolean } = {}): void {
     if (app.prefs.chime) restBell().prime();
+    // The undo toast outlives this screen, whose `session` is gone once the lifter leaves.
+    const sessionId = session.id;
     const saved = open ? savedSet(session, next) : null;
     // The set as it was, taken before the save: `session` shows the new one the moment it is saved.
     const before = saved
@@ -168,9 +170,10 @@
         ? {
             label: 'Undo',
             run: () => {
-              void app.save(restoreSet(session, saved.instance.id, before));
+              const undone = undoSet(app.current, sessionId, saved.instance.id, before);
+              if (undone) void app.save(undone);
               // Only the rest this save started goes with it; one already running stays.
-              if (rested !== null && rest === rested) endRest();
+              if (rested !== null && rest === rested) endRest(sessionId);
             },
           }
         : undefined,
@@ -231,11 +234,12 @@
     }
   }
 
-  function endRest(): void {
+  /** Takes the session's id rather than reading `session`: an undo may end a rest after the screen is gone. */
+  function endRest(sessionId: Id): void {
     rest = null;
     restOpen = false;
     try {
-      sessionStorage.removeItem(restKey(session.id));
+      sessionStorage.removeItem(restKey(sessionId));
     } catch {
       // Nothing kept, nothing to forget.
     }
@@ -533,7 +537,7 @@
     chime={app.prefs.chime}
     awake={app.prefs.keepAwake}
     onadjust={adjustTarget}
-    onskip={endRest}
+    onskip={() => endRest(session.id)}
     onclose={() => (restOpen = false)}
     onlognext={restFollowing
       ? () => {

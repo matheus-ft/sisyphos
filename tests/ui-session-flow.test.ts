@@ -18,6 +18,7 @@ import {
   startsRest,
   suggestionShows,
   targetOf,
+  undoSet,
   weighInOffer,
 } from '../src/ui/session/flow';
 
@@ -119,6 +120,23 @@ describe('undo', () => {
     expect(undone.exercises[0].performed[0]).toEqual(before);
     expect(undone.exercises[0].performed[1]).toEqual(i.performed[1]);
     expect(undone.notes).toBe('typed after');
+  });
+});
+
+describe('undo from a toast that outlived its screen', () => {
+  it('puts the set back into the session as it is now, found by id', () => {
+    const before = set({ load: kg(90), reps: 5 });
+    const i = instance([{ ...before, rpe: 8, state: 'done' }]);
+    const now = session([i], { notes: 'typed after' });
+    const other = session([], { id: 'other' });
+    const undone = undoSet([other, now], 'now', i.id, before);
+    expect(undone?.exercises[0].performed[0]).toEqual(before);
+    expect(undone?.notes).toBe('typed after');
+  });
+
+  it('is nothing once the session is gone', () => {
+    const before = set();
+    expect(undoSet([session([], { id: 'other' })], 'now', 'i', before)).toBeNull();
   });
 });
 

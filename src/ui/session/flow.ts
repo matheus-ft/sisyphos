@@ -96,6 +96,22 @@ export function restoreSet(session: Session, instanceId: Id, before: PerformedSe
   };
 }
 
+/**
+ * The undo of a set saved a moment ago, put into the session as it is now. The
+ * toast outlives the screen it came from, so the session is looked up by id
+ * among those held now (the lifter may have gone back to Train), and the undo
+ * is nothing once the session is gone.
+ */
+export function undoSet(
+  sessions: Session[],
+  sessionId: Id,
+  instanceId: Id,
+  before: PerformedSet,
+): Session | null {
+  const now = sessions.find((s) => s.id === sessionId);
+  return now ? restoreSet(now, instanceId, before) : null;
+}
+
 // --- the rest it starts -------------------------------------------------------------
 
 /** Kept for the tab, per session, so a reload between sets keeps counting. */
