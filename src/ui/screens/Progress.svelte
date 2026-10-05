@@ -1,9 +1,12 @@
 <script lang="ts">
   import { app } from '../app.svelte';
-  import EmptyState from '../kit/EmptyState.svelte';
   import ScreenHeader from '../kit/ScreenHeader.svelte';
   import Segmented from '../kit/Segmented.svelte';
+  import BodyView from '../progress/BodyView.svelte';
+  import LaboursView from '../progress/LaboursView.svelte';
+  import StrengthView from '../progress/StrengthView.svelte';
   import type { ProgressView } from '../route';
+  import { localDate } from '../session';
 
   /**
    * Athloi, the Progress tab: the body (muscles by working sets), strength
@@ -20,6 +23,11 @@
     { value: 'strength', label: 'Strength' },
     { value: 'labours', label: 'Labours' },
   ];
+
+  const today = localDate(new Date());
+
+  /** The exercise last picked, kept when switching between Strength and Labours. */
+  let picked = $state<string | null>(null);
 </script>
 
 <ScreenHeader title="Progress" />
@@ -34,22 +42,12 @@
 </div>
 
 <section class="pane" aria-label={VIEWS.find((v) => v.value === view)?.label}>
-  <!-- Placeholders until each view is built: they say so rather than claim there is no data. -->
   {#if view === 'body'}
-    <EmptyState
-      title="The body is not drawn yet"
-      line="Its muscles will shade by this week's working sets."
-    />
+    <BodyView {today} />
   {:else if view === 'strength'}
-    <EmptyState
-      title="The strength hill is not drawn yet"
-      line="Each lift's best e1RM over time, drawn as the hill the boulder climbs."
-    />
+    <StrengthView {today} {picked} onpick={(id) => (picked = id)} />
   {:else}
-    <EmptyState
-      title="The labours are not listed yet"
-      line="Each exercise's best weight at 1 to 10 reps."
-    />
+    <LaboursView {today} {picked} onpick={(id) => (picked = id)} />
   {/if}
 </section>
 
@@ -59,6 +57,6 @@
   }
 
   .pane {
-    margin-top: var(--space-4);
+    padding-bottom: var(--space-6);
   }
 </style>

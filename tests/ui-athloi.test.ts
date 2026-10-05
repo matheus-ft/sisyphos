@@ -21,6 +21,7 @@ import {
   recordedExercises,
   recordRows,
   resolvePick,
+  sparseNote,
   topMuscles,
 } from '../src/ui/athloi';
 import { newSession } from '../src/ui/session';
@@ -217,18 +218,39 @@ describe('the headline', () => {
   });
 });
 
+describe('sparseNote', () => {
+  it('needs no note once there is a line to draw', () => {
+    expect(sparseNote(2, 9, '3M')).toBeNull();
+    expect(sparseNote(0, 0, 'all')).toBeNull();
+  });
+
+  it('offers the whole history when the range cut off the rest', () => {
+    expect(sparseNote(0, 5, '3M')).toEqual({ text: 'No sessions in this range.', widen: true });
+    expect(sparseNote(1, 5, '1Y')).toEqual({ text: 'One session in this range.', widen: true });
+  });
+
+  it('says the hill needs more when one session is all there is', () => {
+    expect(sparseNote(1, 1, '6M')).toEqual({
+      text: 'One session so far. The hill needs a few to draw.',
+      widen: false,
+    });
+    expect(sparseNote(1, 1, 'all')?.widen).toBe(false);
+  });
+});
+
 describe('pointText', () => {
   it('writes the figure, the date and the set behind it', () => {
     const points = e1rmSeries(sessions, squat);
     expect(pointText(points[1], sessions, squat, today)).toEqual({
       value: `${formatE1rm(points[1].e1rm)} kg`,
       detail: '12 Aug · 140 × 5 @ 8.5',
+      set: '140 × 5 @ 8.5',
     });
   });
 
   it('keeps the date when the set is gone', () => {
     const [p] = e1rmSeries(sessions, squat);
-    expect(pointText(p, [], squat, today).detail).toBe('6 Apr');
+    expect(pointText(p, [], squat, today)).toMatchObject({ detail: '6 Apr', set: null });
   });
 });
 

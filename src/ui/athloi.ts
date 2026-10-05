@@ -282,6 +282,8 @@ export interface HoverText {
   value: string;
   /** "12 Aug · 140 × 5 @ 8.5". */
   detail: string;
+  /** The set alone, "140 × 5 @ 8.5"; null when it is no longer in the log. */
+  set: string | null;
 }
 
 /** What the tooltip and the table say of a point: its figure, its date and the set behind it. */
@@ -296,10 +298,38 @@ export function pointText(
     ?.exercises.find((e) => e.id === point.exercise_instance_id)
     ?.performed.find((p) => p.id === point.set_id);
   const date = dateInYear(point.date, today);
+  const text = set ? formatSet(set, exercise) : null;
   return {
     value: `${formatE1rm(point.e1rm)} kg`,
-    detail: set ? `${date} · ${formatSet(set, exercise)}` : date,
+    detail: text ? `${date} · ${text}` : date,
+    set: text,
   };
+}
+
+export interface SparseNote {
+  text: string;
+  /** Offer to show the whole history: there is more of it outside the range. */
+  widen: boolean;
+}
+
+/**
+ * What to say under a hill with little to draw. Two days or more draw a line
+ * and need no apology; one is a lone stone, and none in view (with some before
+ * it) is a range set too short.
+ */
+export function sparseNote(
+  inView: number,
+  inHistory: number,
+  range: StrengthRange,
+): SparseNote | null {
+  const more = range !== 'all' && inHistory > inView;
+  if (inView === 0) {
+    return inHistory === 0 ? null : { text: 'No sessions in this range.', widen: more };
+  }
+  if (inView > 1) return null;
+  return more
+    ? { text: 'One session in this range.', widen: true }
+    : { text: 'One session so far. The hill needs a few to draw.', widen: false };
 }
 
 // --- Labours -------------------------------------------------------------------------
