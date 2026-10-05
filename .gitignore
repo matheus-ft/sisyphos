@@ -5,6 +5,10 @@ dist-ssr
 .DS_Store
 .vite
 
+# Browser test output (npm run e2e).
+test-results
+playwright-report
+
 # Local credentials — the GitHub sync token never belongs in the repo.
 .env
 .env.*

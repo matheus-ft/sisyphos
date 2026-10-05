@@ -15,7 +15,7 @@ import { failureOf, play, type Sabotage } from './world';
  *      conflict record, unless a write made by a device that had seen it
  *      replaced or deleted it. A deletion is a version too, with one exception:
  *      a deletion may be undone by a write made without seeing it, when the
- *      deleting side's content returned to its base in between (docs/DESIGN.md,
+ *      deleting side's content returned to its base in between (docs/DECISIONS.md,
  *      Storage). Those cases are counted, and any other fails.
  *   3. Nothing comes back. A record deleted on a device that had seen all its
  *      versions stays deleted.

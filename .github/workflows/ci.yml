@@ -46,6 +46,12 @@ jobs:
         run: npm run check
       - name: Tests (Vitest)
         run: npm test
+      # The main flows in a browser at an iPhone's size (playwright.config.ts).
+      # Slower than the rest, so CI runs it and `verify` does not.
+      - name: Browser for the browser tests
+        run: npx playwright install --with-deps chromium
+      - name: Browser tests (Playwright)
+        run: npm run e2e
 
       # Everything a deploy does short of publishing, on every run, so a pull
       # request that would break the deploy fails here instead of on master.
