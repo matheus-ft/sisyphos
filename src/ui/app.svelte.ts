@@ -133,14 +133,16 @@ class App {
         // A session left running reopens; a planned one waits on Train.
         const open = await s.log.listOpenSessions();
         const running = open.filter((o) => o.started_at !== null).at(-1);
-        if (running && launchedAt.name === 'train') {
+        const reopened = running !== undefined && launchedAt.name === 'train';
+        if (running && reopened) {
           this.session = running;
           this.replace({ name: 'session', id: running.id });
         } else {
           this.#resolve();
         }
         const settings = await s.store.settings();
-        this.showSetup = settings.owner === null && !skipped();
+        // The greeting would cover the session just reopened; it comes at a later launch.
+        this.showSetup = settings.owner === null && !skipped() && !reopened;
         await s.scheduler.status();
         // Conflicts are announced again at every launch until settled.
         const waiting = (this.status?.conflicts ?? 0) + (this.status?.libraryConflicts ?? 0);
