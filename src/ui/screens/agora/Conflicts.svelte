@@ -89,11 +89,23 @@
     if (!storage || busy) return;
     busy = true;
     try {
-      await storage.log.resolveConflict(id, side.choice);
+      try {
+        await storage.log.resolveConflict(id, side.choice);
+      } catch (error) {
+        notSettled(error);
+        return;
+      }
+      app.failure = null;
       await settled(keptMessage(side.device));
     } finally {
       busy = false;
     }
+  }
+
+  /** Said where every screen shows it, with the conflict left as it was to try again. */
+  function notSettled(error: unknown): void {
+    const why = error instanceof Error ? error.message : String(error);
+    app.failure = `The conflict was not settled, so it is still there: ${why}`;
   }
 
   async function resolveLibrary(conflict: LibraryConflict, keepMine: boolean): Promise<void> {
@@ -103,12 +115,21 @@
     // Opened within the tap, as Safari requires, and pointed at the submission after.
     const tab = keepMine ? window.open('', '_blank') : null;
     try {
-      const kind = await storage.log.resolveLibraryConflict(
-        conflict.id,
-        keepMine ? 'keep_mine' : 'use_shipped',
-      );
+      let kind;
+      try {
+        kind = await storage.log.resolveLibraryConflict(
+          conflict.id,
+          keepMine ? 'keep_mine' : 'use_shipped',
+        );
+      } catch (error) {
+        // The tab was opened within the tap; nothing is left to send it to.
+        tab?.close();
+        notSettled(error);
+        return;
+      }
       if (tab && kind) tab.location.href = submissionUrl(conflict.addition, kind);
       else tab?.close();
+      app.failure = null;
       await settled(keepMine ? 'Kept your exercise' : "Kept the app's exercise");
     } finally {
       busy = false;
