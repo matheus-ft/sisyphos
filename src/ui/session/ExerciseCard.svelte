@@ -685,7 +685,7 @@
     display: inline-flex;
     align-items: center;
     gap: 6px;
-    min-height: 36px;
+    min-height: var(--tap);
     padding: 0 var(--space-3);
     border: var(--stroke) solid var(--accent);
     border-radius: var(--radius-pill);
