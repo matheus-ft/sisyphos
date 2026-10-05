@@ -1,0 +1,596 @@
+/**
+ * The kouros, drawn: an archaic standing youth, front and back, as a
+ * red-figure painter would lay him on a pot. Each figure is a 120 x 300
+ * viewBox. Paths are authored for the viewer's left half and mirrored about
+ * x = 60, so the body is symmetric as a kouros is, except that his left leg
+ * stands forward: nearer the viewer from the front, so a little longer, and
+ * farther from the back, so a little shorter.
+ *
+ * Which muscle group each region shows is `src/ui/statue.ts`.
+ */
+import { STATUE_REGIONS, type RegionOf, type StatueView } from '../statue';
+
+/** The strokes and fills a part is painted in, in painting order. */
+const LAYERS = [
+  'fill',
+  'wash',
+  'dilute',
+  'relief',
+  'contour',
+  'fine',
+  'hair',
+  'beads',
+  'fillet',
+] as const;
+type Layer = (typeof LAYERS)[number];
+type Pieces = Partial<Record<Layer, string[]>>;
+
+interface PartSource<V extends StatueView> {
+  /** The viewer's left half; drawn again mirrored. */
+  half: Pieces & { regions?: [RegionOf<V>, string][] };
+  /** On the centre line; drawn once. */
+  whole?: Pieces;
+}
+
+export interface PaintedMuscle {
+  muscle: string;
+  regions: { region: string; d: string }[];
+}
+
+/** Each layer is a list of path data, one element per piece. */
+export type PaintedPart = Record<Layer, string[]> & { muscles: PaintedMuscle[] };
+
+// ---------------------------------------------------------------------------
+// Path plumbing. Only absolute M, L, C and Z are used, so every number pair is
+// a point and a path can be reversed segment by segment.
+
+type Pt = [number, number];
+type Point = (x: number, y: number) => Pt;
+interface Segment {
+  /** Control points then the end point: one for L, three for C. */
+  pts: Pt[];
+}
+interface Subpath {
+  start: Pt;
+  segments: Segment[];
+  closed: boolean;
+}
+
+function parse(d: string): Subpath[] {
+  const tokens = d.match(/[A-Za-z]|-?\d*\.?\d+/g) ?? [];
+  const subpaths: Subpath[] = [];
+  let i = 0;
+  const point = (): Pt => [Number(tokens[i++]), Number(tokens[i++])];
+  while (i < tokens.length) {
+    const command = tokens[i++];
+    const current = subpaths[subpaths.length - 1];
+    if (command === 'M') subpaths.push({ start: point(), segments: [], closed: false });
+    else if (command === 'L') current.segments.push({ pts: [point()] });
+    else if (command === 'C') current.segments.push({ pts: [point(), point(), point()] });
+    else if (command === 'Z') current.closed = true;
+    else throw new Error(`statue path uses ${command}; only M L C Z can be mirrored`);
+  }
+  return subpaths;
+}
+
+/** The same outline traced the other way, so a mirrored copy keeps the original's winding. */
+function reverse({ start, segments, closed }: Subpath): Subpath {
+  const ends = [start, ...segments.map((s) => s.pts[s.pts.length - 1])];
+  const reversed = segments
+    .map((s, k) => ({ pts: [...s.pts.slice(0, -1).reverse(), ends[k]] }))
+    .reverse();
+  return { start: ends[ends.length - 1], segments: reversed, closed };
+}
+
+const round = (n: number) => String(Math.round(n * 100) / 100);
+
+function serialize(subpaths: Subpath[]): string {
+  const xy = ([x, y]: Pt) => `${round(x)} ${round(y)}`;
+  return subpaths
+    .map(
+      (p) =>
+        `M ${xy(p.start)} ` +
+        p.segments
+          .map((s) => `${s.pts.length === 1 ? 'L' : 'C'} ${s.pts.map(xy).join(' ')}`)
+          .join(' ') +
+        (p.closed ? ' Z' : ''),
+    )
+    .join(' ');
+}
+
+function transform(d: string, f: Point, flip: boolean): string {
+  const moved = parse(d).map(({ start, segments, closed }) => ({
+    start: f(...start),
+    segments: segments.map((s) => ({ pts: s.pts.map((p) => f(...p)) })),
+    closed,
+  }));
+  return serialize(flip ? moved.map(reverse) : moved);
+}
+
+function circle(cx: number, cy: number, r: number): string {
+  const k = 0.5523 * r;
+  return [
+    `M ${cx - r} ${cy}`,
+    `C ${cx - r} ${cy - k} ${cx - k} ${cy - r} ${cx} ${cy - r}`,
+    `C ${cx + k} ${cy - r} ${cx + r} ${cy - k} ${cx + r} ${cy}`,
+    `C ${cx + r} ${cy + k} ${cx + k} ${cy + r} ${cx} ${cy + r}`,
+    `C ${cx - k} ${cy + r} ${cx - r} ${cy + k} ${cx - r} ${cy} Z`,
+  ].join(' ');
+}
+
+/** The crotch: below it, the advanced leg is drawn longer or shorter. */
+const HIP = 158;
+const ADVANCED: Record<StatueView, { side: 'left' | 'right'; stretch: number }> = {
+  front: { side: 'right', stretch: 1.037 },
+  back: { side: 'left', stretch: 0.97 },
+};
+
+function side(view: StatueView, which: 'left' | 'right'): Point {
+  const { side: advanced, stretch } = ADVANCED[view];
+  const k = advanced === which ? stretch : 1;
+  return (x, y) => [which === 'left' ? x : 120 - x, y > HIP ? HIP + (y - HIP) * k : y];
+}
+
+// ---------------------------------------------------------------------------
+// Shared outlines (viewer's left half). Landmarks: C0 the front of the
+// shoulder, D the deltoid's insertion, A the armpit, EO / EI the outer and
+// inner elbow, WO / WI the outer and inner wrist.
+
+const C0 = '33.8 59';
+const TO_D = 'C 26 58.6 19.6 63.5 18.6 71.5 C 17.9 78.5 19.6 88 21.6 95.4';
+const D_TO_EO = 'C 20.6 101.5 19.9 109.5 20.2 117.5';
+const EO_TO_D = 'C 19.9 109.5 20.6 101.5 21.6 95.4';
+// The forearm swells just below the elbow and tapers to the wrist.
+const EO_TO_WO =
+  'C 19 122.8 18.8 127.8 19.6 133 C 20.8 140.4 22.8 147 24.2 152 C 24.7 155 25 158 25.1 160.5';
+const WO_TO_EO =
+  'C 25 158 24.7 155 24.2 152 C 22.8 147 20.8 140.4 19.6 133 C 18.8 127.8 19 122.8 20.2 117.5';
+const FIST =
+  'C 23.8 165 23.6 171 26 175.6 C 28.2 179.4 33.8 179.8 36 176.2 C 37.8 173 37.4 167.4 35.4 163.4 C 34.4 161.6 33.6 160 33.3 158.5';
+const WI_TO_EI = 'C 32.9 149 32.3 136 31.7 126 C 31.5 122.6 31.3 119.6 31.1 116.5';
+const EI_TO_WI = 'C 31.3 119.6 31.5 122.6 31.7 126 C 32.3 136 32.9 149 33.3 158.5';
+const EI_TO_A = 'C 31.4 108 31.9 97 31.8 90 C 31.8 87 31.8 84.6 31.8 82.6';
+const A_TO_EI = 'C 31.8 84.6 31.8 87 31.8 90 C 31.9 97 31.4 108 31.1 116.5';
+/** The underside of the upper arm, in shadow against the body. */
+const ARM_SHADOW =
+  'M 31.8 90 C 31.9 97 31.4 108 31.1 116.5 C 29.8 110 29.6 100 30.2 93 C 30.5 91.6 31.1 90.6 31.8 90 Z';
+/** The deltoid's front edge, from the pectoral's corner up to C0: a rounded cap, not a pad. */
+const DELT_FRONT = `C 32.4 71.4 34.8 65.4 ${C0}`;
+const WRIST = 'C 27.6 160.8 30.6 160 33.3 158.5';
+const WRIST_BACK = 'C 30.6 160 27.6 160.8 25.1 160.5';
+const ARM = `M ${C0} ${TO_D} ${D_TO_EO} ${EO_TO_WO} ${FIST} ${WI_TO_EI} ${EI_TO_A}`;
+
+const TORSO_SIDE =
+  'M 31.8 82.6 C 33.5 92 35.8 104 39.5 115 C 40.8 119 41.6 123 41.6 127 C 41.4 132 39.8 136.6 38.2 141';
+const NECK = 'M 50.8 38 C 50.8 44 50.4 48 48.6 51.4';
+const SHOULDER = `C 44 54.6 38.6 56.8 ${C0}`;
+const INGUINAL = 'M 38.2 141 C 44 145.6 50.5 151 56 154.4 C 57.6 155.4 58.8 156.4 60 157';
+
+const LEG =
+  'M 38.2 141 C 36.2 147 34.8 153 34.4 161 C 33.8 171 34.6 180 36 189 C 37.2 197 39.4 204.4 40.8 210.4 ' +
+  'C 41.4 213.4 41.4 216.2 40.8 219.4 C 39.2 225 38.4 231 38.6 237.4 C 38.9 246 41 256 43.6 264.6 ' +
+  'C 44.6 268.6 45.2 272.4 45.4 275.4 C 44.6 277.8 43.2 280.4 42.4 283.2 C 41.6 286.2 41.2 289 41.8 291.2 ' +
+  'C 44 292.6 53 292.8 56.4 291.8 C 57 289.6 56.9 286.5 56.2 283.5 C 55.6 280.6 54.4 278 53.9 275.6 ' +
+  'C 54.2 271.4 55.4 266.8 56.6 261.4 C 58 254 58.9 246 58.8 238.4 C 58.6 230 57.6 223.4 57.5 218.4 ' +
+  'C 57.5 215 58.2 212 58.2 208.4 C 57.9 199 57.7 190 58.2 180 C 58.6 173 59.2 168 59.7 165';
+const LEG_FILL = `${LEG} L 60 165 L 60 150 L 48 143 Z`;
+
+const ANKLES = [
+  'M 53.9 275 C 55.4 275.6 56 277.8 55 279.6',
+  'M 45.4 274.2 C 44 275.2 43.6 277.2 44.4 279',
+];
+
+// ---------------------------------------------------------------------------
+// Front
+
+const FRONT: PartSource<'front'>[] = [
+  // The long hair, falling behind the neck to the shoulders.
+  {
+    half: {},
+    whole: {
+      hair: ['M 46.6 28 C 45.6 36 45 44 44.4 54.6 L 75.6 54.6 C 75 44 74.4 36 73.4 28 Z'],
+    },
+  },
+  {
+    half: {
+      fill: [LEG_FILL],
+      regions: [
+        [
+          'rectusFemoris',
+          'M 39.6 140 C 44.5 144.5 49.5 148.6 54.6 152.2 C 52.8 160 51.6 170 51.2 180 C 50.8 190 50.2 198 49.6 205 C 48 199 46.4 190 44.9 180 C 43.2 168 41.4 154 39.6 140 Z',
+        ],
+        [
+          'vastusLateralis',
+          'M 38.2 141 L 39.6 140 C 41.4 154 43.2 168 44.9 180 C 46.4 190 48 199 49.6 205 C 46.8 206.8 43.8 208.6 41 210.8 C 39.4 204.4 37.2 197 36 189 C 34.6 180 33.8 171 34.4 161 C 34.8 153 36.2 147 38.2 141 Z',
+        ],
+        [
+          'vastusMedialis',
+          'M 51.2 180 C 53.8 182.4 56 186 57.8 190 C 57.9 194 57.9 197 57.8 200 C 57.9 205 56 209 53.4 209.8 C 51.6 208.6 50.3 206.8 49.6 205 C 50.2 198 50.8 190 51.2 180 Z',
+        ],
+        [
+          'adductor',
+          'M 54.6 152.2 C 56.6 154.6 58.6 157.6 60 161.4 C 59.4 166 58.6 172 58.2 180 C 58 184 57.8 187 57.8 190 C 56 186 53.8 182.4 51.2 180 C 51.6 170 52.8 160 54.6 152.2 Z',
+        ],
+        [
+          'tibialis',
+          'M 46 223 C 45.4 232 45.8 243 47.2 252 C 48 258 49 263 50 267 L 50.8 266.4 C 50.5 258 50.2 248 50.1 238 C 50 231 49.8 226 49.2 221.6 C 48 221.8 46.9 222.3 46 223 Z',
+        ],
+        [
+          'calfOuter',
+          'M 41 219.6 C 39.4 225 38.6 231 38.8 237.4 C 39.1 246 41 255 43.4 263.4 C 44.4 259.6 45.6 256 47.2 252 C 45.8 243 45.4 232 46 223 C 44.4 221.4 42.8 220.2 41 219.6 Z',
+        ],
+        [
+          'calfInner',
+          'M 57.4 219 C 58.4 226 59 233 58.9 240 C 58.8 249 57.6 257 55.8 264 C 54.6 258 53.8 250 53.8 242 C 53.8 234 55 225.6 57.4 219 Z',
+        ],
+      ],
+      wash: [
+        // the inner thigh in shadow
+        'M 59.6 166 C 58.6 172 58 180 58.1 190 C 58 198 58.1 204 58.2 208 C 56.9 202 56.7 194 56.8 186 C 57 178 58 171 59.6 166 Z',
+      ],
+      dilute: [
+        'M 46.2 206.4 C 45.8 211 47.6 214.4 50 214.4 C 52.4 214.4 54 211.4 53.8 207.6', // kneecap
+        'M 44.4 217.8 C 47 219.6 52.6 219.6 55.6 217.4', // the ridge below it
+        ...ANKLES,
+        // toes
+        'M 44.6 287.6 L 44.8 291.8',
+        'M 47.3 287.2 L 47.4 292.2',
+        'M 50 287 L 50 292.4',
+        'M 52.8 286.8 L 52.8 292.3',
+      ],
+      contour: [LEG],
+    },
+  },
+  {
+    half: {
+      fill: [
+        `M 60 38 L 50.8 38 C 50.8 44 50.4 48 48.6 51.4 ${SHOULDER} C 32 66 31.2 75 31.8 82.6 ` +
+          'C 33.5 92 35.8 104 39.5 115 C 40.8 119 41.6 123 41.6 127 C 41.4 132 39.8 136.6 38.2 141 ' +
+          'C 44 145.6 50.5 151 56 154.4 C 57.6 155.4 58.8 156.4 60 157 Z',
+      ],
+      regions: [
+        [
+          'abdomen',
+          // Meets its mirror on the centre line, where its edge is the linea alba.
+          'M 31.8 82.6 C 34.4 88.6 38.4 93.6 44.6 95.4 C 50.2 96.8 55.4 96.2 59 93.4 L 60 93.6 L 60 157 C 58.8 156.4 57.6 155.4 56 154.4 C 50.5 151 44 145.6 38.2 141 C 39.8 136.6 41.4 132 41.6 127 C 41.6 125 41.5 123 41.2 121.2 C 39.6 114.6 38.4 106 37.6 98.4 C 37 93 35.4 88.2 31.8 82.6 Z',
+        ],
+        [
+          'flank',
+          'M 31.8 82.6 C 33.5 92 35.8 104 39.5 115 C 40.2 117 40.8 119.2 41.2 121.2 C 39.6 114.6 38.4 106 37.6 98.4 C 37 93 35.4 88.2 31.8 82.6 Z',
+        ],
+        [
+          'pectoral',
+          `M 59.2 62.6 C 55.6 60.8 47 60.4 40 60.6 C 37.4 60.6 35.4 60.4 33.6 60.2 C 32.2 64.6 30.6 70 29.6 75.4 C 30.4 78 31.1 80.4 31.8 82.6 C 34.4 88.6 38.4 93.6 44.6 95.4 C 50.2 96.8 55.4 96.2 59 93.4 C 59.3 92 59.4 90.4 59.4 88.6 L 59.4 66 C 59.4 64.6 59.4 63.4 59.2 62.6 Z`,
+        ],
+      ],
+      wash: [
+        // shade under the chest and down the flank
+        'M 33.6 86 C 37 91.6 41 94.8 46 96.2 C 51 97.4 55.6 96.8 59.6 94.4 C 55.8 99.2 50.4 99.8 45.4 98.8 C 40 97.6 36 93 33.6 86 Z',
+        'M 37.6 99 C 38.6 107 40 115 41.4 121.6 C 41.8 124 41.9 126.4 41.6 128.6 C 40.6 124 39.4 118 38.6 112 C 38 107 37.6 103 37.6 99 Z',
+      ],
+      dilute: [
+        'M 58.8 58.6 C 54.6 57.2 47.6 58.6 41 59.2 C 38.4 59.5 36 59.8 34 60', // clavicle
+        'M 50.8 42.4 C 52.6 47.2 55.2 52.4 58 56', // sternomastoid, from behind the ear to the pit
+        circle(45.4, 86.2, 0.95),
+        // the rectus: three bands above the navel
+        'M 60 106 C 58 105.5 56 105.8 54.2 107',
+        'M 60 113.8 C 58 113.3 56 113.6 54.4 114.8',
+        'M 60 121.4 C 58.2 121 56.4 121.4 54.8 122.4',
+      ],
+      relief: [
+        'M 31.8 82.6 C 34.4 88.6 38.4 93.6 44.6 95.4 C 50.2 96.8 55.4 96.2 59.2 93.2', // chest
+        'M 60 97.4 C 55.4 98.4 50.4 101.8 46.8 107.8 C 44.6 111.8 43 116.6 42.2 121', // thoracic arch
+        INGUINAL,
+      ],
+      contour: [TORSO_SIDE, `${NECK} ${SHOULDER}`],
+    },
+    whole: {
+      dilute: ['M 58.2 56.6 C 58.8 58.6 61.2 58.6 61.8 56.6'], // the pit of the neck
+      fine: [circle(60, 129.2, 1)], // navel
+    },
+  },
+  {
+    half: {
+      fill: [`${ARM} C 31.1 80.4 30.4 78 29.6 75.4 ${DELT_FRONT} Z`],
+      regions: [
+        ['deltoid', `M ${C0} ${TO_D} C 25.4 89.6 28.4 82 29.6 75.4 ${DELT_FRONT} Z`],
+        [
+          'biceps',
+          `M 21.6 95.4 ${D_TO_EO} C 23.6 119.4 27.6 119.4 31.1 116.5 ${EI_TO_A} C 31.1 80.4 30.4 78 29.6 75.4 C 28.4 82 25.4 89.6 21.6 95.4 Z`,
+        ],
+        [
+          'forearm',
+          `M 20.2 117.5 ${EO_TO_WO} ${WRIST} ${WI_TO_EI} C 27.6 119.4 23.6 119.4 20.2 117.5 Z`,
+        ],
+      ],
+      wash: [ARM_SHADOW],
+      dilute: [
+        'M 23.4 120 C 25.8 121.4 28.4 121.2 30.6 119.4', // elbow
+        'M 21.6 124.4 C 22.8 133 24.6 143.6 26.6 153.6', // brachioradialis, the thumb side
+        'M 33.6 161.4 C 31 162.2 28.6 164.2 27.8 167.4', // thumb
+        'M 25.2 169.6 C 28 171 31.8 171.2 35.8 169.4',
+        'M 26 173.8 C 28.8 175.2 32.2 175.2 35.6 173.4',
+      ],
+      relief: [`M 31.8 82.6 C 31.1 80.4 30.4 78 29.6 75.4 ${DELT_FRONT}`],
+      contour: [ARM],
+    },
+  },
+  {
+    half: {
+      // The jaw: broad cheeks narrowing to a firm chin.
+      relief: ['M 48.4 28.4 C 48.3 33 49 37.6 50.6 40.6 C 52.6 44.2 56.2 46.4 60 46.4'],
+      fine: [
+        // a high arched brow, running down into the nose
+        'M 50.8 27.4 C 52.4 25.2 56 24.6 58.2 26.2 C 58.7 26.6 59 27.1 59.2 27.6',
+        // the large almond eye, set level, an eye's width from its fellow
+        'M 51.4 30 C 52.9 27.8 56.4 27.7 57.9 30.2 C 56.2 32 53.1 32 51.4 30 Z',
+      ],
+      hair: [
+        circle(54.8, 29.5, 1.05),
+        // a lappet of beaded tresses, from behind the ear onto the shoulder
+        'M 47.4 35 C 46.4 41 45.6 48 44.8 56 C 44.4 60 44.2 63.6 44.8 66.4 C 45.8 67.8 47.6 67.8 48.6 66.4 C 49.2 61 49.8 52 50.4 44 C 50.6 40.6 50.6 37.6 50.2 35 Z',
+        // snail curls along the brow
+        circle(51.6, 22.6, 1.3),
+        circle(54.2, 21.4, 1.3),
+        circle(57.1, 20.8, 1.3),
+      ],
+      beads: lappetBeads(),
+    },
+    whole: {
+      fill: [
+        'M 60 46.4 C 56.2 46.4 52.6 44.2 50.6 40.6 C 49 37.6 48.3 33 48.4 28.4 C 48.5 21.6 52.4 14.5 60 14.5 C 67.6 14.5 71.5 21.6 71.6 28.4 C 71.7 33 71 37.6 69.4 40.6 C 67.4 44.2 63.8 46.4 60 46.4 Z',
+      ],
+      dilute: [
+        // the nose's ridge, and its base with the nostrils' wings
+        'M 59.2 27.8 C 59 30.8 58.6 33.4 57.9 35.3 C 57.4 36.3 58 37.1 59 36.9 C 59.6 37.3 60.4 37.3 61 36.9 C 62 37.1 62.6 36.3 62.1 35.3',
+        'M 58.2 42.7 C 59.3 43.3 60.7 43.3 61.8 42.7', // lower lip
+      ],
+      // The archaic smile: closed lips, level in the middle, the corners drawn up.
+      fine: [
+        'M 56.6 39.6 C 57.1 40.4 57.8 40.9 58.8 41 C 59.3 41.05 59.6 40.9 60 41 C 60.4 40.9 60.7 41.05 61.2 41 C 62.2 40.9 62.9 40.4 63.4 39.6',
+      ],
+      hair: [
+        'M 49 26 C 47.6 18 51.4 9.4 60 8.6 C 68.6 9.4 72.4 18 71 26 C 70.6 24.6 70 23.4 69.4 22.6 C 66.6 20.4 63.4 19.6 60 19.6 C 56.6 19.6 53.4 20.4 50.6 22.6 C 50 23.4 49.4 24.6 49 26 Z',
+        circle(60, 20.6, 1.3),
+      ],
+      beads: ['M 53.4 13.6 C 56.4 11.4 63.6 11.4 66.6 13.6'],
+      fillet: ['M 50.2 20.8 C 53.6 15.8 66.4 15.8 69.8 20.8'],
+    },
+  },
+  // The ears, over the lappets' roots.
+  {
+    half: {
+      fill: ['M 49 26.6 C 47.2 25.4 45.6 26.8 45.8 29.4 C 46 32.4 47.2 35 49.4 35.8 Z'],
+      dilute: ['M 48.2 28.8 C 47.2 29.6 47.4 32 48.6 33'],
+      fine: ['M 49 26.6 C 47.2 25.4 45.6 26.8 45.8 29.4 C 46 32.4 47.2 35 49.4 35.8'],
+    },
+  },
+];
+
+/** The lappet's tresses, bead by bead. */
+function lappetBeads(): string[] {
+  const rows: string[] = [];
+  for (let y = 38; y <= 65; y += 2.6) {
+    const t = (y - 35) / 32;
+    const left = 47.4 - 2.8 * t + 0.4;
+    const right = 50.4 - 1.8 * t * t - 0.4;
+    rows.push(`M ${left} ${y} C ${left + 1} ${y + 0.9} ${right - 1} ${y + 0.9} ${right} ${y}`);
+  }
+  rows.push('M 48.8 36 C 48.4 46 47.6 56 46.8 66');
+  return rows;
+}
+
+// ---------------------------------------------------------------------------
+// Back
+
+const S = '30.4 62.4'; // where the shoulder blade's spine meets the shoulder
+const R = '46.4 72.6'; // the root of that spine
+const I = '44.2 100.2'; // the blade's lowest point
+const SCAPULA_EDGE = `C 46 82 45.4 92 ${I}`; // R down to I
+const J = '55 114.8'; // where the lat leaves the trapezius
+const TRAP_LOW = `C 47.4 104.6 51 110 ${J}`; // I to J
+const TRAP_TIP = `C 56.8 117 58.4 119.4 60 121.2`; // J to the spine
+const K = '39.6 137.6'; // the iliac crest at the flank
+const Q = '52 141.6'; // the dimple over the sacrum
+const CREST = `C 48.2 136.6 43.4 135.6 ${K}`; // Q out to K
+const ERECTOR_EDGE = `C 53.4 118.4 51.6 123.6 51.2 129 C 50.9 133.6 51.2 138 ${Q}`; // J to Q
+const SACRUM = `C 57 154 54.2 148.6 ${Q}`; // the top of the cleft up to Q
+const GLUTE_EDGE = 'C 34.8 166 36.6 174 42 177.8 C 46.8 180.8 53 181.6 57.2 180.2';
+
+/** The hair down the back: a flat mass of beaded tresses, each ending in a round tip. */
+const TRESSES = 8;
+const HAIR_END = 71.4;
+
+/** The mass falls straight past the neck, then spreads a little over the shoulders. */
+function hairLeft(y: number): number {
+  return y <= 44 ? 47.2 : 47.2 - (1.6 * (y - 44)) / (HAIR_END - 44);
+}
+
+const tressWidth = (y: number) => (120 - 2 * hairLeft(y)) / TRESSES;
+
+function backHair(): string {
+  const left = hairLeft(HAIR_END);
+  const tress = tressWidth(HAIR_END);
+  let d = `M 60 8 C 52 8 47 14.6 46.8 24 C 46.6 32 47.2 38 47.2 44 C 47.2 54 46.4 63 ${left} ${HAIR_END}`;
+  for (let i = 0; i < TRESSES; i++) {
+    const x0 = left + i * tress;
+    const x1 = x0 + tress;
+    d += ` C ${x0} ${HAIR_END + 3.6} ${x1} ${HAIR_END + 3.6} ${x1} ${HAIR_END}`;
+  }
+  return `${d} C 73.6 63 72.8 54 72.8 44 C 72.8 38 73.4 32 73.2 24 C 73 14.6 68 8 60 8 Z`;
+}
+
+/** A bead for every tress on every row, and the crown's rings above the fillet. */
+function backBeads(): string[] {
+  const rows = [
+    'M 51 15.6 C 54.6 11.4 65.4 11.4 69 15.6',
+    'M 49 19.6 C 53.4 16.6 66.6 16.6 71 19.6',
+  ];
+  for (let y = 26; y <= 70; y += 2.9) {
+    let row = '';
+    const tress = tressWidth(y);
+    for (let i = 0; i < TRESSES; i++) {
+      const x0 = hairLeft(y) + i * tress + 0.5;
+      const x1 = x0 + tress - 1;
+      row += `M ${x0} ${y} C ${x0 + 0.4} ${y + 1} ${x1 - 0.4} ${y + 1} ${x1} ${y} `;
+    }
+    rows.push(row.trim());
+  }
+  return rows;
+}
+
+const BACK: PartSource<'back'>[] = [
+  {
+    half: {
+      fill: [LEG_FILL],
+      regions: [
+        [
+          'hamstring',
+          `M 34.4 161 ${GLUTE_EDGE} L 56.6 180.4 C 56 187 55.8 193 57.6 200.6 C 57.9 204 58.2 206 58.2 208.4 C 58.1 210.4 57.8 212.2 57.6 213.8 L 55.4 214.2 C 54.2 211 52.4 208.4 49.8 207 C 47.2 208.4 45.4 211 44.2 214.2 L 41.6 213.8 C 41.4 212.4 41.2 211.4 40.8 210.4 C 39.4 204.4 37.2 197 36 189 C 34.6 180 33.8 171 34.4 161 Z`,
+        ],
+        [
+          'adductor',
+          'M 56.6 180.4 C 57.8 180 58.8 179.6 59.8 179 C 59.2 186 58.6 193 57.6 200.6 C 55.8 193 56 187 56.6 180.4 Z',
+        ],
+        [
+          'calf',
+          // Two heads rising into the knee's hollow; the inner one is the larger and ends lower.
+          'M 44.2 216 C 41.4 221.4 39.4 228 39 236 C 38.8 243 40 249 42 254.4 C 44 254.6 46.2 252.6 48.4 251 L 49.8 252.4 C 51.4 254 53.4 257.6 55.4 261.6 C 57.4 255 58.8 247 58.8 239 C 58.7 230 57.8 222 55.6 215.8 C 54 217.6 51.6 219.8 49.8 221 C 48 219.8 45.6 217.6 44.2 216 Z',
+        ],
+      ],
+      wash: [
+        'M 42 178 C 47 181 53 182 57.4 180.6 C 53.4 184 47.6 183.6 42 178 Z', // under the buttock
+      ],
+      dilute: [
+        'M 49.8 207 C 49.4 199 48.6 191 47.2 183', // between the hamstrings
+        'M 44.8 214.8 C 47.4 216.2 52.2 216.2 55 214.6', // back of the knee
+        'M 49.8 222 C 50 232 50 242 49.8 251.6', // the calf's two heads
+        'M 48.2 253.4 C 48.4 262 48.2 269 47.4 275', // Achilles
+        'M 51.8 256.8 C 51.6 264 51.8 270 52.4 275',
+        ...ANKLES,
+      ],
+      contour: [LEG],
+    },
+  },
+  {
+    half: {
+      fill: [
+        `M 60 40 L 50.8 40 C 50.8 44 50.4 48 48.6 51.4 ${SHOULDER} C 32 66 31.2 75 31.8 82.6 ` +
+          'C 33.5 92 35.8 104 39.5 115 C 40.8 119 41.6 123 41.6 127 C 41.4 132 39.8 136.6 38.2 141 ' +
+          `C 36.6 146.6 35.6 152 35.2 157 ${GLUTE_EDGE} C 58.2 179.8 59.2 179.2 60 178.6 Z`,
+      ],
+      regions: [
+        [
+          'erector',
+          `M ${J} ${TRAP_TIP} L 60 158 ${SACRUM} C 51.2 138 50.9 133.6 51.2 129 C 51.6 123.6 53.4 118.4 ${J} Z`,
+        ],
+        [
+          'lat',
+          `M 31.8 82.6 C 35.8 88.6 40 94.6 ${I} ${TRAP_LOW} ${ERECTOR_EDGE} ${CREST} C 40.6 134.6 41.5 131 41.6 127 C 41.6 123 40.8 119 39.5 115 C 35.8 104 33.5 92 31.8 82.6 Z`,
+        ],
+        [
+          'glute',
+          `M 60 158 ${SACRUM} ${CREST} C 39 139 38.6 140 38.2 141 C 36.6 146.6 35.6 152 35.2 157 ${GLUTE_EDGE} C 58.2 179.8 59.2 179.2 60 178.6 Z`,
+        ],
+        [
+          // with the rhomboids, inside the shoulder blade
+          'trapezius',
+          `M 60 40 L 50.8 40 C 50.8 44 50.4 48 48.6 51.4 ${SHOULDER} C 32.6 60 31.4 61.2 ${S} C 35.6 66 41 69.4 ${R} ${SCAPULA_EDGE} ${TRAP_LOW} ${TRAP_TIP} Z`,
+        ],
+      ],
+      wash: [
+        'M 60 76 C 58.6 92 58.4 110 58.8 128 C 59 138 59.4 146 60 152 Z', // the spine's furrow
+      ],
+      dilute: [
+        'M 50.8 142.2 C 51.4 143.4 52.4 144 53.4 143.8', // the dimple over the sacrum
+        'M 40.6 140.2 C 43 145.4 47.6 149.6 53.8 150.4', // the upper edge of glute max, under glute med
+        'M 35.4 158 C 35.6 166 37.6 173 41.8 177.4', // the buttock's outer edge
+      ],
+      relief: [`M 42 177.8 C 46.8 180.8 53 181.6 57.2 180.2 C 58.2 179.8 59.2 179.2 60 178.6`],
+      contour: [
+        `${TORSO_SIDE} C 36.6 146.6 35.6 152 35.2 157 C 34.9 159.6 34.7 161.6 34.5 163.6`,
+        `M 48.6 51.4 ${SHOULDER}`,
+      ],
+    },
+    whole: {
+      dilute: ['M 60 74 L 60 148'], // the spine, in its furrow
+      relief: ['M 60 157 C 60 164 60.1 171 60.2 178.4'], // the cleft
+    },
+  },
+  {
+    half: {
+      fill: [`${ARM} L 27 72 L 29.6 62.6 L ${C0} Z`],
+      regions: [
+        [
+          // the posterior delt, and below the blade's spine infraspinatus and teres minor
+          'rearDeltoid',
+          `M ${C0} ${TO_D} C 24.6 92 28 87.4 31.8 82.6 C 35.8 88.6 40 94.6 ${I} C 45.4 92 46 82 ${R} C 41 69.4 35.6 66 ${S} C 31.4 61.2 32.6 60 ${C0} Z`,
+        ],
+        [
+          'triceps',
+          `M 21.6 95.4 C 24.6 92 28 87.4 31.8 82.6 ${A_TO_EI} C 29.4 119.4 27.6 120.6 25.8 120.8 C 24 120.6 21.8 119.6 20.2 117.5 ${EO_TO_D} Z`,
+        ],
+        [
+          'forearm',
+          `M 20.2 117.5 C 21.8 119.6 24 120.6 25.8 120.8 C 27.6 120.6 29.4 119.4 31.1 116.5 ${EI_TO_WI} ${WRIST_BACK} ${WO_TO_EO} Z`,
+        ],
+      ],
+      wash: [ARM_SHADOW],
+      dilute: [
+        'M 37.4 66.8 C 33.4 73 29.6 81.4 26.4 89.4', // the delt's edge on the shoulder blade
+        'M 23.4 124.6 C 24.8 134 26.8 146 28.4 156.4', // the forearm's extensors
+        'M 25.6 169.6 C 28.6 171.2 32.2 171.2 35.8 169.4', // knuckles
+      ],
+      contour: [ARM],
+    },
+  },
+  {
+    half: {
+      fill: ['M 47.2 26.4 C 45.6 26.6 44.8 28.6 45.2 31 C 45.6 33.6 46.4 35.4 47.4 36.2 Z'],
+      fine: ['M 47.2 26.4 C 45.6 26.6 44.8 28.6 45.2 31 C 45.6 33.6 46.4 35.4 47.4 36.2'],
+      fillet: ['M 59.2 23 C 58.6 26.6 58.8 30.4 57.8 34'], // the fillet's tied ends
+    },
+    whole: {
+      hair: [backHair()],
+      beads: backBeads(),
+      fillet: ['M 46.9 21.6 C 52 23.4 68 23.4 73.1 21.6'],
+    },
+  },
+];
+
+// ---------------------------------------------------------------------------
+
+function paint<V extends StatueView>(view: V, parts: PartSource<V>[]): PaintedPart[] {
+  const left = side(view, 'left');
+  const right = side(view, 'right');
+  const both = (d: string) => `${transform(d, left, false)} ${transform(d, right, true)}`;
+  const same: Point = (x, y) => [x, y];
+  const muscleOf = STATUE_REGIONS[view] as Record<string, string>;
+
+  return parts.map(({ half, whole }) => {
+    const part = Object.fromEntries(
+      LAYERS.map((layer) => [
+        layer,
+        [
+          ...(half[layer] ?? []).map(both),
+          ...(whole?.[layer] ?? []).map((d) => transform(d, same, false)),
+        ],
+      ]),
+    ) as Record<Layer, string[]>;
+
+    const muscles: PaintedMuscle[] = [];
+    for (const [region, d] of half.regions ?? []) {
+      const muscle = muscleOf[region];
+      let entry = muscles.find((m) => m.muscle === muscle);
+      if (!entry) muscles.push((entry = { muscle, regions: [] }));
+      entry.regions.push({ region, d: both(d) });
+    }
+    return { ...part, muscles };
+  });
+}
+
+/** Each view's parts, back to front, each with its tappable muscle groups. */
+export const STATUE_ART: Record<StatueView, PaintedPart[]> = {
+  front: paint('front', FRONT),
+  back: paint('back', BACK),
+};
