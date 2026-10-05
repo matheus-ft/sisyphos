@@ -33,11 +33,11 @@
 {:else}
   <section class="card summary" aria-label="Best">
     <div class="best">
-      <span class="caps lab">Best e1RM</span>
+      <span class="caps lab">Best</span>
       {#if view.bestE1rm}
         <span class="figure-num big">{e1rmText(view.bestE1rm.kg)}<span class="unit"> kg</span></span
         >
-        <span class="meta">set {shortDate(view.bestE1rm.date)}</span>
+        <span class="meta">e1RM, set {shortDate(view.bestE1rm.date)}</span>
       {:else}
         <span class="meta none">Not enough to estimate one</span>
       {/if}
@@ -63,12 +63,15 @@
               <span class="wd caps">{monthCaps(visit.session.date)}</span>
             </span>
             <span class="grow">
-              <span class="t sets">{visit.sets.join(' · ')}</span>
-              {#if visit.best}<span class="s">best {visit.best.text}</span>{/if}
+              <span class="t sets">
+                {#each visit.sets as set, i (i)}<span>{set}</span>{/each}
+              </span>
+              {#if visit.best && visit.sets.length > 1}<span class="s">best {visit.best.text}</span
+                >{/if}
             </span>
             {#if visit.best?.e1rm != null}
               <span class="r">
-                <span class="caps">e1RM</span>
+                <span class="meta">e1RM</span>
                 <span class="e1rm">{e1rmText(visit.best.e1rm)}</span>
               </span>
             {/if}
@@ -142,9 +145,17 @@
     color: var(--muted);
   }
 
+  /* Each set stays whole when the line wraps. */
   .sets {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0 var(--space-3);
     font-weight: var(--fw-num);
     line-height: var(--lh-snug);
+  }
+
+  .sets span {
+    white-space: nowrap;
   }
 
   .r {
@@ -153,10 +164,6 @@
     align-items: flex-end;
     gap: 2px;
     color: var(--muted);
-  }
-
-  .r .caps {
-    font-size: 0.65625rem;
   }
 
   .e1rm {

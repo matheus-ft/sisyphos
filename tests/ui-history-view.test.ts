@@ -13,6 +13,8 @@ import {
   filteredLead,
   matchExercises,
   recordMarks,
+  sessionWhen,
+  startClock,
   weekSummary,
 } from '../src/ui/history-view';
 import { bench, deadlift, library, sessionOf, squat, type SetSpec } from './analysis-fixtures';
@@ -83,6 +85,25 @@ describe('row and week lines', () => {
       exerciseId: squat.id,
     });
     expect(weekSummary(week, true)).toBe('1 session');
+  });
+
+  it('names a filtered week with nothing to price by its sessions', () => {
+    const [week] = historyWeeks([day('2026-10-01', [[squat, [{}]]], { planned: true })], library, {
+      exerciseId: squat.id,
+    });
+    expect(weekSummary(week, true)).toBe('1 planned');
+  });
+
+  it('gives the clock time of a started session only', () => {
+    expect(startClock(day('2026-09-29', squatSet, { hour: 7 }))).toBe('07:00');
+    expect(startClock(day('2026-09-29', squatSet, { planned: true }))).toBeNull();
+  });
+
+  it('says when a session was and how long it ran, or that it is planned', () => {
+    expect(sessionWhen(day('2026-09-29', squatSet, { hour: 7 }))).toBe('07:00 · in progress');
+    expect(sessionWhen(day('2026-09-29', squatSet, { planned: true }))).toBe('planned');
+    const ended = sessionOf({ date: '2026-09-29', work: squatSet, lastedMin: 54 });
+    expect(sessionWhen(ended)).toBe('18:00 · 54 min');
   });
 
   it('rounds an e1RM to whole kilos', () => {

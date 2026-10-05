@@ -35,7 +35,11 @@
     <span class="grow">
       {#if exerciseId}
         <span class="s">{filteredLead(row, exerciseId)}</span>
-        <span class="t best">{best ? best.text : label ? label : 'No sets yet'}</span>
+        {#if best}
+          <span class="t best">{best.text}</span>
+        {:else}
+          <span class="t what">{label ?? 'No sets yet'}</span>
+        {/if}
       {:else}
         {#if label}<span class="s">{label}</span>{/if}
         <span class="t what">{exerciseSummary(session, names)}</span>
@@ -51,9 +55,9 @@
       {:else if !exerciseId && minutes !== null}
         <span>{formatMinutes(minutes)}</span>
       {/if}
-      {#if row.pendingSets > 0 || record}
+      {#if (row.pendingSets > 0 && !row.planned) || record}
         <span class="marks">
-          {#if row.pendingSets > 0}
+          {#if row.pendingSets > 0 && !row.planned}
             <span class="pending"><i></i>{row.pendingSets} pending</span>
           {/if}
           {#if record}<Laurel label="Set a record" />{/if}

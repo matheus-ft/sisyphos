@@ -9,6 +9,7 @@ import {
   type HistoryRow,
   type HistoryWeek,
 } from './history';
+import { formatMinutes, sessionMinutes } from './format';
 import { formatSet } from './session';
 
 /**
@@ -66,19 +67,39 @@ export function filteredLead(row: HistoryRow, exerciseId: string): string {
 /** The week header's summary: "3 sessions · 41 sets", or "best e1RM 112" when filtered. */
 export function weekSummary(week: HistoryWeek, filtered: boolean): string {
   const { sessions, planned, sets } = week.counts;
-  if (filtered) {
-    const best = Math.max(0, ...week.rows.map((r) => r.best?.e1rm ?? 0));
-    if (best > 0) return `best e1RM ${e1rmText(best)}`;
-    return plural(sessions, 'session', 'sessions');
-  }
+  const best = filtered ? Math.max(0, ...week.rows.map((r) => r.best?.e1rm ?? 0)) : 0;
+  if (best > 0) return `best e1RM ${e1rmText(best)}`;
   const done = sessions - planned;
   return [
     done > 0 ? plural(done, 'session', 'sessions') : null,
     planned > 0 ? `${planned} planned` : null,
-    sets > 0 ? plural(sets, 'set', 'sets') : null,
+    !filtered && sets > 0 ? plural(sets, 'set', 'sets') : null,
   ]
     .filter((p) => p !== null)
     .join(' · ');
+}
+
+/** "18:30", when the session was started; null for a plan or one logged after the fact. */
+export function startClock(session: Session): string | null {
+  if (session.started_at === null || session.time_precision === 'date_only') return null;
+  return new Date(session.started_at).toLocaleTimeString('en-GB', {
+    hour: '2-digit',
+    minute: '2-digit',
+  });
+}
+
+/** "18:30 · 54 min": what tells two sessions of one day apart. */
+export function sessionWhen(session: Session, now: number = Date.now()): string {
+  const state =
+    session.started_at === null
+      ? 'planned'
+      : session.ended_at === null
+        ? 'in progress'
+        : (() => {
+            const minutes = sessionMinutes(session, now);
+            return minutes === null ? null : formatMinutes(minutes);
+          })();
+  return [startClock(session), state].filter((p) => p !== null).join(' · ');
 }
 
 /**

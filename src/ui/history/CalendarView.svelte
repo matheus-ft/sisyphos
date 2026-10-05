@@ -1,9 +1,9 @@
 <script lang="ts">
   import type { IsoDate, Session } from '../../model';
   import { app } from '../app.svelte';
-  import { formatMinutes, longDate, programLabel, sessionMinutes } from '../format';
+  import { longDate, programLabel } from '../format';
   import { monthGrid, shiftMonth } from '../history';
-  import { dayAria, dayTap, exerciseSummary } from '../history-view';
+  import { dayAria, dayTap, exerciseSummary, sessionWhen } from '../history-view';
   import Icon from '../kit/Icon.svelte';
   import Sheet from '../kit/Sheet.svelte';
 
@@ -99,7 +99,6 @@
   <ul class="group pick" role="list">
     {#each picked as session (session.id)}
       {@const label = programLabel(session.label)}
-      {@const minutes = sessionMinutes(session)}
       <li class="row-link">
         <button
           onclick={() => {
@@ -112,13 +111,7 @@
             <span class="t what">{exerciseSummary(session, names)}</span>
           </span>
           <span class="v">
-            {session.started_at === null
-              ? 'planned'
-              : session.ended_at === null
-                ? 'in progress'
-                : minutes !== null
-                  ? formatMinutes(minutes)
-                  : ''}
+            {sessionWhen(session)}
           </span>
         </button>
       </li>
@@ -163,6 +156,7 @@
     padding: 0;
     color: var(--ink);
     font-size: var(--fs-body);
+    font-weight: var(--fw-text);
   }
 
   .cell:disabled {
@@ -184,10 +178,10 @@
     width: 34px;
     height: 34px;
     border-radius: 50%;
-    font-weight: var(--fw-num);
   }
 
   .session {
+    font-weight: var(--fw-num);
     background: var(--figure);
     color: var(--on-figure);
   }

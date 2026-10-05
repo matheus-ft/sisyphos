@@ -67,6 +67,20 @@
     recordMarks(recordEvents(app.current, app.library, app.manualRecords), exerciseId ?? undefined),
   );
 
+  /**
+   * Marks a sticky header as stuck once its top edge is clipped, so it takes a
+   * background only while content scrolls beneath it. The body's gradient makes
+   * any resting background show as a band.
+   */
+  function stuck(node: HTMLElement) {
+    const watcher = new IntersectionObserver(
+      ([entry]) => node.classList.toggle('stuck', entry.intersectionRatio < 1),
+      { threshold: [1] },
+    );
+    watcher.observe(node);
+    return { destroy: () => watcher.disconnect() };
+  }
+
   function setView(next: View): void {
     view = next;
     remember(VIEW_KEY, next);
@@ -115,7 +129,7 @@
   {:else}
     {#each weeks as week (week.start)}
       <section class="week">
-        <h2 class="sec">
+        <h2 class="sec" use:stuck>
           <span class="caps">{week.label}</span>
           <span class="meta">{weekSummary(week, exerciseId !== null)}</span>
         </h2>
@@ -146,15 +160,22 @@
     margin-top: var(--space-2);
   }
 
-  /* Sticks under the notch while its week scrolls past, then the next week takes over. */
+  /* Sticks under the notch while its week scrolls past, then the next week takes over.
+     top: -1px lets `stuck` see the clipped edge. */
   .week .sec {
     position: sticky;
-    top: 0;
+    top: -1px;
     z-index: var(--z-sticky);
-    margin: 0 0 var(--space-1);
+    margin: calc(-1 * var(--safe-top)) 0 var(--space-1);
     padding: calc(var(--safe-top) + var(--space-3)) var(--gutter) var(--space-2);
-    margin-top: calc(-1 * var(--safe-top));
-    background: linear-gradient(180deg, var(--ground) 80%, transparent);
-    font-size: inherit;
+    font: var(--fw-text) var(--fs-body) / var(--lh-body) var(--font-text);
+    letter-spacing: normal;
+    text-transform: none;
+  }
+
+  .week .sec:global(.stuck) {
+    background: color-mix(in srgb, var(--ground) 92%, transparent);
+    backdrop-filter: blur(8px);
+    box-shadow: 0 1px 0 var(--line);
   }
 </style>

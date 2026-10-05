@@ -86,6 +86,11 @@
     min-width: 0;
   }
 
+  /* The browser's own × is blue and 16px; closing the sheet clears the search anyway. */
+  .search input::-webkit-search-cancel-button {
+    appearance: none;
+  }
+
   .group {
     margin: 0;
   }
