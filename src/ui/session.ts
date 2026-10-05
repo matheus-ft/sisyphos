@@ -397,9 +397,11 @@ export function lastUnit(exercise: Exercise, sessions: Session[], except: Id): L
 /**
  * The unit a set is entered in: its own, else today's. A lifter who switched
  * units in this session means it for the sets still to come, so this session
- * speaks before the past: the nearest earlier weighted set of the instance, else
- * the latest weighted set of the exercise anywhere in the session. Only then the
- * habit of past sessions (`lastUnit`), and last the library's hint.
+ * speaks before the past: the unit last picked for the exercise (`chosen`, which
+ * an empty set cannot hold), else the nearest earlier weighted set of the
+ * instance, else the latest weighted set of the exercise anywhere in the
+ * session. Only then the habit of past sessions (`lastUnit`), and last the
+ * library's hint.
  */
 export function unitFor(input: {
   session: Session;
@@ -407,10 +409,11 @@ export function unitFor(input: {
   set: PerformedSet;
   exercise: Exercise | undefined;
   sessions: Session[];
+  chosen?: LoadUnit | null;
 }): LoadUnit {
   const { session, instance, set, exercise } = input;
-  const own = unitOf(set);
-  if (own) return own;
+  const picked = unitOf(set) ?? input.chosen;
+  if (picked) return picked;
   const at = instance.performed.findIndex((s) => s.id === set.id);
   const earlier = instance.performed
     .slice(0, Math.max(at, 0))

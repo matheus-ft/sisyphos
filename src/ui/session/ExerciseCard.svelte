@@ -61,6 +61,8 @@
     mode: CardMode;
     /** The last other session's visit to this exercise. */
     last: ExerciseInstance | null;
+    /** The unit the lifter picked for this exercise in this session, which its empty rows take. */
+    chosenUnit: LoadUnit | null;
     /** The set being entered in the whole session, drawn inverted; at most one. */
     active: Id | null;
     /** The sets that were records when lifted: the laurel and the gilded wash. */
@@ -73,6 +75,8 @@
     onhistory: (exercise: Exercise) => void;
     /** Opens the entry panel on a set. */
     onentry: (set: PerformedSet) => void;
+    /** A unit picked on one of the rows: the owner keeps it for the exercise's rows to come. */
+    onunit: (unit: LoadUnit) => void;
   }
   let {
     session,
@@ -80,6 +84,7 @@
     exercise,
     mode,
     last,
+    chosenUnit,
     active,
     records,
     warmupsHidden,
@@ -87,6 +92,7 @@
     onhidewarmups,
     onhistory,
     onentry,
+    onunit,
   }: Props = $props();
 
   const timed = $derived(exercise ? measureOf(exercise) === 'time' : false);
@@ -127,6 +133,7 @@
             sessions: earlier,
             oneRms: app.oneRms,
             prefs: app.prefs,
+            chosen: chosenUnit,
           }),
         ]),
     ),
@@ -201,8 +208,15 @@
     requestAnimationFrame(() => input.select());
   }
 
-  function nextUnit(set: PerformedSet): LoadUnit {
-    return UNITS[(UNITS.indexOf(unitOfRow(set)) + 1) % UNITS.length];
+  /**
+   * The unit button: the pick is kept for the exercise's rows to come, and so
+   * for an empty row, which has no load to hold it; a row with a number takes
+   * the unit at once.
+   */
+  function switchUnit(set: PerformedSet): void {
+    const next = UNITS[(UNITS.indexOf(unitOfRow(set)) + 1) % UNITS.length];
+    onunit(next);
+    if (amountOf(set) !== null) edit(set, { unit: next });
   }
 
   function shownAmount(set: PerformedSet): string {
@@ -401,10 +415,8 @@
               )}
           />
           {#if !timed}
-            <button
-              class="unit"
-              aria-label="Unit, {unitOfRow(set)}"
-              onclick={() => edit(set, { unit: nextUnit(set) })}>{unitOfRow(set)}</button
+            <button class="unit" aria-label="Unit, {unitOfRow(set)}" onclick={() => switchUnit(set)}
+              >{unitOfRow(set)}</button
             >
             <span class="x">×</span>
             <input

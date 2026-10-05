@@ -287,6 +287,39 @@ describe('the context of a set', () => {
     expect(got.suggestion?.reason).toMatch(/^\+5 lb: /);
   });
 
+  it('takes the unit the panel was switched to, over even the set its own', () => {
+    const s = set({ load: kg(100), reps: 5 });
+    const i = instance([s]);
+    const got = entryContext({
+      session: session('now', '2026-10-05', [i]),
+      instance: i,
+      set: s,
+      exercise,
+      sessions: [],
+      oneRms: [],
+      prefs: DEFAULT_PREFS,
+      unit: 'lb',
+    });
+    expect(got).toMatchObject({ unit: 'lb', step: DEFAULT_PREFS.plateLb });
+    expect(entryPrefill(i, s, got).amount).toBe(convertLoad(100, 'kg', 'lb', got.step));
+  });
+
+  it('takes the unit picked for the exercise for an empty set', () => {
+    const s = set();
+    const i = instance([s]);
+    const got = entryContext({
+      session: session('now', '2026-10-05', [i]),
+      instance: i,
+      set: s,
+      exercise,
+      sessions: [],
+      oneRms: [],
+      prefs: DEFAULT_PREFS,
+      chosen: 'lb',
+    });
+    expect(got.unit).toBe('lb');
+  });
+
   it('has no suggestion for an exercise the library lacks', () => {
     const s = set();
     const got = entryContext({

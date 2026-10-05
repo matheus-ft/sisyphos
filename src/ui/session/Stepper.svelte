@@ -16,8 +16,12 @@
     inputmode: 'decimal' | 'numeric';
     /** One tap: −1 or +1. The owner decides what a step is. */
     onstep: (direction: 1 | -1) => void;
+    /** Makes the unit a button that switches it, as kg and lb do; the owner says to what. */
+    onunit?: () => void;
+    /** The switch's name for a screen reader: "Unit, kg. Switch to lb". */
+    unitLabel?: string;
   }
-  let { value = $bindable(), unit, label, inputmode, onstep }: Props = $props();
+  let { value = $bindable(), unit, label, inputmode, onstep, onunit, unitLabel }: Props = $props();
 
   /** The first repeat waits, so a tap is only a tap. */
   const HOLD_MS = 400;
@@ -63,7 +67,7 @@
     onclick={(e) => click(e, -1)}
     oncontextmenu={(e) => e.preventDefault()}><Icon name="minus" size={24} stroke={2.6} /></button
   >
-  <label class="value">
+  {#snippet figure()}
     <input
       class="figure-num"
       {inputmode}
@@ -73,8 +77,19 @@
       bind:value
       onfocus={(e) => e.currentTarget.select()}
     />
-    <span class="caps unit">{unit}</span>
-  </label>
+  {/snippet}
+  {#if onunit}
+    <!-- A button inside a label would focus the figure as well as switch the unit. -->
+    <div class="value">
+      {@render figure()}
+      <button class="caps unit switch" aria-label={unitLabel} onclick={onunit}>{unit}</button>
+    </div>
+  {:else}
+    <label class="value">
+      {@render figure()}
+      <span class="caps unit">{unit}</span>
+    </label>
+  {/if}
   <button
     class="step"
     class:pressed={pressed === 1}
@@ -147,5 +162,16 @@
 
   .unit {
     color: var(--muted);
+  }
+
+  /* A unit that switches reads as a control: the same caps, in a ring that a thumb can find. */
+  .switch {
+    align-self: center;
+    min-width: var(--tap);
+    min-height: var(--tap);
+    padding: 0 var(--space-2);
+    border: var(--hairline) solid var(--line-strong);
+    border-radius: var(--radius-pill);
+    color: var(--ink-2);
   }
 </style>

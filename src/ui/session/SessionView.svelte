@@ -1,5 +1,5 @@
 <script lang="ts">
-  import type { Exercise, Id, PerformedSet, Session } from '../../model';
+  import type { Exercise, Id, LoadUnit, PerformedSet, Session } from '../../model';
   import AddExercise from '../AddExercise.svelte';
   import { app } from '../app.svelte';
   import { entryContext, entryPrefill } from '../entry';
@@ -31,6 +31,7 @@
   import ExerciseCard from './ExerciseCard.svelte';
   import {
     climb,
+    parseUnits,
     restContext,
     restFresh,
     restKey,
@@ -41,9 +42,11 @@
     savedSet,
     sessionsBefore,
     savedToast,
+    serializeUnits,
     startsRest,
     targetOf,
     undoSet,
+    unitsKey,
     weighInOffer,
   } from './flow';
   import { activeSetId, ringedRpe, setLabel, suggestionLine, targetText } from './panel';
@@ -104,7 +107,8 @@
 
   // --- the entry panel --------------------------------------------------------------
 
-  let entry = $state<{ instanceId: Id; setId: Id } | null>(null);
+  /** The set the panel is open on, and the unit it was switched to, if it was. */
+  let entry = $state<{ instanceId: Id; setId: Id; unit?: LoadUnit } | null>(null);
   const entering = $derived.by(() => {
     if (!entry) return null;
     const instance = session.exercises.find((e) => e.id === entry?.instanceId);
@@ -121,6 +125,8 @@
       sessions: earlier,
       oneRms: app.oneRms,
       prefs: app.prefs,
+      chosen: units.get(entering.instance.exercise_id),
+      unit: entry?.unit,
     });
   });
 
@@ -269,6 +275,7 @@
       sessions: earlier,
       oneRms: app.oneRms,
       prefs: app.prefs,
+      chosen: units.get(next.instance.exercise_id),
     });
     return { next, view: restNext(next, exercise, ctx) };
   });
@@ -320,6 +327,33 @@
     } catch {
       // Hidden until the card is next drawn; nothing worse.
     }
+  }
+
+  // --- units picked for an exercise, for this session only ----------------------------
+
+  let units = $state.raw<Map<string, LoadUnit>>(new Map());
+  $effect(() => {
+    try {
+      units = parseUnits(sessionStorage.getItem(unitsKey(session.id)));
+    } catch {
+      units = new Map();
+    }
+  });
+
+  function pickUnit(exerciseId: string, unit: LoadUnit): void {
+    units = new Map([...units, [exerciseId, unit]]);
+    try {
+      sessionStorage.setItem(unitsKey(session.id), serializeUnits(units));
+    } catch {
+      // Picked until the screen is next drawn; a number typed in it keeps it in the log.
+    }
+  }
+
+  function switchEntryUnit(unit: LoadUnit): void {
+    const at = entering;
+    if (!entry || !at) return;
+    entry = { ...entry, unit };
+    pickUnit(at.instance.exercise_id, unit);
   }
 
   // --- the session's own fields -----------------------------------------------------
@@ -426,6 +460,7 @@
         {exercise}
         mode={cardMode(instance, active)}
         last={exercise ? lastInstance(exercise.id, earlier, session.id) : null}
+        chosenUnit={units.get(instance.exercise_id) ?? null}
         {active}
         {records}
         warmupsHidden={hidden.has(instance.id)}
@@ -433,6 +468,7 @@
         onhidewarmups={() => hideWarmups(instance.id)}
         onhistory={app.openExercise}
         onentry={(set) => openEntry(instance.id, set)}
+        onunit={(unit) => pickUnit(instance.exercise_id, unit)}
       />
     {/each}
   </div>
@@ -517,6 +553,7 @@
     unit={enteringContext.unit}
     plateStep={enteringContext.step}
     planning={planned}
+    onunit={switchEntryUnit}
     onsave={saveEntry}
     onskip={skipEntry}
     onclose={() => (entry = null)}

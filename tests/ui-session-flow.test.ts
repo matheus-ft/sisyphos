@@ -18,7 +18,10 @@ import {
   startsRest,
   suggestionShows,
   targetOf,
+  parseUnits,
+  serializeUnits,
   undoSet,
+  unitsKey,
   weighInOffer,
 } from '../src/ui/session/flow';
 
@@ -336,5 +339,23 @@ describe('what came before a session', () => {
       'old',
       'same',
     ]);
+  });
+});
+
+describe('units picked for the session', () => {
+  it('are kept per session and read back as written', () => {
+    expect(unitsKey('2026-10-05-abcd')).toBe('sisyphos.units.2026-10-05-abcd');
+    const units = new Map([
+      ['bench', 'lb' as const],
+      ['leg_press', 'pins' as const],
+    ]);
+    expect(parseUnits(serializeUnits(units))).toEqual(units);
+  });
+
+  it('read junk, and anything that is not a unit, as none', () => {
+    expect(parseUnits(null).size).toBe(0);
+    expect(parseUnits('not json').size).toBe(0);
+    expect(parseUnits('["kg"]').size).toBe(0);
+    expect(parseUnits('{"bench":"stone","squat":"kg"}')).toEqual(new Map([['squat', 'kg']]));
   });
 });

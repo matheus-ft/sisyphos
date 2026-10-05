@@ -51,9 +51,13 @@ export function entryContext(input: {
   sessions: Session[];
   oneRms: OneRmEntry[];
   prefs: Prefs;
+  /** The unit the lifter picked for this exercise in this session. */
+  chosen?: LoadUnit | null;
+  /** The unit the entry panel was just switched to, over even the set's own. */
+  unit?: LoadUnit | null;
 }): EntryContext {
   const { session, instance, set, exercise } = input;
-  const unit = unitFor(input);
+  const unit = input.unit ?? unitFor(input);
   const step = plateStep(input.prefs, unit);
   const suggestion = exercise
     ? suggestLoad({

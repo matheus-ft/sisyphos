@@ -262,6 +262,17 @@ describe('what came before', () => {
       expect(unitOfSet(s, 1, 0)).toBe('kg');
     });
 
+    it('is the one the lifter picked for the exercise today, though the set is empty', () => {
+      const s = today();
+      const [e] = s.exercises;
+      const blank = addSet(s, e.id, () => 'blank').exercises[0].performed.at(-1)!;
+      const set = { ...blank, load: null };
+      const input = { session: s, instance: e, set, exercise: squat, sessions: [inLb] };
+      expect(unitFor({ ...input, chosen: 'lb' })).toBe('lb');
+      const lifted = e.performed[0];
+      expect(unitFor({ ...input, set: lifted, chosen: 'lb' })).toBe('kg');
+    });
+
     it("is last time's when today has no weight yet, else the library's hint", () => {
       const s = addExercise(started(), squat, ids());
       const [e] = s.exercises;

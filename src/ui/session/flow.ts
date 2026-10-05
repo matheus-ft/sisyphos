@@ -3,6 +3,7 @@ import type {
   Exercise,
   ExerciseInstance,
   Id,
+  LoadUnit,
   PerformedSet,
   Session,
 } from '../../model';
@@ -266,6 +267,36 @@ export function applySuggestion(session: Session, instanceId: Id, s: Suggestion)
   return instance.performed
     .filter((x) => x.state === 'pending' && !x.is_warmup)
     .reduce((next, x) => editSet(next, instanceId, x.id, edit, 'weight', s.unit), session);
+}
+
+// --- units picked for the session ---------------------------------------------------
+
+/**
+ * The unit the lifter last picked for each exercise in a session, by exercise
+ * id. An empty set holds no load to carry a unit, so the pick is kept here, in
+ * the tab's sessionStorage beside the rest, until a number typed in that unit
+ * puts it into the log.
+ */
+export const unitsKey = (sessionId: Id) => `sisyphos.units.${sessionId}`;
+
+const UNITS: readonly LoadUnit[] = ['kg', 'lb', 'pins'];
+
+/** The picks kept for a session; junk, and anything that is not a unit, reads as none. */
+export function parseUnits(text: string | null | undefined): Map<string, LoadUnit> {
+  if (!text) return new Map();
+  try {
+    const raw: unknown = JSON.parse(text);
+    if (typeof raw !== 'object' || raw === null || Array.isArray(raw)) return new Map();
+    return new Map(
+      Object.entries(raw).filter((e): e is [string, LoadUnit] => UNITS.includes(e[1])),
+    );
+  } catch {
+    return new Map();
+  }
+}
+
+export function serializeUnits(units: ReadonlyMap<string, LoadUnit>): string {
+  return JSON.stringify(Object.fromEntries(units));
 }
 
 // --- the weigh-in -------------------------------------------------------------------
