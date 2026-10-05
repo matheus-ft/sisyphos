@@ -30,7 +30,9 @@ import {
   parseSeconds,
   removeExercise,
   removeSet,
+  restSeconds,
   setDate,
+  setRest,
   targetsOf,
   templateFrom,
 } from '../src/ui/session';
@@ -76,6 +78,7 @@ describe('a session being logged', () => {
     const s = addExercise(started(), squat, ids());
     expect(s.exercises).toHaveLength(1);
     expect(s.exercises[0].exercise_id).toBe('low_bar_squat');
+    expect(s.exercises[0].rest_s).toBeNull();
     expect(s.exercises[0].performed).toEqual([
       expect.objectContaining({ state: 'pending', load: null, reps: null, rpe: null }),
     ]);
@@ -214,6 +217,7 @@ describe('templates', () => {
     expect(template.exercises).toEqual([
       {
         exercise_id: 'low_bar_squat',
+        rest_s: null,
         prescribed: [
           {
             reps: [5, 5],
@@ -232,6 +236,53 @@ describe('templates', () => {
       expect.objectContaining({ state: 'pending', prescribed_id: e.prescribed[0].id }),
     ]);
     expect(targetsOf(e, e.performed[0])).toEqual({ amount: '140', reps: '5', rpe: '8' });
+  });
+
+  it('carry the program label and each target rest from session to template and back', () => {
+    const label = { name: 'Off-season', block: 2, week: 3, day: 1, weekday: 'monday' };
+    const logged = withSquat();
+    const session: Session = {
+      ...setRest(logged, logged.exercises[0].id, 210),
+      label,
+    };
+    const template = templateFrom(session, {
+      id: 'squat-day-k3f9',
+      name: 'Squat day',
+      at: new Date(),
+    });
+    expect(template.label).toEqual(label);
+    expect(template.exercises[0].rest_s).toBe(210);
+
+    const next = fromTemplate(started(), template, ids());
+    expect(next.label).toEqual(label);
+    expect(next.exercises[0].rest_s).toBe(210);
+    // Copies, not shared: relabelling one leaves the other as it was.
+    next.label.week = 4;
+    expect(template.label.week).toBe(3);
+  });
+});
+
+describe('the target rest', () => {
+  it('changes for one exercise of the session only, and back to the tier default', () => {
+    const newId = ids();
+    const s = addExercise(withSquat(newId), plank, newId);
+    const [squatId, plankId] = s.exercises.map((e) => e.id);
+    const longer = setRest(s, squatId, 195);
+    expect(longer.exercises.map((e) => e.rest_s)).toEqual([195, null]);
+    expect(setRest(longer, squatId, null).exercises[0].rest_s).toBeNull();
+    expect(setRest(longer, plankId, 60).exercises.map((e) => e.rest_s)).toEqual([195, 60]);
+  });
+
+  it('is kept as whole seconds of at least one, which the log can hold', () => {
+    expect(restSeconds(null)).toBeNull();
+    expect(restSeconds(90.4)).toBe(90);
+    expect(restSeconds(0)).toBe(1);
+    expect(restSeconds(-15)).toBe(1);
+    expect(restSeconds(NaN)).toBeNull();
+    expect(restSeconds(Infinity)).toBeNull();
+    const s = withSquat();
+    const saved = setRest(s, s.exercises[0].id, 89.6);
+    expect(parseSession(serializeSession(saved))).toEqual(saved);
   });
 });
 

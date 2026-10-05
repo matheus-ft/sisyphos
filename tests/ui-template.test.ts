@@ -13,6 +13,8 @@ import {
   removeTarget,
   removeTemplateExercise,
   rename,
+  setLabel,
+  setTemplateRest,
   targetAmount,
 } from '../src/ui/template';
 
@@ -30,6 +32,7 @@ describe('a template being built', () => {
     expect(t.exercises).toEqual([
       {
         exercise_id: 'low_bar_squat',
+        rest_s: null,
         prescribed: [
           {
             reps: null,
@@ -99,11 +102,53 @@ describe('a template being built', () => {
   });
 });
 
+describe('where a template sits in a program, and how long it rests', () => {
+  it('starts in no program, every rest the tier default', () => {
+    const t = addTemplateExercise(blank(), squat);
+    expect(t.label).toEqual({ name: null, block: null, week: null, day: null, weekday: null });
+    expect(t.exercises[0].rest_s).toBeNull();
+  });
+
+  it('changes the label field by field', () => {
+    let t = setLabel(blank(), { name: 'Off-season 2026', week: 3 });
+    t = setLabel(t, { day: 2 });
+    expect(t.label).toEqual({
+      name: 'Off-season 2026',
+      block: null,
+      week: 3,
+      day: 2,
+      weekday: null,
+    });
+    expect(setLabel(t, { week: null }).label.week).toBeNull();
+  });
+
+  it('sets one exercise’s rest, in whole seconds', () => {
+    let t = addTemplateExercise(addTemplateExercise(blank(), squat), plank);
+    t = setTemplateRest(t, 0, 180.2);
+    expect(t.exercises.map((e) => e.rest_s)).toEqual([180, null]);
+    expect(setTemplateRest(t, 0, null).exercises[0].rest_s).toBeNull();
+  });
+
+  it('is what a session started from it begins with', () => {
+    let t = setLabel(addTemplateExercise(blank(), squat), { name: 'Block 1', block: 1 });
+    t = setTemplateRest(t, 0, 240);
+    let n = 0;
+    const s = fromTemplate(
+      newSession({ id: '2026-10-04-a1b2', at: new Date(2026, 9, 4), tz: 'UTC', deviceId: 'p' }),
+      t,
+      () => `id${++n}`,
+    );
+    expect(s.label).toEqual(t.label);
+    expect(s.exercises[0].rest_s).toBe(240);
+  });
+});
+
 describe('a template as the log stores it', () => {
   it('reads back exactly as written, empty targets included', () => {
     let t = addTemplateExercise(addTemplateExercise(blank(), squat), plank);
     t = editTarget(t, 0, 0, { amount: 140, reps: 5, rpe: 8 }, 'weight');
     t = addTarget(t, 0, 'weight');
+    t = setTemplateRest(setLabel(t, { name: 'Off-season', weekday: 'friday' }), 1, 45);
     expect(parseTemplate(serializeTemplate(t))).toEqual(t);
   });
 });

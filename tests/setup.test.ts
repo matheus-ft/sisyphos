@@ -2,14 +2,17 @@ import { describe, it, expect, vi } from 'vitest';
 import { FormatError, SyncError } from '../src/storage/errors';
 import { serializeFormatMarker } from '../src/storage/formats';
 import { blobSha } from '../src/storage/hash';
-import { FORMAT_PATH, FORMAT_VERSION } from '../src/storage/paths';
+import { FORMAT_PATH, FORMAT_VERSION, sessionPath } from '../src/storage/paths';
 import { MemoryRemote } from '../src/storage/remote/memory';
 import { setUp, type SetupInput } from '../src/storage/setup';
 import { MemoryStore } from '../src/storage/store/memory';
 import { runSync } from '../src/storage/sync';
+import { sessionV1 } from './format1';
 import {
   BODYWEIGHT,
   bodyweight,
+  format1Log,
+  lifted,
   prng,
   remoteFiles,
   ROWS,
@@ -22,6 +25,7 @@ import {
 } from './sync-harness';
 
 const MARKER = serializeFormatMarker({ format: FORMAT_VERSION });
+const OLD = lifted('2026-09-14-aaaa', 'logged in format 1');
 const INPUT: SetupInput = { owner: 'me', repo: 'sisyphos-log', token: 'github_pat_1' };
 
 /** A device and the repo it is being pointed at. `makeRemote` hands out `remote` whatever it is asked for, and records what it was asked for. */
@@ -196,6 +200,18 @@ describe('setUp: making the repo a log', () => {
     expect(h.remote.calls).not.toContain('moveBranch');
   });
 
+  it('accepts a log in an older format as it is, and the first sync migrates it', async () => {
+    const remote = format1Log([[sessionPath(OLD.id), sessionV1(OLD)]]);
+    const h = harness(remote, new MemoryStore({ deviceId: 'dev-a', now: () => new Date(T0) }));
+    const commits = remote.commitCount();
+    expect(await h.run()).toEqual({ ok: true, initialised: false });
+    expect(remote.commitCount()).toBe(commits);
+
+    await runSync({ store: h.store, remote, deviceId: 'dev-a', random: prng(1) }, 'full');
+    expect(remoteFiles(remote)).toEqual(new Map([[FORMAT_PATH, MARKER], sessionFile(OLD)]));
+    expect(await h.store.content(sessionPath(OLD.id))).toBe(sessionFile(OLD)[1]);
+  });
+
   it('refuses a log in a newer format, asking for an update', async () => {
     const h = harness();
     h.remote.externalCommit([
@@ -282,7 +298,10 @@ describe('setUp: saving the settings', () => {
         { op: 'content', path: 'lifter/bodyweight.csv', text: 'x\n' },
         { op: 'base', path: 'lifter/bodyweight.csv', sha: blobSha('x\n'), body: 'x\n' },
         { op: 'meta', meta: { last_synced_head: 'abc', last_synced_tree: 'def' } },
-        { op: 'inflight', inflight: { commit: 'c', tree: 't', parent: 'abc', pushed: [] } },
+        {
+          op: 'inflight',
+          inflight: { commit: 'c', tree: 't', parent: 'abc', pushed: [], format: null },
+        },
       ]),
     );
     return store;

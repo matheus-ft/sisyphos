@@ -3,6 +3,7 @@ import type { ConflictRecord } from '../src/model';
 import { FormatError, SyncError } from '../src/storage/errors';
 import {
   serializeConflict,
+  serializeFormatMarker,
   serializeSession,
   serializeTemplate,
   TABLES,
@@ -13,6 +14,7 @@ import {
   classify,
   conflictPath,
   FORMAT_PATH,
+  FORMAT_VERSION,
   sessionPath,
   templatePath,
 } from '../src/storage/paths';
@@ -679,6 +681,8 @@ describe('an unreadable remote file', () => {
 });
 
 describe('the format marker', () => {
+  const NEWER = serializeFormatMarker({ format: FORMAT_VERSION + 1 });
+
   /** The sync's error kind, having checked that nothing changed on either side. */
   async function refused(remote: MemoryRemote, device: Device): Promise<string> {
     const files = await device.files();
@@ -708,7 +712,7 @@ describe('the format marker', () => {
   });
 
   it.each([
-    ['newer than this build: an update error', '{\n  "format": 2\n}\n', 'update'],
+    ['newer than this build: an update error', NEWER, 'update'],
     ['not JSON: a repo error', 'format: 1\n', 'repo'],
     ['without a format number: a repo error', '{\n  "format": "one"\n}\n', 'repo'],
   ])('%s', async (_, marker, kind) => {
@@ -723,7 +727,7 @@ describe('the format marker', () => {
 
   it('newer, on a device that never synced: an update error', async () => {
     const remote = new MemoryRemote();
-    remote.externalCommit([{ path: FORMAT_PATH, content: '{\n  "format": 2\n}\n' }]);
+    remote.externalCommit([{ path: FORMAT_PATH, content: NEWER }]);
     const a = new Device(remote, 'dev-a');
     expect(await refused(remote, a)).toBe('update');
   });

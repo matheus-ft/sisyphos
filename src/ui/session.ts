@@ -80,11 +80,26 @@ export function addExercise(session: Session, exercise: Exercise, newId: NewId):
   const instance: ExerciseInstance = {
     id: newId(),
     exercise_id: exercise.id,
+    rest_s: null,
     prescribed: [],
     performed: [emptySet(newId())],
     notes: null,
   };
   return { ...session, exercises: [...session.exercises, instance] };
+}
+
+/**
+ * A target rest as the log keeps one: whole seconds, at least one, since the
+ * format refuses anything else (DATA.md, The files). Null, and anything that is
+ * not a number of seconds, is the tier's default.
+ */
+export function restSeconds(seconds: number | null): number | null {
+  return seconds === null || !Number.isFinite(seconds) ? null : Math.max(1, Math.round(seconds));
+}
+
+/** The exercise's target rest for the rest of this session. */
+export function setRest(session: Session, instanceId: Id, seconds: number | null): Session {
+  return updateInstance(session, instanceId, (e) => ({ ...e, rest_s: restSeconds(seconds) }));
 }
 
 function updateInstance(
@@ -361,9 +376,11 @@ export function templateFrom(
     id: input.id,
     name: input.name,
     intention: null,
+    label: { ...session.label },
     exercises: session.exercises
       .map((e) => ({
         exercise_id: e.exercise_id,
+        rest_s: e.rest_s,
         prescribed: e.performed.filter((s) => s.state === 'done').map(prescriptionOf),
       }))
       .filter((e) => e.prescribed.length > 0),
@@ -397,19 +414,27 @@ function prescriptionOf(set: PerformedSet): Omit<PrescribedSet, 'id'> {
   };
 }
 
-/** A new session's exercises from a template: its targets prescribed, one pending set for each. */
+/**
+ * A new session's exercises from a template: its targets prescribed, one
+ * pending set for each, its target rests; and the template's program label.
+ */
 export function fromTemplate(session: Session, template: Template, newId: NewId): Session {
   const exercises: ExerciseInstance[] = template.exercises.map((e) => {
     const prescribed = e.prescribed.map((p) => ({ ...p, id: newId() }));
     return {
       id: newId(),
       exercise_id: e.exercise_id,
+      rest_s: e.rest_s,
       prescribed,
       performed: prescribed.map((p) => ({ ...emptySet(newId(), p.id), is_warmup: p.is_warmup })),
       notes: null,
     };
   });
-  return { ...session, exercises: [...session.exercises, ...exercises] };
+  return {
+    ...session,
+    label: { ...template.label },
+    exercises: [...session.exercises, ...exercises],
+  };
 }
 
 /** What a set's prescription asks for, field by field, shown faintly in its empty fields. */

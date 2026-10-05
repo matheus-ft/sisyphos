@@ -3,19 +3,101 @@ import { openDB } from 'idb';
 import { afterEach, describe, it, expect, vi } from 'vitest';
 import { blobSha } from '../src/storage/hash';
 import { IndexedDbStore, SupersededError } from '../src/storage/store/indexeddb';
-import type { Inflight } from '../src/storage/store/store';
+import type { Inflight, Settings } from '../src/storage/store/store';
+import type { Format1Records } from '../src/storage/store/upgrade';
 import { clock, storeContract } from './store-contract';
+import { MARKER_V1 } from './format1';
 
 /** A database of its own for each store, so no test sees another's data. */
 const fresh = () => `sisyphos-test-${crypto.randomUUID()}`;
 
-storeContract('IndexedDbStore', (options) => IndexedDbStore.open(fresh(), options));
+const OLD_SETTINGS: Settings = {
+  owner: 'lifter',
+  repo: 'sisyphos-log',
+  branch: 'main',
+  repo_id: 861234567,
+  token: 'tok',
+  device_id: 'old-phone',
+};
+
+/**
+ * The database exactly as the format-1 build left it: version 1's stores,
+ * written by hand here because that build's code is gone, and its schema is a
+ * fact about phones in the wild that must not change with this file.
+ */
+async function format1Database(records: Format1Records, settings = OLD_SETTINGS): Promise<string> {
+  const name = fresh();
+  const db = await openDB(name, 1, {
+    upgrade(database) {
+      database.createObjectStore('content', { keyPath: 'path' });
+      database.createObjectStore('sync', { keyPath: 'path' });
+      database.createObjectStore('sync_meta');
+      database.createObjectStore('inflight');
+      database.createObjectStore('settings');
+    },
+  });
+  const stores = ['content', 'sync', 'sync_meta', 'inflight', 'settings'];
+  const tx = db.transaction(stores, 'readwrite');
+  for (const record of records.content) void tx.objectStore('content').put(record);
+  for (const entry of records.entries) void tx.objectStore('sync').put(entry);
+  if (records.meta) void tx.objectStore('sync_meta').put(records.meta, 'current');
+  if (records.inflight) void tx.objectStore('inflight').put(records.inflight, 'current');
+  void tx.objectStore('settings').put(settings, 'current');
+  await tx.done;
+  db.close();
+  return name;
+}
+
+storeContract(
+  'IndexedDbStore',
+  (options) => IndexedDbStore.open(fresh(), options),
+  async (records, options) => IndexedDbStore.open(await format1Database(records), options),
+);
 
 const inflight: Inflight = {
   commit: 'c2',
   tree: 't2',
   parent: 'c1',
   pushed: [{ path: 'a.json', sha: blobSha('x\n'), body: null }],
+  format: null,
+};
+
+const SESSION = 'sessions/2026/2026-09-14-aaaa.json';
+const SESSION_V1 = `${JSON.stringify(
+  {
+    id: '2026-09-14-aaaa',
+    date: '2026-09-14',
+    started_at: '2026-09-14T07:00:00.000Z',
+    tz: 'Europe/Lisbon',
+    time_precision: 'instant',
+    ended_at: '2026-09-14T08:30:00.000Z',
+    label: { name: null, block: null, week: null, day: null, weekday: null },
+    bodyweight_kg: null,
+    notes: null,
+    exercises: [],
+    created_at: '2026-09-14T07:00:00.000Z',
+    updated_at: '2026-09-14T08:30:00.000Z',
+    device_id: 'old-phone',
+  },
+  null,
+  2,
+)}\n`;
+const ONE_SESSION: Format1Records = {
+  content: [
+    { path: SESSION, text: SESSION_V1 },
+    { path: 'sisyphos.json', text: MARKER_V1 },
+  ],
+  entries: [
+    {
+      path: SESSION,
+      base_sha: null,
+      local_sha: blobSha(SESSION_V1),
+      unsynced_since: '2026-09-14T08:30:00.000Z',
+      base_body: null,
+    },
+  ],
+  meta: null,
+  inflight: null,
 };
 
 describe('IndexedDbStore', () => {
@@ -151,8 +233,8 @@ describe('IndexedDbStore', () => {
     await store.exclusive((s) => s.apply([{ op: 'content', path: 'a.json', text: 'x\n' }]));
 
     // Opening at a higher version waits for every older connection to close.
-    const newer = await openDB(name, 2);
-    expect(newer.version).toBe(2);
+    const newer = await openDB(name, 3);
+    expect(newer.version).toBe(3);
     expect([...newer.objectStoreNames]).toContain('content');
     expect((await newer.get('content', 'a.json'))?.text).toBe('x\n');
     newer.close();
@@ -161,6 +243,44 @@ describe('IndexedDbStore', () => {
     await expect(
       store.exclusive((s) => s.apply([{ op: 'content', path: 'b.json', text: 'y\n' }])),
     ).rejects.toThrow(SupersededError);
+  });
+
+  it('keeps the settings and the device id through the upgrade from format 1', async () => {
+    const store = await IndexedDbStore.open(await format1Database(ONE_SESSION));
+    expect(await store.settings()).toEqual(OLD_SETTINGS);
+    expect((await store.entry(SESSION))?.base_format).toBeNull();
+    store.close();
+  });
+
+  it('stops the format-1 build in another tab before upgrading under it', async () => {
+    const name = await format1Database(ONE_SESSION);
+    // What the old build does when a newer one asks for the database: it lets go.
+    let stopped = false;
+    const old = await openDB(name, 1, {
+      blocking() {
+        stopped = true;
+        old.close();
+      },
+    });
+    const store = await IndexedDbStore.open(name);
+    expect(stopped).toBe(true);
+    expect(await store.content(SESSION)).toBe(SESSION_V1);
+    expect(await store.entries()).toEqual([
+      expect.objectContaining({ path: SESSION, base_format: null }),
+    ]);
+    store.close();
+  });
+
+  it('upgrades once: reopening changes nothing', async () => {
+    const name = await format1Database(ONE_SESSION);
+    const c = clock();
+    const first = await IndexedDbStore.open(name, { now: c.now });
+    const entries = await first.entries();
+    first.close();
+    c.advance(60_000);
+    const again = await IndexedDbStore.open(name, { now: c.now });
+    expect(await again.entries()).toEqual(entries);
+    again.close();
   });
 
   it('reopens a connection the browser closed, for reads and for writes', async () => {

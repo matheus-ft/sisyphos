@@ -16,6 +16,7 @@ import type {
   OneRmEntry,
   PerformedSet,
   PrescribedSet,
+  ProgramLabel,
   Session,
   TableRow,
   Template,
@@ -26,7 +27,9 @@ import {
   SHIPPED_EXERCISE_COLUMNS,
   TABLES,
   exerciseRowHash,
+  isMigrated,
   lineRow,
+  migrateFile,
   parseConflict,
   parseFormatMarker,
   parseSession,
@@ -45,7 +48,15 @@ import {
   type TableSchema,
 } from '../src/storage/formats';
 import { sha1Hex } from '../src/storage/hash';
-import { sessionPath, templatePath, TABLE_KINDS, type TableKind } from '../src/storage/paths';
+import {
+  FORMAT_PATH,
+  FORMAT_VERSION,
+  sessionPath,
+  templatePath,
+  TABLE_KINDS,
+  type TableKind,
+} from '../src/storage/paths';
+import { conflictV1, sessionV1, templateV1 } from './format1';
 
 // --- generating values -------------------------------------------------------------
 
@@ -141,6 +152,10 @@ class Gen {
   interval(): Interval {
     return [this.maybe(() => this.number()), this.maybe(() => this.number())];
   }
+  /** A target rest: whole seconds above zero, or null. */
+  rest(): number | null {
+    return this.maybe(() => this.pick([1, 15, 90, 150, 180, 3600]));
+  }
 }
 
 function weightPrescription(g: Gen): WeightPrescription {
@@ -205,9 +220,20 @@ function instance(g: Gen): ExerciseInstance {
   return {
     id: g.string(),
     exercise_id: g.string(),
+    rest_s: g.rest(),
     prescribed: g.list(() => ({ id: g.string(), ...prescription(g) }), 3),
     performed: g.list(() => performed(g), 3),
     notes: g.maybe(() => g.string()),
+  };
+}
+
+function label(g: Gen): ProgramLabel {
+  return {
+    name: g.maybe(() => g.string()),
+    block: g.maybe(() => g.number()),
+    week: g.maybe(() => g.number()),
+    day: g.maybe(() => g.number()),
+    weekday: g.maybe(() => g.string()),
   };
 }
 
@@ -219,13 +245,7 @@ function session(g: Gen): Session {
     tz: g.pick(['Europe/Lisbon', 'America/Sao_Paulo', g.string()]),
     time_precision: g.pick(['instant', 'date_only'] as const),
     ended_at: g.maybe(() => g.instant()),
-    label: {
-      name: g.maybe(() => g.string()),
-      block: g.maybe(() => g.number()),
-      week: g.maybe(() => g.number()),
-      day: g.maybe(() => g.number()),
-      weekday: g.maybe(() => g.string()),
-    },
+    label: label(g),
     bodyweight_kg: g.maybe(() => g.number()),
     notes: g.maybe(() => g.string()),
     exercises: g.list(() => instance(g), 3),
@@ -240,8 +260,13 @@ function template(g: Gen): Template {
     id: `${g.pick(['squat-day-a', 'bench', 'template'])}-7xq2`,
     name: g.string(),
     intention: g.maybe(() => g.string()),
+    label: label(g),
     exercises: g.list(
-      () => ({ exercise_id: g.string(), prescribed: g.list(() => prescription(g), 3) }),
+      () => ({
+        exercise_id: g.string(),
+        rest_s: g.rest(),
+        prescribed: g.list(() => prescription(g), 3),
+      }),
       3,
     ),
     created_at: g.instant(),
@@ -923,6 +948,18 @@ describe('sessions', () => {
     ]);
   });
 
+  it('write each exercise’s keys in a fixed order, its target rest after what it is', () => {
+    const s = { ...session(new Gen(prng(17))), exercises: [instance(new Gen(prng(18)))] };
+    expect(Object.keys(JSON.parse(serializeSession(s)).exercises[0])).toEqual([
+      'id',
+      'exercise_id',
+      'rest_s',
+      'prescribed',
+      'performed',
+      'notes',
+    ]);
+  });
+
   it('write nothing the type does not have', () => {
     const s = session(new Gen(prng(14)));
     const text = serializeSession({ ...s, extra: 1 } as Session);
@@ -936,6 +973,16 @@ describe('sessions', () => {
     expect(() => serializeSession({ ...s, bodyweight_kg: Infinity })).not.toThrow(FormatError);
   });
 
+  it.each([0, -15, 90.5, NaN])(
+    'refuse to write a rest of %s s, which no device could read',
+    (rest) => {
+      const s = { ...session(new Gen(prng(19))), exercises: [instance(new Gen(prng(20)))] };
+      s.exercises[0].rest_s = rest;
+      expect(() => serializeSession(s)).toThrow(/rest/);
+      expect(() => serializeSession(s)).not.toThrow(FormatError);
+    },
+  );
+
   it('write every kind of load and prescription', () => {
     const s: Session = {
       ...session(new Gen(prng(16))),
@@ -943,6 +990,7 @@ describe('sessions', () => {
         {
           id: 'i',
           exercise_id: 'bench',
+          rest_s: 180,
           prescribed: [
             {
               id: 'p',
@@ -1000,6 +1048,7 @@ describe('reading a session fails with FormatError', () => {
         {
           id: 'i',
           exercise_id: 'bench',
+          rest_s: 180,
           prescribed: [
             {
               id: 'p',
@@ -1085,6 +1134,16 @@ describe('reading a session fails with FormatError', () => {
       edit(withSet, (s) => (s.exercises[0].prescribed[0].is_warmup = 'false')),
       /is_warmup: expected a boolean/,
     ],
+    [
+      'an exercise without its target rest, as format 1 wrote it',
+      edit(withSet, (s) => delete s.exercises[0].rest_s),
+      /session.exercises\[0\].rest_s: missing/,
+    ],
+    ...[0, -90, 90.5, '90', true].map((rest): [string, string, RegExp] => [
+      `a rest of ${String(rest)}`,
+      edit(withSet, (s) => (s.exercises[0].rest_s = rest)),
+      /session.exercises\[0\].rest_s: expected whole seconds above zero/,
+    ]),
   ];
   it.each(cases)('%s', (_name, text, message) => {
     expect(() => parseSession(text)).toThrow(FormatError);
@@ -1109,18 +1168,24 @@ describe('templates', () => {
     }
   });
 
-  it('write prescribed sets without an id', () => {
+  it('write keys in a fixed order, and prescribed sets without an id', () => {
     const t = template(new Gen(prng(32)));
-    t.exercises = [{ exercise_id: 'bench', prescribed: [prescription(new Gen(prng(33)))] }];
+    t.exercises = [
+      { exercise_id: 'bench', rest_s: 150, prescribed: [prescription(new Gen(prng(33)))] },
+    ];
     const read = JSON.parse(serializeTemplate(t));
     expect(Object.keys(read)).toEqual([
       'id',
       'name',
       'intention',
+      'label',
       'exercises',
       'created_at',
       'updated_at',
     ]);
+    expect(Object.keys(read.label)).toEqual(['name', 'block', 'week', 'day', 'weekday']);
+    expect(Object.keys(read.exercises[0])).toEqual(['exercise_id', 'rest_s', 'prescribed']);
+    expect(read.exercises[0].rest_s).toBe(150);
     expect(Object.keys(read.exercises[0].prescribed[0])).toEqual([
       'reps',
       'rpe',
@@ -1135,6 +1200,34 @@ describe('templates', () => {
     const t = JSON.parse(serializeTemplate(template(new Gen(prng(34)))));
     delete t.name;
     expect(() => parseTemplate(JSON.stringify(t))).toThrow(/template.name: missing/);
+  });
+
+  it('fail to read a template as format 1 wrote it, or with a bad label or rest', () => {
+    const valid = JSON.parse(
+      serializeTemplate({
+        ...template(new Gen(prng(35))),
+        exercises: [{ exercise_id: 'bench', rest_s: null, prescribed: [] }],
+      }),
+    );
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const edit = (change: (t: any) => void): string => {
+      const copy = structuredClone(valid);
+      change(copy);
+      return JSON.stringify(copy);
+    };
+    const bad: Array<[string, RegExp]> = [
+      [edit((t) => delete t.label), /template.label: missing/],
+      [edit((t) => (t.label = null)), /template.label: expected an object/],
+      [edit((t) => (t.label.week = '3')), /template.label.week: expected a number/],
+      [edit((t) => delete t.label.weekday), /template.label.weekday: missing/],
+      [edit((t) => delete t.exercises[0].rest_s), /template.exercises\[0\].rest_s: missing/],
+      [edit((t) => (t.exercises[0].rest_s = 0)), /rest_s: expected whole seconds above zero/],
+      [edit((t) => (t.exercises[0].rest_s = 89.5)), /rest_s: expected whole seconds above zero/],
+    ];
+    for (const [text, message] of bad) {
+      expect(() => parseTemplate(text)).toThrow(FormatError);
+      expect(() => parseTemplate(text)).toThrow(message);
+    }
   });
 });
 
@@ -1342,7 +1435,8 @@ describe('conflict records', () => {
 });
 
 describe('the format marker', () => {
-  it('is { "format": 1 }', () => {
+  it('is { "format": n }', () => {
+    expect(serializeFormatMarker({ format: 2 })).toBe('{\n  "format": 2\n}\n');
     expect(serializeFormatMarker({ format: 1 })).toBe('{\n  "format": 1\n}\n');
     expect(parseFormatMarker('{\n  "format": 1\n}\n')).toEqual({ format: 1 });
     expect(parseFormatMarker('{"format":2,"note":"x"}')).toEqual({ format: 2 });
@@ -1410,5 +1504,97 @@ describe('awkward strings survive every file', () => {
       based_on: null,
     });
     expect(lineRow(TABLES.additions, rowLine(TABLES.additions, row))).toEqual(viaUtf8(row));
+  });
+});
+
+describe('a file in format 1', () => {
+  const g = new Gen(prng(71));
+  const NO_LABEL = { name: null, block: null, week: null, day: null, weekday: null };
+  /** A record as format 1 could hold it: no label on a template, no rest anywhere. */
+  const restless = <T extends { exercises: Array<{ rest_s: number | null }> }>(record: T): T => ({
+    ...record,
+    exercises: record.exercises.map((e) => ({ ...e, rest_s: null })),
+  });
+  const plainSession = () => restless(session(g));
+  const plainTemplate = () => restless({ ...template(g), label: NO_LABEL });
+
+  it('is what the app writes now, with every rest null and a template in no program', () => {
+    expect(FORMAT_VERSION).toBe(2);
+    for (let run = 0; run < 100; run++) {
+      const s = plainSession();
+      expect(migrateFile(sessionPath(s.id), sessionV1(s), 1)).toBe(serializeSession(s));
+      const t = plainTemplate();
+      expect(migrateFile(templatePath(t.id), templateV1(t), 1)).toBe(serializeTemplate(t));
+    }
+  });
+
+  it('keeps every exercise and set, adding only the rest', () => {
+    const s = { ...session(g), exercises: [instance(g), instance(g)] };
+    const migrated = parseSession(migrateFile(sessionPath(s.id), sessionV1(s), 1));
+    expect(migrated).toEqual(restless(s));
+    expect(migrated.exercises.map((e) => e.rest_s)).toEqual([null, null]);
+  });
+
+  it('migrates the saved version inside a conflict record, whatever it is', () => {
+    const s = plainSession();
+    const t = plainTemplate();
+    const common = { id: '2026-09-27-7xq2', found_at: '2026-09-27T10:00:00.000Z', device_id: 'x' };
+    const conflicts: ConflictRecord[] = [
+      { ...common, path: sessionPath(s.id), key: null, version: s },
+      { ...common, path: templatePath(t.id), key: null, version: t },
+      { ...common, path: templatePath(t.id), key: null, version: null },
+      {
+        ...common,
+        path: TABLES.bodyweight.path,
+        key: { date: '2026-09-14' },
+        version: { date: '2026-09-14', weight_kg: '82', source: 'manual' },
+      },
+    ];
+    for (const c of conflicts) {
+      expect(migrateFile(`conflicts/${c.id}.json`, conflictV1(c), 1)).toBe(serializeConflict(c));
+    }
+  });
+
+  it('is written in the app’s form even when it was edited by hand', () => {
+    const t = plainTemplate();
+    const byHand = `${JSON.stringify(JSON.parse(templateV1(t)))}\n`;
+    expect(migrateFile(templatePath(t.id), byHand, 1)).toBe(serializeTemplate(t));
+  });
+
+  it('changes nothing in a file already in format 2, so migrating twice is migrating once', () => {
+    for (let run = 0; run < 50; run++) {
+      const s = session(g);
+      const t = template(g);
+      expect(migrateFile(sessionPath(s.id), serializeSession(s), 1)).toBe(serializeSession(s));
+      expect(migrateFile(templatePath(t.id), serializeTemplate(t), 1)).toBe(serializeTemplate(t));
+    }
+  });
+
+  it('that does not parse is a FormatError, which a migration leaves as it is', () => {
+    const s = plainSession();
+    const value = JSON.parse(sessionV1(s));
+    delete value.tz;
+    expect(() => migrateFile(sessionPath(s.id), JSON.stringify(value), 1)).toThrow(FormatError);
+    expect(() => migrateFile(sessionPath(s.id), 'not json', 1)).toThrow(FormatError);
+  });
+
+  it('is returned as it is when no migration changes its kind of file', () => {
+    const table = 'date,weight_kg,source\n2026-09-14,82,manual\n';
+    expect(migrateFile(TABLES.bodyweight.path, table, 1)).toBe(table);
+    expect(migrateFile(FORMAT_PATH, '{"format": 1}', 1)).toBe('{"format": 1}');
+    expect(migrateFile('notes.md', 'anything', 1)).toBe('anything');
+    expect(isMigrated(sessionPath('2026-09-14-k3f9'))).toBe(true);
+    expect(isMigrated(templatePath('bench-k3f9'))).toBe(true);
+    expect(isMigrated('conflicts/2026-09-27-7xq2.json')).toBe(true);
+    expect(isMigrated(TABLES.bodyweight.path)).toBe(false);
+    expect(isMigrated(FORMAT_PATH)).toBe(false);
+    expect(isMigrated('notes.md')).toBe(false);
+  });
+
+  it('cannot come from a format there never was', () => {
+    const s = plainSession();
+    for (const from of [0, 1.5, FORMAT_VERSION + 1]) {
+      expect(() => migrateFile(sessionPath(s.id), sessionV1(s), from)).toThrow(/no log format/);
+    }
   });
 });
