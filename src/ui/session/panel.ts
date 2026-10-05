@@ -1,5 +1,5 @@
 import { formatInterval, type ExerciseInstance, type Id, type PerformedSet } from '../../model';
-import { targetRpeOf } from '../suggest';
+import { targetRpeOf, type Suggestion } from '../suggest';
 
 /**
  * What the entry panel and a set row say about a set, apart from its numbers:
@@ -52,4 +52,14 @@ export const RPE_COURSES: readonly (readonly number[])[] = [
 /** "± 2.5 kg", or "± 5 s" for time: the size of one tap of − or +, said under the chips. */
 export function stepText(measure: 'weight' | 'time', step: number, unit: string): string {
   return measure === 'time' ? '± 5 or 15 s' : `± ${step} ${unit}`;
+}
+
+/**
+ * "92.5 kg · +2.5: last @7.5 for a target of 8": the panel's suggestion with
+ * the weight said, since the steppers may hold the set's target instead.
+ */
+export function suggestionLine(
+  s: Pick<Suggestion, 'load' | 'unit' | 'reason'> | null,
+): string | null {
+  return s ? `${s.load} ${s.unit} · ${s.reason}` : null;
 }

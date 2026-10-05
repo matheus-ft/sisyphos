@@ -30,7 +30,10 @@
     target: string | null;
     /** The target RPE, ringed among the chips (a mark, not a selection). Null without one. */
     targetRpe: number | null;
-    /** The suggested weight and its reason: "+2.5: last @7.5 for a target of 8". Null without one. */
+    /**
+     * The suggested weight and its reason, "92.5 kg · +2.5: last @7.5 for a target of 8":
+     * the weight said, since the steppers may hold a target instead. Null without one.
+     */
     suggestion: string | null;
     /** Weighted work has load and reps; timed work a time only. */
     measure: 'weight' | 'time';

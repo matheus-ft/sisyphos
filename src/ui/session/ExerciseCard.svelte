@@ -42,6 +42,7 @@
     type CardMode,
   } from './cards';
   import { applySuggestion, sessionsBefore, suggestionShows } from './flow';
+  import { setLabel } from './panel';
   import { addWarmups, warmupPlan } from './warmups';
 
   /**
@@ -354,7 +355,7 @@
         {@const skipped = set.state === 'skipped'}
         {@const isActive = set.id === active && set.state === 'pending'}
         {@const isRecord = records.has(set.id) && set.state === 'done' && !set.is_warmup}
-        {@const label = `${set.is_warmup ? 'Warm-up' : 'Set'} ${numbers.get(set.id)}`}
+        {@const label = setLabel(instance, set)}
         <div
           class="row"
           class:timed

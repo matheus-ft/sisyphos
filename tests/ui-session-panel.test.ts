@@ -6,6 +6,7 @@ import {
   RPE_COURSES,
   setLabel,
   stepText,
+  suggestionLine,
   targetText,
 } from '../src/ui/session/panel';
 
@@ -106,5 +107,17 @@ describe('the chips', () => {
   it('say the size of a step', () => {
     expect(stepText('weight', 2.5, 'kg')).toBe('± 2.5 kg');
     expect(stepText('time', 5, 's')).toBe('± 5 or 15 s');
+  });
+});
+
+describe('the suggestion line', () => {
+  it('says the weight before its reason, since the steppers may hold a target', () => {
+    expect(
+      suggestionLine({ load: 142.5, unit: 'kg', reason: 'same: last @9 for a target of 8' }),
+    ).toBe('142.5 kg · same: last @9 for a target of 8');
+  });
+
+  it('is nothing without a suggestion', () => {
+    expect(suggestionLine(null)).toBeNull();
   });
 });
