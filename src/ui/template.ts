@@ -49,6 +49,11 @@ export function rename(template: Template, name: string): Template {
   return { ...template, name };
 }
 
+/** What the template is for, in a line; blank is none, since an empty string is not a value the format keeps. */
+export function setIntention(template: Template, text: string): Template {
+  return { ...template, intention: text.trim() || null };
+}
+
 /** Some of the program label's fields; those not given are kept. */
 export function setLabel(template: Template, label: Partial<ProgramLabel>): Template {
   return { ...template, label: { ...template.label, ...label } };
@@ -108,6 +113,13 @@ export function addTarget(template: Template, index: number, measure: 'weight' |
 
 export function removeTarget(template: Template, index: number, target: number): Template {
   return updateTargets(template, index, (targets) => targets.filter((_, i) => i !== target));
+}
+
+/** A copy right after the target, so a ramp is built by copying and nudging. */
+export function duplicateTarget(template: Template, index: number, target: number): Template {
+  return updateTargets(template, index, (targets) =>
+    targets.flatMap((t, i) => (i === target ? [t, structuredClone(t)] : [t])),
+  );
 }
 
 export type LoadMode = WeightPrescription['mode'];

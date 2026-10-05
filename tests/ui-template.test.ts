@@ -7,6 +7,7 @@ import { parseTemplate, serializeTemplate } from '../src/storage/formats';
 import {
   addTarget,
   addTemplateExercise,
+  duplicateTarget,
   editTarget,
   exerciseLines,
   formatClock,
@@ -23,6 +24,7 @@ import {
   removeTarget,
   removeTemplateExercise,
   rename,
+  setIntention,
   setLabel,
   setsSummary,
   setTemplateRest,
@@ -136,6 +138,12 @@ describe('where a template sits in a program, and how long it rests', () => {
     expect(setLabel(t, { week: null }).label.week).toBeNull();
   });
 
+  it('keeps a line of intention, and none when it is cleared', () => {
+    const t = setIntention(blank(), '  Heavy singles, then back-off sets  ');
+    expect(t.intention).toBe('Heavy singles, then back-off sets');
+    expect(setIntention(t, '   ').intention).toBeNull();
+  });
+
   it('sets one exercise’s rest, in whole seconds', () => {
     let t = addTemplateExercise(addTemplateExercise(blank(), squat), plank);
     t = setTemplateRest(t, 0, 180.2);
@@ -207,6 +215,20 @@ describe('reps, RPE and loads as ranges', () => {
     });
     t = editTarget(addTemplateExercise(blank(), plank), 0, 0, { amount: [45, 60] }, 'time');
     expect(target(t).load).toEqual({ kind: 'time', seconds: [45, 60] });
+  });
+});
+
+describe('duplicating a target', () => {
+  it('puts a copy right after it, leaving the others in order', () => {
+    let t = addTemplateExercise(blank(), squat);
+    t = editTarget(t, 0, 0, { amount: 100 }, 'weight');
+    t = addTarget(t, 0, 'weight');
+    t = editTarget(t, 0, 1, { amount: 140 }, 'weight');
+    t = duplicateTarget(t, 0, 0);
+    expect(t.exercises[0].prescribed.map((p) => targetAmount(p))).toEqual([100, 100, 140]);
+    // The copy is its own: editing one leaves the other.
+    t = editTarget(t, 0, 1, { amount: 105 }, 'weight');
+    expect(t.exercises[0].prescribed.map((p) => targetAmount(p))).toEqual([100, 105, 140]);
   });
 });
 
