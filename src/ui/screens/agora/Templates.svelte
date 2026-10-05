@@ -4,6 +4,7 @@
   import Icon from '../../kit/Icon.svelte';
   import ScreenHeader from '../../kit/ScreenHeader.svelte';
   import { routeHash } from '../../route';
+  import { templateLine } from '../../train';
 
   /** Every template, to open and edit, and a new one. */
 </script>
@@ -23,10 +24,7 @@
         <button onclick={() => app.openTemplate(template)}>
           <span class="grow">
             <span class="t">{template.name}</span>
-            <span class="s"
-              >{template.exercises.length}
-              {template.exercises.length === 1 ? 'exercise' : 'exercises'}</span
-            >
+            <span class="s">{templateLine(template)}</span>
           </span>
           <Icon name="chev" size="sm" />
         </button>

@@ -1,20 +1,23 @@
 <script lang="ts">
   import type { Session } from '../../model';
   import { app } from '../app.svelte';
-  import {
-    formatMinutes,
-    longDate,
-    programLabel,
-    sessionMinutes,
-    weekOf,
-    weekday,
-    workingSets,
-  } from '../format';
+  import { longDate, programLabel } from '../format';
   import Boulder from '../kit/Boulder.svelte';
   import Button from '../kit/Button.svelte';
   import Icon from '../kit/Icon.svelte';
   import ScreenHeader from '../kit/ScreenHeader.svelte';
   import { localDate } from '../session';
+  import {
+    firstSessionOfWeek,
+    lastFinished,
+    lastSessionLine,
+    plansOf,
+    sessionName,
+    templateLine,
+  } from '../train';
+  import DatePick from '../train/DatePick.svelte';
+  import PlanCard from '../train/PlanCard.svelte';
+  import RunningCard from '../train/RunningCard.svelte';
 
   /**
    * Askēsis, the Train tab: what to do today. The session running, or today's
@@ -24,121 +27,103 @@
    */
 
   const today = localDate(new Date());
-  const names = $derived(new Map(app.library.map((e) => [e.id, e.name])));
-  const planned = $derived(
-    app.current
-      .filter((s) => s.started_at === null && s.ended_at === null)
-      .sort((a, b) => a.date.localeCompare(b.date)),
-  );
-  const todays = $derived(planned.find((s) => s.date === today) ?? null);
-  const later = $derived(planned.filter((s) => s !== todays));
-  const last = $derived(
-    app.current
-      .filter((s) => s.ended_at !== null)
-      .sort((a, b) => (a.started_at ?? '').localeCompare(b.started_at ?? ''))
-      .at(-1) ?? null,
-  );
-  /** The myth's one line here, on the first session of a week only. */
-  const firstOfWeek = $derived(
-    !app.current.some((s) => s.started_at !== null && weekOf(s.date) === weekOf(today)),
-  );
+  const plans = $derived(plansOf(app.current, today));
+  const last = $derived(lastFinished(app.current));
+  const running = $derived(app.running);
+  const wit = $derived(firstSessionOfWeek(app.current, today));
 
-  function summary(session: Session): string {
-    const list = session.exercises.map((e) => names.get(e.exercise_id) ?? e.exercise_id);
-    return list.length ? list.join(' · ') : 'No exercises yet';
-  }
-
-  function lastLine(session: Session): string {
-    const minutes = sessionMinutes(session);
-    const sets = workingSets(session);
-    return [
-      `Last session ${weekday(session.date)}`,
-      minutes !== null ? formatMinutes(minutes) : null,
-      `${sets} ${sets === 1 ? 'set' : 'sets'}`,
-    ]
-      .filter(Boolean)
-      .join(' · ');
-  }
-
-  function past(value: string): void {
-    if (/^\d{4}-\d{2}-\d{2}$/.test(value)) void app.create(null, { date: value });
-  }
+  /** A plan's second line: its program label, else what it is called. */
+  const subline = (s: Session): string => programLabel(s.label) ?? sessionName(s, app.library);
 </script>
 
-<ScreenHeader title={longDate(today)} meta={last ? lastLine(last) : undefined} />
-
-{#if app.running}
-  {@const running = app.running}
-  <p class="sec caps">In progress</p>
-  <article class="card card-current plan">
-    {#if programLabel(running.label)}<p class="label caps">{programLabel(running.label)}</p>{/if}
-    <h2 class="name">{longDate(running.date)}</h2>
-    <p class="meta">{summary(running)}</p>
-    <Button variant="primary" bench full onclick={() => app.openSession(running)}
-      >Back to the session</Button
-    >
-  </article>
-{/if}
-
-{#if todays}
-  <p class="sec caps">Planned</p>
-  <article class="card plan">
-    {#if programLabel(todays.label)}<p class="label caps">{programLabel(todays.label)}</p>{/if}
-    <button class="name" onclick={() => app.openSession(todays)}>
-      <h2>{todays.label.name ?? 'Today'}</h2>
-    </button>
-    <p class="meta">{summary(todays)}</p>
-    <Button
-      variant={app.running ? 'quiet' : 'primary'}
-      bench
-      full
-      disabled={app.running !== null}
-      onclick={() => app.startPlanned(todays)}>Start</Button
-    >
-  </article>
-{/if}
-
-{#if later.length}
-  <p class="sec caps">{todays ? 'Later' : 'Planned'}</p>
+{#snippet planRows(sessions: Session[])}
   <ul class="group">
-    {#each later as session (session.id)}
+    {#each sessions as session (session.id)}
       <li>
         <button class="grow open" onclick={() => app.openSession(session)}>
           <span class="t">{longDate(session.date)}</span>
-          <span class="s">{programLabel(session.label) ?? summary(session)}</span>
+          <span class="s">{subline(session)}</span>
         </button>
-        <Button
-          variant="quiet"
-          disabled={app.running !== null}
-          onclick={() => app.startPlanned(session)}>Start</Button
-        >
+        {#if !running}
+          <Button
+            variant="quiet"
+            aria-label="Start {longDate(session.date)}"
+            onclick={() => app.startPlanned(session)}>Start</Button
+          >
+        {/if}
       </li>
     {/each}
   </ul>
+{/snippet}
+
+<ScreenHeader title={longDate(today)} meta={last ? lastSessionLine(last, today) : undefined} />
+
+{#if running}
+  <p class="sec caps">In progress</p>
+  <RunningCard session={running} />
+{/if}
+
+{#if plans.today.length}
+  <p class="sec caps">Planned</p>
+  <div class="cards">
+    {#each plans.today as session, i (session.id)}
+      <PlanCard {session} primary={i === 0 && !running} />
+    {/each}
+  </div>
+{/if}
+
+{#if plans.overdue.length}
+  <p class="sec caps">Overdue <span class="meta">not started</span></p>
+  {@render planRows(plans.overdue)}
+{/if}
+
+{#if plans.thisWeek.length}
+  <p class="sec caps">Later this week</p>
+  {@render planRows(plans.thisWeek)}
+{/if}
+
+{#if plans.ahead.length}
+  <p class="sec caps">Coming up</p>
+  {@render planRows(plans.ahead)}
 {/if}
 
 <div class="starts">
-  <Button
-    variant={app.running || todays ? 'quiet' : 'primary'}
-    bench
-    full
-    disabled={app.running !== null}
-    onclick={() => app.create(null)}>Start an empty session</Button
-  >
-  <div class="others">
-    <Button variant="link" onclick={() => app.create(null, { planned: true })}
-      >Plan one ahead</Button
+  {#if !running}
+    <Button
+      variant={plans.today.length ? 'quiet' : 'primary'}
+      bench
+      full
+      onclick={() => app.create(null)}>Start an empty session</Button
     >
-    <label class="past">
-      <span>Log a past session on</span>
-      <input
-        type="date"
-        aria-label="Past session date"
+  {/if}
+  <ul class="group">
+    <li class="row-link">
+      <DatePick
+        label="Plan a session for"
+        min={today}
+        onpick={(date) => app.create(null, { planned: true, date })}
+      >
+        <span class="grow">
+          <span class="t">Plan one ahead</span>
+          <span class="s">Fill it in now, start it on the day</span>
+        </span>
+        <Icon name="calendar" />
+      </DatePick>
+    </li>
+    <li class="row-link">
+      <DatePick
+        label="Log a session from"
         max={today}
-        onchange={(e) => past(e.currentTarget.value)}
-      />
-    </label>
-  </div>
+        onpick={(date) => app.create(null, { date })}
+      >
+        <span class="grow">
+          <span class="t">Log a past session</span>
+          <span class="s">Pick the day it happened</span>
+        </span>
+        <Icon name="calendar" />
+      </DatePick>
+    </li>
+  </ul>
 </div>
 
 <p class="sec caps">
@@ -149,7 +134,10 @@
   {#each app.templates as template (template.id)}
     <li class="row-link">
       <button onclick={() => app.openTemplate(template)}>
-        <span class="grow"><span class="t">{template.name}</span></span>
+        <span class="grow">
+          <span class="t">{template.name}</span>
+          <span class="s">{templateLine(template)}</span>
+        </span>
         <Icon name="chev" size="sm" />
       </button>
     </li>
@@ -163,64 +151,36 @@
 
 <div class="frieze">
   <Boulder size="frieze" progress={0} label={null} />
-  {#if firstOfWeek}<p class="meta caption">The boulder is at the bottom again.</p>{/if}
+  {#if wit && !running}<p class="meta caption">The boulder is at the bottom again.</p>{/if}
 </div>
 
 <style>
-  .plan {
-    margin: 0 12px;
+  .cards {
     display: grid;
-    gap: var(--space-1);
-  }
-
-  .label {
-    color: var(--accent);
-  }
-
-  .name {
-    min-height: 0;
-    text-align: left;
-  }
-
-  .name h2,
-  h2.name {
-    font: var(--fw-strong) var(--fs-lead) / var(--lh-snug) var(--font-text);
-    letter-spacing: 0;
-  }
-
-  .plan :global(.button) {
-    margin-top: var(--space-3);
+    gap: var(--space-3);
   }
 
   .open {
     min-width: 0;
+    min-height: 44px;
     text-align: left;
+  }
+
+  /* The count after a section label is a quiet aside, not another inscription. */
+  .sec .meta {
+    font-family: var(--font-text);
+    letter-spacing: 0;
+    text-transform: none;
   }
 
   .starts {
     display: grid;
-    gap: var(--space-2);
+    gap: var(--space-3);
     margin: var(--space-5) 12px 0;
   }
 
-  .others {
-    display: flex;
-    flex-wrap: wrap;
-    align-items: center;
-    justify-content: space-between;
-    gap: 0 var(--space-3);
-  }
-
-  .past {
-    display: flex;
-    align-items: center;
-    gap: var(--space-2);
-    font-size: var(--fs-meta);
-    color: var(--ink-2);
-  }
-
-  .past input {
-    width: 9.5rem;
+  .starts .group {
+    margin: 0;
   }
 
   .new {

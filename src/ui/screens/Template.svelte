@@ -2,24 +2,31 @@
   import type { Template } from '../../model';
   import AddExercise from '../AddExercise.svelte';
   import { app } from '../app.svelte';
+  import { programLabel } from '../format';
   import Button from '../kit/Button.svelte';
   import Icon from '../kit/Icon.svelte';
   import { confirmDialog } from '../overlays.svelte';
-  import { formatSeconds, measureOf, parseNumber, parseRpe, parseSeconds } from '../session';
+  import { measureOf } from '../session';
   import {
     addTarget,
     addTemplateExercise,
+    duplicateTarget,
     editTarget,
     moveTemplateExercise,
     removeTarget,
     removeTemplateExercise,
     rename,
-    targetAmount,
-    type Target,
+    setIntention,
+    setLabel,
+    setsSummary,
+    setTemplateRest,
     type TargetEdit,
   } from '../template';
+  import LabelEditor from '../train/LabelEditor.svelte';
+  import RestStepper from '../train/RestStepper.svelte';
+  import TargetEditor from '../train/TargetEditor.svelte';
 
-  /** A template being edited: its name, its exercises and their targets. Saved as it changes. */
+  /** A template being edited, saved as it changes: its name, intention, program label, exercises and their targets. */
   interface Props {
     template: Template;
   }
@@ -32,34 +39,14 @@
     return exercise ? measureOf(exercise) : 'weight';
   };
 
-  function edit(index: number, target: number, change: TargetEdit): void {
+  const edit = (index: number, target: number, change: TargetEdit) =>
     onchange(editTarget(template, index, target, change, measureAt(index)));
-  }
 
-  /** A field that does not hold a valid number is put back as it was. */
-  function field(
-    input: HTMLInputElement,
-    parse: (text: string) => number | null | undefined,
-    apply: (value: number | null) => TargetEdit,
-    index: number,
-    target: number,
-    shown: string,
-  ): void {
-    const value = parse(input.value);
-    if (value === undefined) input.value = shown;
-    else edit(index, target, apply(value));
-  }
-
-  function shownAmount(target: Target, timed: boolean): string {
-    const amount = targetAmount(target);
-    if (amount === null) return '';
-    return timed ? formatSeconds(amount).replace(' s', '') : String(amount);
-  }
-
-  const low = (interval: [number | null, number | null] | null) => String(interval?.[0] ?? '');
-
-  function renameTo(text: string): void {
-    if (text.trim()) onchange(rename(template, text.trim()));
+  /** A name cannot be empty: a blank field goes back to the name it had. */
+  function renameTo(input: HTMLInputElement): void {
+    const text = input.value.trim();
+    if (text) onchange(rename(template, text));
+    else input.value = template.name;
   }
 
   async function removeExercise(index: number): Promise<void> {
@@ -83,27 +70,50 @@
     class="name"
     aria-label="Template name"
     value={template.name}
-    onchange={(e) => renameTo(e.currentTarget.value)}
+    onchange={(e) => renameTo(e.currentTarget)}
   />
 </header>
+
+<div class="intention">
+  <textarea
+    aria-label="Intention"
+    rows="1"
+    placeholder="What this session is for"
+    value={template.intention ?? ''}
+    onchange={(e) => onchange(setIntention(template, e.currentTarget.value))}></textarea>
+</div>
+
+<p class="sec caps">Program label</p>
+<section class="card" aria-label="Program label">
+  <LabelEditor label={template.label} onchange={(change) => onchange(setLabel(template, change))} />
+</section>
+
+<p class="sec caps">
+  Exercises
+  {#if template.exercises.length}<span class="meta">{template.exercises.length}</span>{/if}
+</p>
 
 {#each template.exercises as entry, index (index)}
   {@const exercise = byId.get(entry.exercise_id)}
   {@const timed = measureAt(index) === 'time'}
-  <section class="card">
-    <header class="ex">
-      <h3>{exercise?.name ?? entry.exercise_id}</h3>
+  {@const summary = setsSummary(entry.prescribed)}
+  <section class="card ex" aria-label={exercise?.name ?? entry.exercise_id}>
+    <header class="ex-head">
+      <div class="titles">
+        <h3>{exercise?.name ?? entry.exercise_id}</h3>
+        {#if summary}<p class="meta">{summary}</p>{/if}
+      </div>
       <div class="order">
         <button
           class="icon-btn"
-          aria-label="Move up"
+          aria-label="Move {exercise?.name ?? 'exercise'} up"
           disabled={index === 0}
           onclick={() => onchange(moveTemplateExercise(template, index, -1))}
           ><Icon name="up" size="sm" /></button
         >
         <button
           class="icon-btn down"
-          aria-label="Move down"
+          aria-label="Move {exercise?.name ?? 'exercise'} down"
           disabled={index === template.exercises.length - 1}
           onclick={() => onchange(moveTemplateExercise(template, index, 1))}
           ><Icon name="up" size="sm" /></button
@@ -115,52 +125,31 @@
         >
       </div>
     </header>
-    {#each entry.prescribed as target, t (t)}
-      <div class="row" class:timed>
-        <button
-          class="n"
-          aria-label="Remove target {t + 1}"
-          onclick={() => onchange(removeTarget(template, index, t))}>{t + 1}</button
-        >
-        <input
-          inputmode={timed ? 'text' : 'decimal'}
-          aria-label={timed ? 'Time' : 'Load'}
-          placeholder={timed ? '0:00' : 'by feel'}
-          value={shownAmount(target, timed)}
-          onchange={(e) =>
-            field(
-              e.currentTarget,
-              timed ? parseSeconds : parseNumber,
-              (amount) => ({ amount }),
-              index,
-              t,
-              shownAmount(target, timed),
-            )}
+
+    <RestStepper
+      {exercise}
+      value={entry.rest_s}
+      onchange={(seconds) => onchange(setTemplateRest(template, index, seconds))}
+    />
+
+    <div class="targets">
+      {#each entry.prescribed as target, t (t)}
+        <TargetEditor
+          {target}
+          number={t + 1}
+          {exercise}
+          {timed}
+          onedit={(change) => edit(index, t, change)}
+          onduplicate={() => onchange(duplicateTarget(template, index, t))}
+          onremove={() => onchange(removeTarget(template, index, t))}
         />
-        {#if !timed}
-          <span class="unit">kg</span>
-          <span class="x">×</span>
-          <input
-            inputmode="numeric"
-            aria-label="Reps"
-            value={low(target.reps)}
-            onchange={(e) =>
-              field(e.currentTarget, parseNumber, (reps) => ({ reps }), index, t, low(target.reps))}
-          />
-        {/if}
-        <span class="x">@</span>
-        <input
-          inputmode="decimal"
-          aria-label="RPE"
-          value={low(target.rpe)}
-          onchange={(e) =>
-            field(e.currentTarget, parseRpe, (rpe) => ({ rpe }), index, t, low(target.rpe))}
-        />
-      </div>
-    {/each}
+      {/each}
+    </div>
     <Button
       variant="link"
-      onclick={() => onchange(addTarget(template, index, timed ? 'time' : 'weight'))}>+ Set</Button
+      caps
+      onclick={() => onchange(addTarget(template, index, timed ? 'time' : 'weight'))}
+      >+ Add set</Button
     >
   </section>
 {/each}
@@ -174,13 +163,16 @@
   />
 </div>
 
-<p class="group-foot">Tap a set's number to remove it. Changes are saved as you go.</p>
+<p class="group-foot">
+  Changes are saved as you go.{#if programLabel(template.label)}
+    A session started from this one carries its program label.{/if}
+</p>
 
 <div class="acts">
   <Button variant="primary" bench full onclick={() => app.create(template)}
     >Start a session from it</Button
   >
-  <Button variant="quiet" full onclick={() => app.create(template, { planned: true })}
+  <Button variant="quiet" bench full onclick={() => app.create(template, { planned: true })}
     >Plan one from it</Button
   >
   <Button variant="link" class="danger" onclick={app.deleteTemplate}>Delete template</Button>
@@ -191,7 +183,7 @@
     display: flex;
     align-items: center;
     gap: var(--space-1);
-    padding: var(--space-5) var(--gutter) var(--space-3) var(--space-1);
+    padding: var(--space-5) var(--gutter) var(--space-1) var(--space-1);
   }
 
   .name {
@@ -202,19 +194,46 @@
     letter-spacing: var(--ls-display);
   }
 
-  .card {
-    margin: 0 12px var(--space-2);
+  .intention {
+    padding: 0 var(--gutter);
   }
 
-  .ex {
+  /* Grows with what is written: an intention is a sentence, and a line cut off reads as lost. */
+  .intention textarea {
+    display: block;
+    width: 100%;
+    resize: none;
+    field-sizing: content;
+    font-family: var(--font-text);
+    font-style: italic;
+    color: var(--ink-2);
+  }
+
+  .card {
+    margin: 0 12px var(--space-3);
+  }
+
+  .sec .meta {
+    font-family: var(--font-text);
+    letter-spacing: 0;
+    text-transform: none;
+  }
+
+  .ex-head {
     display: flex;
-    align-items: center;
+    align-items: flex-start;
     justify-content: space-between;
     gap: var(--space-2);
   }
 
+  .titles {
+    min-width: 0;
+    padding-top: var(--space-2);
+  }
+
   .order {
     display: flex;
+    flex: none;
     margin-right: -10px;
     color: var(--ink-2);
   }
@@ -223,6 +242,7 @@
     color: inherit;
   }
 
+  /* Hidden, not removed, so the other two do not shift when a lift reaches an end. */
   .order .icon-btn:disabled {
     visibility: hidden;
   }
@@ -231,39 +251,9 @@
     transform: rotate(180deg);
   }
 
-  .row {
-    display: grid;
-    grid-template-columns: 30px minmax(0, 1fr) 30px 14px minmax(0, 1fr) 14px minmax(0, 1fr);
-    align-items: center;
-    gap: 4px;
-  }
-
-  .row.timed {
-    grid-template-columns: 30px minmax(0, 1fr) 14px minmax(0, 1fr);
-  }
-
-  .row input {
-    width: 100%;
-    min-width: 0;
-    font: var(--fw-medium) var(--fs-row) / 1 var(--font-num);
-    text-align: center;
-  }
-
-  .n {
-    font: var(--fw-strong) 0.9375rem / 1 var(--font-num);
-    color: var(--ink-2);
-  }
-
-  .x,
-  .unit {
-    text-align: center;
-    color: var(--muted);
-  }
-
-  .unit {
-    font: var(--fw-strong) var(--fs-label) / 1 var(--font-display);
-    letter-spacing: var(--ls-caps);
-    text-transform: uppercase;
+  .targets {
+    margin-top: var(--space-2);
+    border-top: var(--hairline) solid var(--line);
   }
 
   .add {
