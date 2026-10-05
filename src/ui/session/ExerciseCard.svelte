@@ -252,7 +252,7 @@
       {#if mode === 'done'}
         <span class="line figure">
           {#each summary.sets as s, i (i)}
-            {#if i > 0}<span class="sep">{' · '}</span>{/if}<span class:rec={s.record}
+            {#if i > 0}<span class="sep">&nbsp;·&nbsp;</span>{/if}<span class:rec={s.record}
               >{s.text}</span
             >
           {:else}

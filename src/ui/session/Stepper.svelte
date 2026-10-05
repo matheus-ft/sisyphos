@@ -69,6 +69,7 @@
       {inputmode}
       aria-label={label}
       style:width="{Math.max(value.length, 2) + 0.5}ch"
+      placeholder="0"
       bind:value
       onfocus={(e) => e.currentTarget.select()}
     />
@@ -133,6 +134,11 @@
     font-size: var(--fs-entry);
     line-height: var(--lh-tight);
     text-align: center;
+  }
+
+  .value input::placeholder {
+    color: var(--muted);
+    opacity: 1;
   }
 
   .value input:focus {

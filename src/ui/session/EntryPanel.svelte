@@ -153,7 +153,7 @@
       {/each}
     </div>
     {#if !ready}
-      <p class="meta need">Enter the load{measure === 'weight' ? ' and reps' : ''} to save.</p>
+      <p class="meta need">Enter the {measure === 'weight' ? 'load and reps' : 'time'} to save.</p>
     {/if}
   {/if}
 </Sheet>
