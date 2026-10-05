@@ -28,8 +28,9 @@
 <article class="card">
   <button class="open" onclick={() => app.openSession(session)}>
     {#if label}<span class="label caps"
-        >{#each label.split(' · ') as part, i (i)}{#if i > 0}&nbsp;·
-          {/if}<span class="part">{part}</span>{/each}</span
+        >{#each label.split(' · ') as part, i (i)}{#if i > 0}{'\u00a0· '}{/if}<span class="part"
+            >{part}</span
+          >{/each}</span
       >{/if}
     <span class="head">
       <h2>{sessionName(session, app.library)}</h2>

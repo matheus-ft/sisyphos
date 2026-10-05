@@ -30,8 +30,9 @@
 
 <article class="card card-current" aria-label="Session in progress">
   {#if label}<p class="label caps">
-      {#each label.split(' · ') as part, i (i)}{#if i > 0}&nbsp;·
-        {/if}<span class="part">{part}</span>{/each}
+      {#each label.split(' · ') as part, i (i)}{#if i > 0}{'\u00a0· '}{/if}<span class="part"
+          >{part}</span
+        >{/each}
     </p>{/if}
   <div class="body">
     <dl class="stats">
