@@ -71,10 +71,10 @@
     <li>
       <span class="n" aria-hidden="true">II</span>
       <span>
-        Create a fine-grained token for that repository only, with Contents: read and write. The
-        steps are in
-        <a href="https://github.com/matheus-ft/sisyphos/blob/master/docs/DATA.md" target="_blank"
-          >DATA.md</a
+        Create a fine-grained token for that repository only, with Contents: read and write.
+        <a
+          href="https://github.com/matheus-ft/sisyphos/blob/master/docs/DATA.md#setup-you-create-the-log-repo"
+          target="_blank">The steps, one by one</a
         >.
       </span>
     </li>

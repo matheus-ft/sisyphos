@@ -17,7 +17,15 @@ import {
   startClock,
   weekSummary,
 } from '../src/ui/history-view';
-import { bench, deadlift, library, sessionOf, squat, type SetSpec } from './analysis-fixtures';
+import {
+  bench,
+  byId,
+  deadlift,
+  library,
+  sessionOf,
+  squat,
+  type SetSpec,
+} from './analysis-fixtures';
 
 type Work = Array<[Exercise, SetSpec[]]>;
 const squatSet: Work = [[squat, [{ load: 140, reps: 5, rpe: 8 }]]];
@@ -92,6 +100,8 @@ describe('row and week lines', () => {
       exerciseId: squat.id,
     });
     expect(weekSummary(week, true)).toBe('1 planned');
+    // The row says what the plan holds; the word "planned" is said once, not twice.
+    expect(filteredLead(week.rows[0], squat.id)).toBe('1 set planned');
   });
 
   it('gives the clock time of a started session only', () => {
@@ -189,6 +199,22 @@ describe("one exercise's history", () => {
       { exercise_id: bench.id, reps: 5 },
     ] as never;
     expect(exerciseHistory(squat, sessions, book).records).toBe(2);
+  });
+
+  it('writes holds as clocks and finds the longest, since timed work has no e1RM', () => {
+    const plank = byId('plank');
+    const held = [
+      sessionOf({
+        date: '2026-09-28',
+        work: [[plank, [{ load: 45 }, { load: 45 }, { load: 60 }]]],
+      }),
+      sessionOf({ date: '2026-09-30', work: [[plank, [{ load: 50 }]]] }),
+    ];
+    const timed = exerciseHistory(plank, held, []);
+    expect(timed.months[0].visits[1].sets).toEqual(['0:45 ×2', '1:00']);
+    expect(timed.months[0].visits[1].best?.text).toBe('1:00');
+    expect(timed.bestE1rm).toBeNull();
+    expect(timed.longest).toEqual({ text: '1:00', date: '2026-09-28' });
   });
 
   it('is empty for an exercise never done', () => {

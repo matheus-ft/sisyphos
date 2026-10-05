@@ -118,7 +118,8 @@
               ><button onclick={() => (selected = v.muscle.id)}>{v.muscle.name}</button></th
             >
             <td class="num figure-num">{formatCount(v.sets)}</td>
-            <td class="num figure-num">{v.level}</td>
+            <!-- The legend's own words for the shade, not its index. -->
+            <td class="num figure-num">{LEGEND_LABELS[v.level]}</td>
           </tr>
         {/each}
       </tbody>
@@ -212,6 +213,7 @@
   .caption {
     font: italic 0.8125rem / 1.3 var(--font-text);
     text-align: center;
+    text-wrap: balance;
     opacity: 0.85;
   }
 

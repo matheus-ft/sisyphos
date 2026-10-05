@@ -175,8 +175,10 @@
     padding: 0 var(--gutter) var(--space-6);
   }
 
+  /* One column no wider than the screen, whatever a field's content asks for. */
   form {
     display: grid;
+    grid-template-columns: minmax(0, 1fr);
     gap: var(--space-4);
     margin-top: var(--space-5);
   }

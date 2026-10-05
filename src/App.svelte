@@ -40,6 +40,10 @@
   const takeover = $derived(app.showSetup || app.creating !== null || app.editing !== null);
   const docked = $derived(!focused && !takeover && app.storage !== null);
   const banner = $derived(app.status ? bannerOf(app.status, app.inSession) : null);
+  /** On the page its action leads to, the banner would only repeat that page's own news. */
+  const bannerHome = $derived(
+    banner?.action != null && route.name === 'more' && route.page === banner.action.to,
+  );
   const conflicts = $derived((app.status?.conflicts ?? 0) + (app.status?.libraryConflicts ?? 0));
   const trainHref = $derived(
     app.running ? routeHash({ name: 'session', id: app.running.id }) : routeHash({ name: 'train' }),
@@ -60,7 +64,7 @@
   class:docked
   style:--dock={docked ? 'var(--tabbar-total)' : 'var(--safe-bottom)'}
 >
-  {#if banner && !takeover}
+  {#if banner && !takeover && !bannerHome}
     <Banner
       kind={banner.kind}
       text={banner.text}
@@ -119,7 +123,7 @@
     {:else if route.name === 'history'}
       <History />
     {:else if route.name === 'progress'}
-      <Progress view={route.view} />
+      <Progress view={route.view} exercise={route.exercise} />
     {:else if route.name === 'more'}
       <Agora page={route.page} />
     {:else if route.name === 'train'}

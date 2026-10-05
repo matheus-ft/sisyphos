@@ -777,6 +777,11 @@ hr {
   font-size: 0.875rem;
   color: var(--muted);
 }
+/* As a heading it keeps the text face: Cinzel would set its meta in small capitals. */
+h2.sec:not(.caps) {
+  font: var(--fw-text) var(--fs-body) / var(--lh-body) var(--font-text);
+  letter-spacing: normal;
+}
 
 /* Grouped rows (Agora, templates, later this week): min 56, hairline dividers.
    Each li (or a button or link filling it) is a row; .grow takes the middle,

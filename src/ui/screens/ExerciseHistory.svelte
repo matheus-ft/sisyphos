@@ -35,18 +35,25 @@
     <div class="best">
       <span class="caps lab">Best</span>
       {#if view.bestE1rm}
-        <span class="figure-num big">{e1rmText(view.bestE1rm.kg)}<span class="unit"> kg</span></span
-        >
+        <span class="figure-num big">{e1rmText(view.bestE1rm.kg)}<span class="unit">kg</span></span>
         <span class="meta">e1RM, set {shortDate(view.bestE1rm.date)}</span>
+      {:else if view.longest}
+        <span class="figure-num big">{view.longest.text}</span>
+        <span class="meta">longest hold, {shortDate(view.longest.date)}</span>
       {:else}
-        <span class="meta none">Not enough to estimate one</span>
+        <span class="meta none">No set to estimate a max from yet</span>
       {/if}
     </div>
-    <a class="records" href={routeHash({ name: 'progress', view: 'labours' })}>
-      <Laurel size={20} />
-      <span>{plural(view.records, 'record', 'records')}</span>
-      <Icon name="chev" size="sm" />
-    </a>
+    {#if view.records > 0}
+      <a
+        class="records"
+        href={routeHash({ name: 'progress', view: 'labours', exercise: exercise.id })}
+      >
+        <Laurel size={20} />
+        <span>{plural(view.records, 'record', 'records')}</span>
+        <Icon name="chev" size="sm" />
+      </a>
+    {/if}
   </section>
 
   {#each view.months as month (month.key)}
@@ -109,6 +116,7 @@
   }
 
   .unit {
+    margin-left: 0.25em;
     font: italic var(--fs-meta) var(--font-text);
     color: var(--muted);
   }

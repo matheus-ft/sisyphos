@@ -13,6 +13,8 @@ const every: Route[] = [
   { name: 'train' },
   { name: 'history' },
   ...PROGRESS_VIEWS.map((view) => ({ name: 'progress' as const, view })),
+  { name: 'progress', view: 'labours', exercise: 'bench' },
+  { name: 'progress', view: 'strength', exercise: 'low_bar_squat' },
   { name: 'more', page: null },
   ...AGORA_PAGES.map((page) => ({ name: 'more' as const, page })),
   { name: 'session', id: '2026-10-04-k3f9' },

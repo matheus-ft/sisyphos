@@ -101,5 +101,7 @@
   .summary {
     margin-top: var(--space-3);
     color: var(--accent);
+    line-height: var(--lh-snug);
+    text-wrap: balance;
   }
 </style>

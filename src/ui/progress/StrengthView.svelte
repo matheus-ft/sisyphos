@@ -15,6 +15,7 @@
   import Button from '../kit/Button.svelte';
   import Chip from '../kit/Chip.svelte';
   import EmptyState from '../kit/EmptyState.svelte';
+  import Laurel from '../kit/Laurel.svelte';
   import Segmented from '../kit/Segmented.svelte';
   import ExercisePicker from './ExercisePicker.svelte';
   import HillChart from './HillChart.svelte';
@@ -113,7 +114,11 @@
               {@const text = texts[points.length - 1 - i]}
               <tr class:record={p.record}>
                 <th scope="row">{dateInYear(p.date, today)}</th>
-                <td>{text.value}{p.record ? ' (record)' : ''}</td>
+                <td
+                  >{text.value}{#if p.record}<span class="laurel"
+                      ><Laurel size={14} label="record" /></span
+                    >{/if}</td
+                >
                 <td>{text.set ?? ''}</td>
               </tr>
             {/each}
@@ -210,5 +215,10 @@
 
   tr.record {
     background: var(--laurel-wash);
+  }
+
+  .laurel {
+    margin-left: var(--space-2);
+    vertical-align: -2px;
   }
 </style>

@@ -19,7 +19,7 @@
   let { title, meta, back, lang, actions }: Props = $props();
 </script>
 
-<header class="screen-hd" class:with-back={back}>
+<header class="screen-hd" class:with-back={back} class:with-actions={actions}>
   {#if back?.href}
     <a class="icon-btn back" href={back.href} aria-label={back.label ?? 'Back'}
       ><Icon name="back" /></a
@@ -59,6 +59,16 @@
     min-width: 0;
   }
 
+  /* On a narrow phone the controls drop under the title rather than over it:
+     the title's own width decides whether they fit beside it. */
+  .with-actions {
+    flex-wrap: wrap;
+  }
+
+  .with-actions .titles {
+    flex-basis: auto;
+  }
+
   .meta {
     margin-top: 4px;
   }
@@ -68,5 +78,10 @@
     align-items: center;
     gap: var(--space-2);
     flex: none;
+  }
+
+  /* Beside a title a segmented control is set closer, so both fit a 375 phone. */
+  .actions :global(.seg button) {
+    padding-inline: var(--space-3);
   }
 </style>

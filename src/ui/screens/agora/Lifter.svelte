@@ -27,11 +27,7 @@
   });
 </script>
 
-<ScreenHeader
-  title="Lifter"
-  meta="Kept apart from any one session"
-  back={{ href: routeHash({ name: 'more', page: null }) }}
-/>
+<ScreenHeader title="Lifter" back={{ href: routeHash({ name: 'more', page: null }) }} />
 
 <Bodyweight />
 <Maxes />

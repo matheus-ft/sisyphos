@@ -90,7 +90,7 @@
   <li>
     <span class="grow">
       <span class="t">Persistent storage</span>
-      <span class="s">{storage.line}</span>
+      <span class="s wraps">{storage.line}</span>
     </span>
     {#if storage.granted}
       <span class="granted"><Icon name="check" size="sm" stroke={2.4} /> Granted</span>
@@ -142,6 +142,11 @@
 </p>
 
 <style>
+  /* Beside Not yet and Ask the line is what the button is for: let it wrap, not cut. */
+  .s.wraps {
+    white-space: normal;
+  }
+
   .granted {
     display: inline-flex;
     align-items: center;

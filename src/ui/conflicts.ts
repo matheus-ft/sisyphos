@@ -218,6 +218,7 @@ function wording(
   kind: ReturnType<typeof classify>,
   record: ConflictRecord,
   current: Version,
+  names: Map<string, string>,
 ): { title: string; line: string } {
   const deleted = current === null || record.version === null;
   const about = (noun: string, subject: string) => ({
@@ -241,12 +242,23 @@ function wording(
   }
   if (kind.kind === 'table') {
     const noun = TABLE_NOUN[kind.table] ?? 'entry';
-    const key = Object.values(record.key ?? {})
-      .map((value) => (/^\d{4}-\d\d-\d\d$/.test(value) ? longDate(value) : value))
-      .join(' ');
+    const key = keyText(record, names);
     return about(noun, key ? `The ${noun} for ${key}` : `This ${noun}`);
   }
   return about('record', 'This record');
+}
+
+/** A table row's key in words: "Sunday 4 October", "Saturday 14 March, Low-Bar Squat, 1 rep". */
+function keyText(record: ConflictRecord, names: Map<string, string>): string {
+  return Object.entries(record.key ?? {})
+    .map(([column, value]) =>
+      /^\d{4}-\d\d-\d\d$/.test(value)
+        ? longDate(value)
+        : column === 'reps' || column === 'exercise_id' || column === 'lift'
+          ? cellLine(column, value, names)
+          : value,
+    )
+    .join(', ');
 }
 
 export function describeConflict(
@@ -287,7 +299,7 @@ export function describeConflict(
     current: currentLines,
     saved: savedLines,
     diff,
-    ...wording(kind, record, current),
+    ...wording(kind, record, current, names),
     sides,
   };
 }
@@ -367,6 +379,40 @@ export function noticeShown(gate: NoticeGate): boolean {
   return gate.requested && gate.count > 0 && !gate.inSession && !gate.finishing && !gate.takeover;
 }
 
+/**
+ * What a conflict is about, as the notice lists it before any is opened:
+ * "The session of Friday 2 October", "The weigh-in for Saturday 3 October".
+ * Only the record is read, so a deleted version still names its subject.
+ */
+export function conflictSubject(record: ConflictRecord, names: Map<string, string>): string {
+  const kind = classify(record.path);
+  const version = record.version as Record<string, unknown> | null;
+  const text = (name: string) => {
+    const value = version?.[name];
+    return typeof value === 'string' ? value : null;
+  };
+  if (kind.kind === 'session') {
+    // A session's id starts with its date, which outlives a deleted version.
+    const date = text('date') ?? /^\d{4}-\d\d-\d\d/.exec(kind.id)?.[0] ?? null;
+    return date ? `The session of ${longDate(date)}` : 'A session';
+  }
+  if (kind.kind === 'template') {
+    const name = text('name');
+    return name ? `The template "${name}"` : 'A template';
+  }
+  if (kind.kind === 'table') {
+    const noun = TABLE_NOUN[kind.table] ?? 'entry';
+    const key = keyText(record, names);
+    return key ? `The ${noun} for ${key}` : `A ${noun}`;
+  }
+  return 'A record';
+}
+
+/** A library conflict in the notice's list. */
+export function libraryConflictSubject(conflict: LibraryConflict): string {
+  return `The exercise "${conflict.addition.name}"`;
+}
+
 /** The notice's words: how many, and that nothing was lost. */
 export function noticeCopy(count: number): { title: string; line: string } {
   const one = count === 1;
@@ -398,7 +444,7 @@ function linesOf(version: Version, names: Map<string, string>, key: TableRow | n
           ...(sets(true) ? [`${name} warm-up: ${sets(true)}`] : []),
         ];
       }),
-      ...(version.notes ? [`notes: ${version.notes}`] : []),
+      ...(version.notes ? [`Notes: ${version.notes}`] : []),
     ];
   }
   if (isTemplate(version)) {
@@ -409,10 +455,34 @@ function linesOf(version: Version, names: Map<string, string>, key: TableRow | n
       ),
     ];
   }
-  // The key names the row, and the title already says it.
+  // The key names the row, and the title already says it. An empty cell has
+  // nothing to say; a difference in it still shows as a line on one side only.
   return Object.entries(version)
-    .filter(([column]) => !(key && column in key))
-    .map(([column, value]) => `${column.replaceAll('_', ' ')}: ${value || '—'}`);
+    .filter(([column, value]) => !(key && column in key) && value !== '')
+    .map(([column, value]) => cellLine(column, value, names));
+}
+
+/** A table row's cell as the lifter would say it: "83.4 kg", "5 reps", "entered by hand". */
+function cellLine(column: string, value: string, names: Map<string, string>): string {
+  switch (column) {
+    case 'weight_kg':
+      return `${value} kg`;
+    case 'reps':
+      return `${value} ${value === '1' ? 'rep' : 'reps'}`;
+    case 'rpe':
+      return `@ ${value}`;
+    case 'exercise_id':
+      return names.get(value) ?? value;
+    case 'lift':
+      return value.charAt(0).toUpperCase() + value.slice(1);
+    case 'source':
+      return value === 'manual' ? 'entered by hand' : value === 'import' ? 'imported' : value;
+    case 'note':
+    case 'context':
+      return `“${value}”`;
+    default:
+      return `${column.replaceAll('_', ' ')}: ${value}`;
+  }
 }
 
 /** A session has exercises and a start; a template has exercises only; a table row neither. */

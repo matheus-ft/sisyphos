@@ -95,7 +95,7 @@
         {/if}
       </div>
       <div class="tools">
-        <Button variant="link" onclick={() => open(view.lift)}>New entry</Button>
+        <Button variant="link" onclick={() => open(view.lift)}>Enter a max</Button>
         {#if view.history.length > 1}
           <Button
             variant="link"
