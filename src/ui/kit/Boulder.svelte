@@ -32,7 +32,7 @@
    * Under prefers-reduced-motion it shows the final state at once.
    */
   interface Props {
-    /** 0 to 1, as `sessionProgress` in hill.ts measures it. */
+    /** 0 to 1, as `boulderProgress` in finish.ts measures it. */
     progress?: number;
     /** At the top: standing pose, settle, glory. A hero is always arrived. */
     arrived?: boolean;

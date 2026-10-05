@@ -1,15 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import type { PerformedSet, Session } from '../src/model';
 import { cubicBezier, parseDuration } from '../src/ui/kit/motion';
-import {
-  RIDGE_LENGTH,
-  gloryStrokes,
-  poseAt,
-  ridgeAt,
-  sessionProgress,
-  sessionTally,
-} from '../src/ui/hill';
-import { newSession } from '../src/ui/session';
+import { RIDGE_LENGTH, gloryStrokes, poseAt, ridgeAt } from '../src/ui/hill';
 
 /** Within a tenth of a unit of the design: a browser measures arc length a little differently. */
 const near = (actual: number, expected: number) =>
@@ -60,104 +51,6 @@ describe('the stone on the hill', () => {
       'M4.69,-8.83 L6.34,-11.92',
       'M8.66,-5 L11.69,-6.75',
     ]);
-  });
-});
-
-const set = (state: PerformedSet['state'], warmup = false): PerformedSet => ({
-  id: crypto.randomUUID(),
-  prescribed_id: null,
-  state,
-  reps: state === 'done' ? 5 : null,
-  rpe: state === 'done' && !warmup ? 8 : null,
-  load: state === 'done' ? { kind: 'weight', value: 100, unit: 'kg' } : null,
-  is_warmup: warmup,
-  notes: null,
-});
-
-/** What format 2 adds to an exercise; spread, so this fixture compiles before and after it. */
-const FORMAT_2 = { rest_s: null };
-
-let day = 1;
-function session(sets: PerformedSet[], planned: boolean, ended = false): Session {
-  const s = newSession({
-    id: `s${day}`,
-    at: new Date(2026, 8, day++, 18),
-    tz: 'Europe/Lisbon',
-    deviceId: 'phone',
-  });
-  return {
-    ...s,
-    ended_at: ended ? s.started_at : null,
-    exercises: [
-      {
-        ...FORMAT_2,
-        id: 'i',
-        exercise_id: 'low_bar_squat',
-        prescribed: planned
-          ? [
-              {
-                reps: [5, 5],
-                rpe: null,
-                load: { kind: 'weight', weight: { mode: 'rpe_driven' } },
-                is_warmup: false,
-                notes: null,
-                id: 'p',
-              },
-            ]
-          : [],
-        performed: sets,
-        notes: null,
-      },
-    ],
-  };
-}
-
-describe('how far up a session is', () => {
-  it('counts done working sets over those planned and not skipped', () => {
-    const s = session([set('done'), set('done'), set('pending'), set('skipped')], true);
-    expect(sessionProgress(s, [])).toBeCloseTo(2 / 3);
-  });
-
-  it('never counts warm-ups', () => {
-    const s = session([set('done', true), set('done', true), set('done'), set('pending')], true);
-    expect(sessionProgress(s, [])).toBe(0.5);
-  });
-
-  it('arrives when every planned set is done', () => {
-    expect(sessionProgress(session([set('done'), set('skipped')], true), [])).toBe(1);
-  });
-
-  it('measures a session without a plan against the median of the last four', () => {
-    const past = [3, 5, 9, 4, 20].map((n) =>
-      session(
-        Array.from({ length: n }, () => set('done')),
-        false,
-        true,
-      ),
-    );
-    // The last four by date hold 5, 9, 4 and 20 sets: a median of 7.
-    const now = session([set('done'), set('done'), set('pending')], false);
-    expect(sessionProgress(now, past)).toBeCloseTo(2 / 7);
-  });
-
-  it('keeps a session without a plan short of the top until Finish', () => {
-    const now = session([set('done'), set('done'), set('done')], false);
-    expect(sessionProgress(now, [])).toBe(3 / 4);
-  });
-
-  it('rounds a borrowed median up to whole sets, for the readout', () => {
-    const past = [4, 5].map((n) =>
-      session(
-        Array.from({ length: n }, () => set('done')),
-        false,
-        true,
-      ),
-    );
-    expect(sessionTally(session([set('done')], false), past)).toEqual({ done: 1, total: 5 });
-  });
-
-  it('is at the foot for an empty session', () => {
-    expect(sessionProgress(session([], false), [])).toBe(0);
   });
 });
 
