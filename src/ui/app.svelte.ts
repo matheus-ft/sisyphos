@@ -17,6 +17,7 @@ import { DEFAULT_PREFS, readPrefs, type Prefs } from './prefs';
 import type { SetupInput, SetupResult } from '../storage/setup';
 import type { StatusSnapshot } from '../storage/status';
 import { confirmDialog, promptDialog, showToast } from './overlays.svelte';
+import { liveSession } from './status';
 import { HOME, parseRoute, routeHash, sameRoute, type Route } from './route';
 import {
   addExercise,
@@ -56,7 +57,7 @@ class App {
   failure = $state<string | null>(null);
   /** The first-launch greeting: set up sync, or go without. */
   showSetup = $state(false);
-  /** The full-screen conflict notice (at launch, and when a sync brings one); never mid-session. */
+  /** The full-screen conflict notice (at launch, and when a sync brings one). */
   conflictNotice = $state(false);
   /** Every session, newest last, as last loaded or saved. */
   sessions = $state.raw<Session[]>([]);
@@ -81,7 +82,15 @@ class App {
     this.current.findLast((s) => s.started_at !== null && s.ended_at === null) ?? null,
   );
 
-  inSession = $derived(this.running !== null);
+  /** The clock the live rule ages by; moves with the minute timer and with every write. */
+  now = $state.raw(new Date());
+  #wroteAt = new Map<Id, number>();
+
+  /**
+   * A session is being lifted: what holds the notices back. Narrower than
+   * `running`, which Train keeps showing so a forgotten session can be finished.
+   */
+  inSession = $derived(liveSession(this.current, this.now, this.#wroteAt));
 
   /** Where in the app's own history the lifter is, so back never leaves the app. */
   #index = 0;
@@ -93,7 +102,10 @@ class App {
     let disposed = false;
     let started: AppStorage | null = null;
     // Exposure ages with the clock, not only with writes.
-    const timer = setInterval(() => void started?.scheduler.status(), 60_000);
+    const timer = setInterval(() => {
+      this.now = new Date();
+      void started?.scheduler.status();
+    }, 60_000);
 
     const state = history.state as Partial<NavState> | null;
     if (typeof state?.sisyphos === 'number') this.#index = state.sisyphos;
@@ -121,14 +133,16 @@ class App {
         // A session left running reopens; a planned one waits on Train.
         const open = await s.log.listOpenSessions();
         const running = open.filter((o) => o.started_at !== null).at(-1);
-        if (running && launchedAt.name === 'train') {
+        const reopened = running !== undefined && launchedAt.name === 'train';
+        if (running && reopened) {
           this.session = running;
           this.replace({ name: 'session', id: running.id });
         } else {
           this.#resolve();
         }
         const settings = await s.store.settings();
-        this.showSetup = settings.owner === null && !skipped();
+        // The greeting would cover the session just reopened; it comes at a later launch.
+        this.showSetup = settings.owner === null && !skipped() && !reopened;
         await s.scheduler.status();
         // Conflicts are announced again at every launch until settled.
         const waiting = (this.status?.conflicts ?? 0) + (this.status?.libraryConflicts ?? 0);
@@ -257,6 +271,8 @@ class App {
   save = async (next: Session): Promise<boolean> => {
     if (this.session?.id === next.id) this.session = next;
     this.sessions = upsert(this.sessions, next);
+    this.#wroteAt.set(next.id, Date.now());
+    this.now = new Date();
     if (!this.storage) return false;
     this.#unsavedSessions.set(next.id, next);
     try {
@@ -504,8 +520,13 @@ class App {
     this.showSetup = false;
   };
 
+  /**
+   * Always asked for: the shell's own gate (conflicts.ts, noticeShown) holds the
+   * notice back during a session and on the finish screen, so one announced
+   * meanwhile still comes after.
+   */
   #announceConflicts(): void {
-    if (!this.inSession) this.conflictNotice = true;
+    this.conflictNotice = true;
   }
 
   // --- the lifter and this device -----------------------------------------------------

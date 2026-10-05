@@ -1,5 +1,19 @@
 import { describe, expect, it } from 'vitest';
-import { CHECK_EVERY_MS, showUpdateNotice } from '../src/ui/update';
+import { CHECK_EVERY_MS, onTakeover, showUpdateNotice } from '../src/ui/update';
+
+describe('when another tab takes the new version', () => {
+  it('reloads the tab where Reload was tapped, even mid-session', () => {
+    expect(onTakeover({ tapped: true, inSession: true })).toBe('reload');
+  });
+
+  it('reloads an idle tab', () => {
+    expect(onTakeover({ tapped: false, inSession: false })).toBe('reload');
+  });
+
+  it('leaves a tab with a live session alone, to be offered the update after', () => {
+    expect(onTakeover({ tapped: false, inSession: true })).toBe('wait');
+  });
+});
 
 describe('when a new version is offered', () => {
   it('stays quiet until one is waiting', () => {

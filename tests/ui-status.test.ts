@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import type { StatusSnapshot } from '../src/storage/status';
-import { bannerOf } from '../src/ui/status';
+import { newSession } from '../src/ui/session';
+import { bannerOf, liveSession } from '../src/ui/status';
 
 const snapshot = (over: Partial<StatusSnapshot>): StatusSnapshot => ({
   status: 'idle',
@@ -71,5 +72,37 @@ describe('the banner on every screen', () => {
 
   it('leaves a device never set up to say so in Agora', () => {
     expect(bannerOf(snapshot({ status: 'not_set_up', exposure: atRisk }), false)).toBeNull();
+  });
+});
+
+describe('a session being lifted', () => {
+  const at = new Date('2026-10-05T12:00:00Z');
+  const hoursAgo = (h: number) => new Date(at.getTime() - h * 3_600_000);
+  const session = (id: string, started: Date) =>
+    newSession({ id, at: started, tz: 'UTC', deviceId: 'phone' });
+
+  it('is one started and not finished, written to recently', () => {
+    expect(liveSession([session('a', hoursAgo(1))], at)).toBe(true);
+  });
+
+  it('is not one left open for days, on whichever device', () => {
+    expect(liveSession([session('a', hoursAgo(24 * 20))], at)).toBe(false);
+  });
+
+  it('is not a plan, nor a finished session', () => {
+    const planned = { ...session('a', hoursAgo(0)), started_at: null };
+    const done = { ...session('b', hoursAgo(0)), ended_at: at.toISOString() };
+    expect(liveSession([planned, done], at)).toBe(false);
+  });
+
+  it('is never one logged after the fact', () => {
+    const past = { ...session('a', hoursAgo(0)), time_precision: 'date_only' as const };
+    expect(liveSession([past], at)).toBe(false);
+  });
+
+  it("counts this device's own latest save, which the copy in memory has not caught up with", () => {
+    const open = session('a', hoursAgo(5));
+    expect(liveSession([open], at)).toBe(false);
+    expect(liveSession([open], at, new Map([['a', at.getTime()]]))).toBe(true);
   });
 });
