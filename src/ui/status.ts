@@ -1,4 +1,30 @@
+import type { Id, Session } from '../model';
+import { sessionInProgress } from '../storage/scheduler';
 import type { StatusSnapshot } from '../storage/status';
+
+/**
+ * Whether a session is being lifted right now, which is what holds the notices
+ * back (syncing waits for it too, by the scheduler's own rule). An unfinished
+ * session left on another device, or logged after the fact (`date_only`, never
+ * truly "running"), must not hold them forever. `wroteAt` says when this device
+ * last saved each session: the copy in memory keeps its old `updated_at` until a
+ * reload, though the lifter is writing to it.
+ */
+export function liveSession(
+  sessions: Session[],
+  now: Date,
+  wroteAt: ReadonlyMap<Id, number> = new Map(),
+): boolean {
+  const lifted = sessions
+    .filter((session) => session.time_precision !== 'date_only')
+    .map((session) => {
+      const wrote = wroteAt.get(session.id);
+      return wrote !== undefined && wrote > Date.parse(session.updated_at)
+        ? { ...session, updated_at: new Date(wrote).toISOString() }
+        : session;
+    });
+  return sessionInProgress(lifted, now);
+}
 
 export interface StatusLine {
   text: string;

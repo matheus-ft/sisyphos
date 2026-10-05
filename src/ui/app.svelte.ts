@@ -17,6 +17,7 @@ import { DEFAULT_PREFS, readPrefs, type Prefs } from './prefs';
 import type { SetupInput, SetupResult } from '../storage/setup';
 import type { StatusSnapshot } from '../storage/status';
 import { confirmDialog, promptDialog, showToast } from './overlays.svelte';
+import { liveSession } from './status';
 import { HOME, parseRoute, routeHash, sameRoute, type Route } from './route';
 import {
   addExercise,
@@ -81,7 +82,15 @@ class App {
     this.current.findLast((s) => s.started_at !== null && s.ended_at === null) ?? null,
   );
 
-  inSession = $derived(this.running !== null);
+  /** The clock the live rule ages by; moves with the minute timer and with every write. */
+  now = $state.raw(new Date());
+  #wroteAt = new Map<Id, number>();
+
+  /**
+   * A session is being lifted: what holds the notices back. Narrower than
+   * `running`, which Train keeps showing so a forgotten session can be finished.
+   */
+  inSession = $derived(liveSession(this.current, this.now, this.#wroteAt));
 
   /** Where in the app's own history the lifter is, so back never leaves the app. */
   #index = 0;
@@ -93,7 +102,10 @@ class App {
     let disposed = false;
     let started: AppStorage | null = null;
     // Exposure ages with the clock, not only with writes.
-    const timer = setInterval(() => void started?.scheduler.status(), 60_000);
+    const timer = setInterval(() => {
+      this.now = new Date();
+      void started?.scheduler.status();
+    }, 60_000);
 
     const state = history.state as Partial<NavState> | null;
     if (typeof state?.sisyphos === 'number') this.#index = state.sisyphos;
@@ -257,6 +269,8 @@ class App {
   save = async (next: Session): Promise<boolean> => {
     if (this.session?.id === next.id) this.session = next;
     this.sessions = upsert(this.sessions, next);
+    this.#wroteAt.set(next.id, Date.now());
+    this.now = new Date();
     if (!this.storage) return false;
     this.#unsavedSessions.set(next.id, next);
     try {
