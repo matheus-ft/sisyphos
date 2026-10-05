@@ -1,7 +1,7 @@
 // One session from the plan on Train to Done: every way of saving a set, the
 // rest it starts, and the finish screen.
 import { expect, test } from '@playwright/test';
-import { openSeeded } from './seed';
+import { openSeeded } from './seed.ts';
 
 test('a planned session runs from Start to Done', async ({ page }) => {
   const errors: string[] = [];

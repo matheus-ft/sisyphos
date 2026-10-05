@@ -2,7 +2,7 @@
 // session. The numbers are the seed's (e2e/seed.ts): ten weeks of three
 // sessions, bench in two of each, plus today's plan.
 import { expect, test } from '@playwright/test';
-import { openSeeded } from './seed';
+import { openSeeded } from './seed.ts';
 
 test('history lists the weeks, filters by exercise and opens a day from the calendar', async ({
   page,

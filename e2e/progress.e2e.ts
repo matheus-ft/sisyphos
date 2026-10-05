@@ -1,7 +1,7 @@
 // Athloi: the statue, the hill, the labours. The seed (e2e/seed.ts) has ten
 // weeks of sessions and none yet this week, which the Body test leans on.
 import { expect, test, type Page } from '@playwright/test';
-import { openSeeded } from './seed';
+import { openSeeded } from './seed.ts';
 
 test.beforeEach(async ({ page }) => {
   await openSeeded(page);

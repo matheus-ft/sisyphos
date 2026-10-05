@@ -77,6 +77,15 @@ interface SeedTemplate {
   updated_at: string;
 }
 
+/** What a test reads back from the log: only the fields it asks about. */
+interface StoredSession {
+  exercises: { performed: { state: string }[] }[];
+}
+interface StoredTemplate {
+  label: { week: number | null };
+  exercises: { prescribed: { reps: [number | null, number | null] | null }[] }[];
+}
+
 /** The slice of the app (`src/ui/app.svelte.ts`) the seeding touches. */
 interface SisyphosApp {
   storage: {
@@ -86,7 +95,10 @@ interface SisyphosApp {
       putSession(session: SeedSession): Promise<void>;
       putTemplate(template: SeedTemplate): Promise<void>;
       putRow(kind: string, row: Record<string, unknown>): Promise<void>;
+      getSession(id: string): Promise<StoredSession | null>;
+      getTemplates(): Promise<StoredTemplate[]>;
     };
+    store: { settings(): Promise<Record<string, unknown>> };
   } | null;
   sessions: { started_at: string | null }[];
   templates: unknown[];
@@ -434,4 +446,23 @@ export async function planToday(page: Page): Promise<string> {
     app.go({ name: 'train' });
     return 'planned';
   });
+}
+
+/**
+ * This device's settings as written to IndexedDB. A change shows on screen the
+ * moment it is made and is saved a moment later, so a test that reloads right
+ * after one polls this first (and likewise `savedSession`, `savedTemplates`).
+ */
+export function savedSettings(page: Page): Promise<Record<string, unknown>> {
+  return page.evaluate(() => window.__sisyphos!.storage!.store.settings());
+}
+
+/** The session as written to the log, or null. See `savedSettings` for why a test asks. */
+export function savedSession(page: Page, id: string): Promise<StoredSession | null> {
+  return page.evaluate((id) => window.__sisyphos!.storage!.log.getSession(id), id);
+}
+
+/** Every template as written to the log. */
+export function savedTemplates(page: Page): Promise<StoredTemplate[]> {
+  return page.evaluate(() => window.__sisyphos!.storage!.log.getTemplates());
 }

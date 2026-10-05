@@ -2,7 +2,7 @@
 // percentage that resolves against the reference max, and a session planned
 // from it.
 import { expect, test } from '@playwright/test';
-import { openSeeded } from './seed';
+import { openSeeded, savedTemplates } from './seed.ts';
 
 test('a template is edited and a session planned from it', async ({ page }) => {
   await openSeeded(page);
@@ -37,6 +37,12 @@ test('a template is edited and a session planned from it', async ({ page }) => {
   await expect(squat.getByText(/80% of 150/)).toContainText('120 kg');
 
   // What was typed was saved as it went.
+  await expect
+    .poll(async () => {
+      const [template] = await savedTemplates(page);
+      return [template.label.week, template.exercises[0].prescribed[0].reps];
+    })
+    .toEqual([7, [3, 5]]);
   await page.reload();
   await expect(page.getByRole('region', { name: 'Program label' })).toContainText(
     'Offseason · block 2 · week 7 · day 1 · Wed',
