@@ -219,6 +219,7 @@ describe('the laurel', () => {
       {
         date: '2026-03-14',
         exercise_id: 'bench',
+        source: 'manual' as const,
         reps: 3,
         weight_kg: 125,
         rpe: null,

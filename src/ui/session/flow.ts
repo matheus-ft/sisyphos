@@ -8,7 +8,10 @@ import type {
 } from '../../model';
 import { boulderProgress } from '../finish';
 import {
+  MAX_REST_S,
   REST_STORAGE_KEY,
+  lastDoneSetId,
+  nextPendingSet,
   restClock,
   restTargetS,
   type NextSet,
@@ -105,6 +108,27 @@ export function restStarted(
   };
 }
 
+/**
+ * A rest worth keeping on screen: one kept past the longest target there is
+ * (a session left open overnight, a tab restored days later) would only show a
+ * count of hours, so it is dropped.
+ */
+export function restFresh(state: RestState, now: number): boolean {
+  return now - state.startedAt <= MAX_REST_S * 1000;
+}
+
+/**
+ * The set that comes after the one the rest follows. A rest whose set has since
+ * been undone or removed follows the exercise's last done working set instead,
+ * so "next" never points at a set that is gone.
+ */
+export function restNextSet(session: Session, state: RestState): NextSet | null {
+  const exists = (id: Id) => session.exercises.some((e) => e.performed.some((s) => s.id === id));
+  const after =
+    state.setId && exists(state.setId) ? state.setId : lastDoneSetId(session, state.instanceId);
+  return after ? nextPendingSet(session, after) : null;
+}
+
 /** "Bench press · set 2 of 4 done": what the takeover says the rest follows. */
 export function restContext(instance: ExerciseInstance, name: string): string {
   const working = instance.performed.filter((s) => !s.is_warmup && s.state !== 'skipped');
@@ -145,7 +169,7 @@ export function restNext(
   const name = exercise?.name ?? next.instance.exercise_id;
   const text = nextSetText(
     next,
-    exercise ?? ({ ...UNKNOWN, id: next.instance.exercise_id, name } as Exercise),
+    exercise ?? { ...UNKNOWN, id: next.instance.exercise_id, name },
     ctx,
   );
   const [label, ...figures] = text.slice(name.length + 3).split(' · ');
@@ -156,14 +180,14 @@ export function restNext(
   };
 }
 
-const UNKNOWN = {
+const UNKNOWN: Omit<Exercise, 'id' | 'name'> = {
   base_lift: null,
   tier: 'low_spec',
   unilateral: false,
   load_type: 'external',
   default_unit: 'kg',
   muscles: { primary: [], aux: [] },
-} as const;
+};
 
 // --- the boulder --------------------------------------------------------------------
 

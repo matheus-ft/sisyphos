@@ -5,6 +5,8 @@ import {
   applySuggestion,
   climb,
   restContext,
+  restFresh,
+  restNextSet,
   restKey,
   restNext,
   restReadout,
@@ -244,5 +246,43 @@ describe('the weigh-in offer', () => {
     expect(
       weighInOffer(s, [{ date: '2026-10-04', weight_kg: 83, source: 'manual' }]),
     ).not.toBeNull();
+  });
+});
+
+describe('a rest kept in the tab', () => {
+  const state = { startedAt: 1_000_000, instanceId: 'i', targetS: 180 };
+
+  it('is dropped once it is older than the longest rest there is', () => {
+    expect(restFresh(state, 1_000_000 + 3_600_000)).toBe(true);
+    expect(restFresh(state, 1_000_000 + 3_600_001)).toBe(false);
+  });
+});
+
+describe('the set after the rest', () => {
+  it('is the first pending set after the one saved', () => {
+    const a = done(90, 5, 8);
+    const b = set();
+    const i = instance([a, b]);
+    const s = session([i]);
+    expect(restNextSet(s, { startedAt: 1, instanceId: i.id, setId: a.id, targetS: 120 })?.set).toBe(
+      b,
+    );
+  });
+
+  it('follows the last done working set when the one saved is gone', () => {
+    const a = done(90, 5, 8);
+    const b = set();
+    const i = instance([a, b]);
+    const s = session([i]);
+    const next = restNextSet(s, { startedAt: 1, instanceId: i.id, setId: 'undone', targetS: 120 });
+    expect(next?.set).toBe(b);
+  });
+
+  it('is none when nothing is left', () => {
+    const a = done(90, 5, 8);
+    const i = instance([a]);
+    expect(
+      restNextSet(session([i]), { startedAt: 1, instanceId: i.id, setId: a.id, targetS: 120 }),
+    ).toBeNull();
   });
 });

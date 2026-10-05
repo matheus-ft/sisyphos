@@ -1,7 +1,18 @@
 <script lang="ts">
-  import type { Exercise, ExerciseInstance, LoadUnit, PerformedSet, Session } from '../../model';
+  import type {
+    Exercise,
+    ExerciseInstance,
+    Id,
+    LoadUnit,
+    PerformedSet,
+    Session,
+  } from '../../model';
+  import { app } from '../app.svelte';
+  import { entryContext, rowTargets } from '../entry';
   import Button from '../kit/Button.svelte';
   import Icon from '../kit/Icon.svelte';
+  import Laurel from '../kit/Laurel.svelte';
+  import Sheet from '../kit/Sheet.svelte';
   import { confirmDialog } from '../overlays.svelte';
   import {
     addSet,
@@ -18,49 +29,131 @@
     removeSet,
     setExerciseNotes,
     skipSet,
-    targetsOf,
     unitOf,
     type SetEdit,
   } from '../session';
+  import {
+    doneSummary,
+    lastSummary,
+    recordNote,
+    targetRpeText,
+    upcomingLine,
+    warmupsText,
+    type CardMode,
+  } from './cards';
+  import { applySuggestion, suggestionShows } from './flow';
+  import { addWarmups, warmupPlan } from './warmups';
 
   /**
-   * One exercise of a session: its sets as rows typed into as in v0, each
-   * with an end button that opens the entry panel. Current (holding the set
-   * being entered) is ringed in the accent; done carries a verdigris border.
+   * One exercise of a session, in the state the lifter's place in the session
+   * gives it: done (a summary with a seal), current (expanded, holding the set
+   * being entered) or upcoming (one line). A tap opens a collapsed one. Its
+   * sets are rows typed into as in v0, each with an end button that opens the
+   * entry panel.
    */
   interface Props {
     session: Session;
     instance: ExerciseInstance;
     /** Missing when the log names an exercise this library does not have. */
     exercise: Exercise | undefined;
-    /** The sets of the last other session with this exercise. */
-    last: string | null;
+    mode: CardMode;
+    /** The last other session's visit to this exercise. */
+    last: ExerciseInstance | null;
     /** The unit a new set starts in. */
     unit: LoadUnit;
     /** The set being entered in the whole session, drawn inverted; at most one. */
-    active: string | null;
+    active: Id | null;
+    /** The sets that were records when lifted: the laurel and the gilded wash. */
+    records: ReadonlySet<Id>;
+    /** The lifter hid this exercise's suggested warm-ups for the session. */
+    warmupsHidden: boolean;
     onchange: (next: Session) => void;
+    onhidewarmups: () => void;
     /** Opens the exercise's history. */
     onhistory: (exercise: Exercise) => void;
     /** Opens the entry panel on a set. */
     onentry: (set: PerformedSet) => void;
   }
-  let { session, instance, exercise, last, unit, active, onchange, onhistory, onentry }: Props =
-    $props();
+  let {
+    session,
+    instance,
+    exercise,
+    mode,
+    last,
+    unit,
+    active,
+    records,
+    warmupsHidden,
+    onchange,
+    onhidewarmups,
+    onhistory,
+    onentry,
+  }: Props = $props();
 
   const timed = $derived(exercise ? measureOf(exercise) === 'time' : false);
   const measure = $derived(timed ? 'time' : 'weight');
   const missingBodyweight = $derived(exercise ? needsBodyweight(session, exercise) : false);
   const UNITS: LoadUnit[] = ['kg', 'lb', 'pins'];
   const position = $derived(session.exercises.findIndex((e) => e.id === instance.id));
-  const current = $derived(instance.performed.some((s) => s.id === active));
-  const done = $derived(
-    instance.performed.length > 0 && instance.performed.every((s) => s.state !== 'pending'),
-  );
   const name = $derived(exercise?.name ?? instance.exercise_id);
+
+  /** A card the lifter opened by tapping; the current one is always open. */
+  let tapped = $state(false);
+  const expanded = $derived(mode === 'current' || tapped);
+  // A card that changes place (it became current, then done) starts again from its own default.
+  $effect(() => {
+    void mode;
+    tapped = false;
+  });
+
   /** The set whose actions (warm-up, skip, remove) are open, from a tap on its number. */
-  let opened = $state<string | null>(null);
+  let opened = $state<Id | null>(null);
   let noting = $state(false);
+  let menu = $state(false);
+
+  // --- what the sets are offered ---------------------------------------------------
+
+  const contexts = $derived(
+    new Map(
+      instance.performed
+        .filter((s) => s.state === 'pending')
+        .map((s) => [
+          s.id,
+          entryContext({
+            session,
+            instance,
+            set: s,
+            exercise,
+            sessions: app.sessions,
+            oneRms: app.oneRms,
+            prefs: app.prefs,
+          }),
+        ]),
+    ),
+  );
+  const firstWorking = $derived(
+    instance.performed.find((s) => !s.is_warmup && s.state === 'pending') ?? null,
+  );
+  const lead = $derived(firstWorking ? (contexts.get(firstWorking.id) ?? null) : null);
+  const suggestion = $derived(mode === 'current' && lead ? lead.suggestion : null);
+  const chip = $derived(suggestionShows(instance, suggestion) ? suggestion : null);
+  const plan = $derived(
+    mode === 'current' && lead && !warmupsHidden
+      ? warmupPlan({ instance, exercise, ctx: lead })
+      : null,
+  );
+
+  const summary = $derived(doneSummary(instance, exercise, records));
+  const lastText = $derived(lastSummary(last, exercise));
+  const targetRpe = $derived(targetRpeText(instance));
+
+  /** Numbers rows show for each set: working sets count from 1, warm-ups wear "W". */
+  const numbers = $derived.by(() => {
+    let n = 0;
+    return new Map(instance.performed.map((s) => [s.id, s.is_warmup ? 'W' : String(++n)]));
+  });
+
+  // --- editing ---------------------------------------------------------------------
 
   function edit(set: PerformedSet, change: SetEdit): void {
     onchange(editSet(session, instance.id, set.id, change, measure, unit));
@@ -110,7 +203,13 @@
     return timed ? formatSeconds(amount).replace(' s', '') : String(amount);
   }
 
+  const targetsFor = (set: PerformedSet) => {
+    const ctx = contexts.get(set.id);
+    return ctx ? rowTargets(instance, set, ctx, timed) : { amount: '', reps: '', rpe: '' };
+  };
+
   async function removeAsked(): Promise<void> {
+    menu = false;
     const logged = instance.performed.filter((s) => s.state === 'done').length;
     const ok =
       logged === 0 ||
@@ -123,161 +222,313 @@
       }));
     if (ok) onchange(removeExercise(session, instance.id));
   }
+
+  function move(by: -1 | 1): void {
+    menu = false;
+    onchange(moveExercise(session, instance.id, by));
+  }
+
+  const newId = () => crypto.randomUUID();
 </script>
 
-<section class="card ex" class:card-current={current} class:card-done={done && !current}>
-  <header>
-    {#if exercise}
-      <button class="name" onclick={() => onhistory(exercise)}><h3>{name}</h3></button>
-    {:else}
+<section
+  class="card ex"
+  class:card-current={mode === 'current'}
+  class:card-done={mode === 'done'}
+  class:upcoming={mode === 'upcoming'}
+  aria-label={name}
+>
+  {#if !expanded}
+    <button class="fold" aria-expanded="false" onclick={() => (tapped = true)}>
+      <span class="head">
+        <h3 class="name">{name}</h3>
+        {#if mode === 'done'}
+          <span class="seal" aria-label="Done"><Icon name="check" size={14} stroke={2.6} /></span>
+        {:else}
+          <Icon name="down" size="sm" />
+        {/if}
+      </span>
+      {#if mode === 'done'}
+        <span class="line figure">
+          {#each summary.sets as s, i (i)}
+            {#if i > 0}<span class="sep"> · </span>{/if}<span class:rec={s.record}>{s.text}</span>
+          {:else}
+            <span class="meta">No sets done</span>
+          {/each}
+        </span>
+        {#if warmupsText(summary.warmups) || recordNote(summary.recordReps)}
+          <span class="foot-line">
+            <span class="meta">{warmupsText(summary.warmups) ?? ''}</span>
+            {#if recordNote(summary.recordReps)}
+              <span class="meta note-record"><Laurel />{recordNote(summary.recordReps)}</span>
+            {/if}
+          </span>
+        {/if}
+      {:else}
+        <span class="meta">{upcomingLine(instance, lastText)}</span>
+      {/if}
+    </button>
+  {:else}
+    <header class="head">
       <h3 class="name">{name}</h3>
-    {/if}
-    <div class="order">
-      <button
-        class="icon-btn"
-        aria-label="Move {name} up"
-        disabled={position === 0}
-        onclick={() => onchange(moveExercise(session, instance.id, -1))}
-        ><Icon name="up" size="sm" /></button
-      >
-      <button
-        class="icon-btn down"
-        aria-label="Move {name} down"
-        disabled={position === session.exercises.length - 1}
-        onclick={() => onchange(moveExercise(session, instance.id, 1))}
-        ><Icon name="up" size="sm" /></button
-      >
-      <button class="icon-btn" aria-label="Remove {name}" onclick={removeAsked}
-        ><Icon name="close" size="sm" /></button
-      >
-    </div>
-  </header>
-  {#if last}<p class="meta last">Last time <b>{last}</b></p>{/if}
-  {#if noting || instance.notes}
-    <input
-      class="note"
-      aria-label="Note on {name}"
-      placeholder="Note…"
-      value={instance.notes ?? ''}
-      onchange={(e) => onchange(setExerciseNotes(session, instance.id, e.currentTarget.value))}
-    />
-  {/if}
-
-  <div class="rows">
-    {#each instance.performed as set, i (set.id)}
-      {@const target = targetsOf(instance, set)}
-      {@const skipped = set.state === 'skipped'}
-      <div
-        class="row"
-        class:timed
-        class:skipped
-        class:warm={set.is_warmup}
-        class:pending={set.state === 'pending'}
-        class:done={set.state === 'done'}
-        class:active={set.id === active}
-      >
-        <button
-          class="n"
-          aria-label="Set {i + 1} actions"
-          onclick={() => (opened = opened === set.id ? null : set.id)}
-          >{set.is_warmup ? 'W' : i + 1}</button
-        >
-        <input
-          inputmode={timed ? 'text' : 'decimal'}
-          aria-label={timed ? 'Time' : 'Load'}
-          placeholder={target.amount || (timed ? '0:00' : '')}
-          value={shownAmount(set)}
-          onfocus={(e) =>
-            takeTarget(
-              e.currentTarget,
-              target.amount,
-              timed ? parseSeconds : parseNumber,
-              (amount) => ({ amount }),
-              set,
-            )}
-          onchange={(e) =>
-            field(
-              e.currentTarget,
-              timed ? parseSeconds : parseNumber,
-              (amount) => ({ amount }),
-              set,
-              shownAmount(set),
-            )}
-        />
-        {#if !timed}
-          <button class="unit" onclick={() => edit(set, { unit: nextUnit(set) })}
-            >{unitOf(set) ?? unit}</button
+      <span class="tools">
+        {#if mode !== 'current'}
+          <button
+            class="icon-btn"
+            aria-label="Collapse {name}"
+            aria-expanded="true"
+            onclick={() => (tapped = false)}><Icon name="up" size="sm" /></button
           >
-          <span class="x">×</span>
+        {/if}
+        <button class="icon-btn" aria-label="More for {name}" onclick={() => (menu = true)}
+          ><Icon name="more" /></button
+        >
+      </span>
+    </header>
+    {#if lastText}
+      <p class="meta last">
+        Last time <b>{lastText}</b>{#if targetRpe}, target {targetRpe}{/if}
+      </p>
+    {:else if targetRpe}
+      <p class="meta last">Target {targetRpe}</p>
+    {/if}
+    {#if noting || instance.notes}
+      <input
+        class="note"
+        aria-label="Note on {name}"
+        placeholder="Note…"
+        value={instance.notes ?? ''}
+        onchange={(e) => onchange(setExerciseNotes(session, instance.id, e.currentTarget.value))}
+      />
+    {/if}
+
+    {#if chip}
+      <div class="suggest">
+        <button
+          class="sugg-chip"
+          aria-label="Use {chip.load} {chip.unit} for the sets still to do"
+          onclick={() => onchange(applySuggestion(session, instance.id, chip))}
+        >
+          <Icon name={chip.delta > 0 ? 'up' : 'same'} size="sm" stroke={2.4} />
+          <span class="figure-num">{chip.load} {chip.unit}</span>
+        </button>
+        <span class="meta">suggested: {chip.reason}</span>
+      </div>
+    {/if}
+
+    {#if plan}
+      <div class="ladder">
+        <div class="ladder-head">
+          <span class="meta">Suggested warm-ups</span>
+          <span class="ladder-actions">
+            <Button
+              variant="link"
+              caps
+              onclick={() => onchange(addWarmups(session, instance.id, plan, plan.rungs, newId))}
+              >Add all</Button
+            >
+            <Button variant="link" caps onclick={onhidewarmups}>Hide</Button>
+          </span>
+        </div>
+        {#each plan.rungs as rung (rung.load)}
+          <div class="row ghost">
+            <span class="n">w</span>
+            <span class="ghost-fig figure-num">{rung.load} × {rung.reps}</span>
+            <button
+              class="add"
+              aria-label="Add warm-up {rung.load} {plan.unit} for {rung.reps}"
+              onclick={() => onchange(addWarmups(session, instance.id, plan, [rung], newId))}
+              ><Icon name="plus" size="sm" stroke={2.4} />Add</button
+            >
+          </div>
+        {/each}
+      </div>
+    {/if}
+
+    <div class="rows">
+      {#each instance.performed as set (set.id)}
+        {@const target = targetsFor(set)}
+        {@const skipped = set.state === 'skipped'}
+        {@const isActive = set.id === active && set.state === 'pending'}
+        {@const isRecord = records.has(set.id) && set.state === 'done' && !set.is_warmup}
+        {@const label = `${set.is_warmup ? 'Warm-up' : 'Set'} ${numbers.get(set.id)}`}
+        <div
+          class="row"
+          class:timed
+          class:skipped
+          class:warm={set.is_warmup}
+          class:pending={set.state === 'pending' && !isActive}
+          class:done={set.state === 'done'}
+          class:active={isActive}
+          class:record={isRecord}
+        >
+          <button
+            class="n"
+            aria-label="{label} actions"
+            onclick={() => (opened = opened === set.id ? null : set.id)}
+            >{numbers.get(set.id)}</button
+          >
           <input
-            inputmode="numeric"
-            aria-label="Reps"
-            placeholder={target.reps}
-            value={set.reps ?? ''}
+            inputmode={timed ? 'text' : 'decimal'}
+            aria-label={timed ? 'Time' : 'Load'}
+            placeholder={target.amount || (timed ? '0:00' : '')}
+            value={shownAmount(set)}
             onfocus={(e) =>
-              takeTarget(e.currentTarget, target.reps, parseNumber, (reps) => ({ reps }), set)}
+              takeTarget(
+                e.currentTarget,
+                target.amount,
+                timed ? parseSeconds : parseNumber,
+                (amount) => ({ amount }),
+                set,
+              )}
             onchange={(e) =>
               field(
                 e.currentTarget,
-                parseNumber,
-                (reps) => ({ reps }),
+                timed ? parseSeconds : parseNumber,
+                (amount) => ({ amount }),
                 set,
-                String(set.reps ?? ''),
+                shownAmount(set),
               )}
           />
-        {/if}
-        <span class="x">@</span>
-        <input
-          inputmode="decimal"
-          aria-label="RPE"
-          placeholder={target.rpe}
-          value={set.rpe ?? ''}
-          onchange={(e) =>
-            field(e.currentTarget, parseRpe, (rpe) => ({ rpe }), set, String(set.rpe ?? ''))}
-        />
-        <span class="st">
-          {#if set.state === 'done'}
-            <Icon name="check" size={18} stroke={2.4} label="done" />
-          {:else if skipped}
-            <span class="word">skipped</span>
-          {:else}
+          {#if !timed}
             <button
-              class="icon-btn open"
-              aria-label="Enter set {i + 1}"
-              onclick={() => onentry(set)}><Icon name="sheet" /></button
+              class="unit"
+              aria-label="Unit, {unitOf(set) ?? unit}"
+              onclick={() => edit(set, { unit: nextUnit(set) })}>{unitOf(set) ?? unit}</button
             >
+            <span class="x">×</span>
+            <input
+              inputmode="numeric"
+              aria-label="Reps"
+              placeholder={target.reps}
+              value={set.reps ?? ''}
+              onfocus={(e) =>
+                takeTarget(e.currentTarget, target.reps, parseNumber, (reps) => ({ reps }), set)}
+              onchange={(e) =>
+                field(
+                  e.currentTarget,
+                  parseNumber,
+                  (reps) => ({ reps }),
+                  set,
+                  String(set.reps ?? ''),
+                )}
+            />
           {/if}
-        </span>
-      </div>
-      {#if opened === set.id}
-        <div class="actions">
-          <Button variant="link" onclick={() => edit(set, { is_warmup: !set.is_warmup })}>
-            {set.is_warmup ? 'Not a warm-up' : 'Warm-up'}
-          </Button>
-          <Button
-            variant="link"
-            onclick={() => onchange(skipSet(session, instance.id, set.id, !skipped))}
-          >
-            {skipped ? 'Not skipped' : 'Skip'}
-          </Button>
-          <Button variant="link" onclick={() => onchange(removeSet(session, instance.id, set.id))}>
-            Remove set
-          </Button>
+          {#if !set.is_warmup}
+            <span class="x">@</span>
+            <input
+              inputmode="decimal"
+              aria-label="RPE"
+              placeholder={isActive ? '—' : target.rpe}
+              value={set.rpe ?? ''}
+              onchange={(e) =>
+                field(e.currentTarget, parseRpe, (rpe) => ({ rpe }), set, String(set.rpe ?? ''))}
+            />
+          {/if}
+          <span class="st">
+            {#if set.state === 'done'}
+              <button
+                class="status"
+                aria-label="Edit {label.toLowerCase()}"
+                onclick={() => onentry(set)}
+              >
+                {#if isRecord}
+                  <Laurel /><span class="word record-word">record</span>
+                {:else}
+                  {#if set.is_warmup}<span class="word">warm-up</span>{/if}
+                  <Icon name="check" size={18} stroke={2.4} />
+                {/if}
+              </button>
+            {:else if skipped}
+              <button
+                class="status"
+                aria-label="Enter {label.toLowerCase()}"
+                onclick={() => onentry(set)}><span class="word">skipped</span></button
+              >
+            {:else}
+              <button
+                class="status open"
+                aria-label="Enter {label.toLowerCase()}"
+                onclick={() => onentry(set)}><Icon name="sheet" /></button
+              >
+            {/if}
+          </span>
         </div>
-      {/if}
-    {/each}
-  </div>
+        {#if opened === set.id}
+          <div class="actions">
+            <Button variant="link" onclick={() => edit(set, { is_warmup: !set.is_warmup })}>
+              {set.is_warmup ? 'Not a warm-up' : 'Warm-up'}
+            </Button>
+            <Button
+              variant="link"
+              onclick={() => onchange(skipSet(session, instance.id, set.id, !skipped))}
+            >
+              {skipped ? 'Not skipped' : 'Skip'}
+            </Button>
+            <Button
+              variant="link"
+              onclick={() => onchange(removeSet(session, instance.id, set.id))}
+            >
+              Remove set
+            </Button>
+          </div>
+        {/if}
+      {/each}
+    </div>
 
-  {#if missingBodyweight}<p class="meta">Today's bodyweight, below, counts in these sets.</p>{/if}
-  <div class="foot">
-    <Button
-      variant="link"
-      onclick={() => onchange(addSet(session, instance.id, () => crypto.randomUUID()))}
-      >+ Set</Button
-    >
-    <Button variant="link" onclick={() => (noting = !noting)}>Note</Button>
-  </div>
+    {#if missingBodyweight}<p class="meta">Today's bodyweight, below, counts in these sets.</p>{/if}
+    <div class="foot">
+      <Button variant="link" onclick={() => onchange(addSet(session, instance.id, newId))}
+        >+ Set</Button
+      >
+      <Button variant="link" onclick={() => (noting = !noting)}>Note</Button>
+    </div>
+  {/if}
 </section>
+
+<Sheet open={menu} onclose={() => (menu = false)} label="{name}, options">
+  <p class="caps menu-title">{name}</p>
+  <ul class="group menu">
+    <li class="row-link">
+      <button disabled={position === 0} onclick={() => move(-1)}
+        ><span class="grow t">Move up</span><Icon name="up" size="sm" /></button
+      >
+    </li>
+    <li class="row-link">
+      <button disabled={position === session.exercises.length - 1} onclick={() => move(1)}
+        ><span class="grow t">Move down</span><Icon name="down" size="sm" /></button
+      >
+    </li>
+    <li class="row-link">
+      <button
+        onclick={() => {
+          menu = false;
+          noting = true;
+          tapped = true;
+        }}
+        ><span class="grow t">{instance.notes ? 'Edit note' : 'Add a note'}</span><Icon
+          name="edit"
+          size="sm"
+        /></button
+      >
+    </li>
+    {#if exercise}
+      <li class="row-link">
+        <button
+          onclick={() => {
+            menu = false;
+            onhistory(exercise);
+          }}><span class="grow t">History of {name}</span><Icon name="chev" size="sm" /></button
+        >
+      </li>
+    {/if}
+    <li class="row-link">
+      <button class="destroy" onclick={removeAsked}
+        ><span class="grow t">Remove {name}</span><Icon name="close" size="sm" /></button
+      >
+    </li>
+  </ul>
+</Sheet>
 
 <style>
   .ex {
@@ -285,35 +536,104 @@
     padding: var(--space-3) 14px var(--space-1);
   }
 
-  header {
+  /* An exercise still to come: no shadow and no fill, a dashed edge: it is a promise, not yet a card. */
+  .upcoming {
+    background: transparent;
+    border: var(--hairline) dashed var(--line-strong);
+    box-shadow: none;
+    color: var(--ink-2);
+  }
+
+  /* A collapsed card is one big button: the tap opens it. */
+  .fold {
+    display: grid;
+    gap: var(--space-1);
+    width: 100%;
+    min-height: var(--tap);
+    padding: 0 0 var(--space-2);
+    text-align: left;
+  }
+
+  .head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: var(--space-2);
+    min-height: var(--tap);
+  }
+
+  .fold .head {
+    min-height: 32px;
+  }
+
+  .name {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
+  .upcoming .name {
+    color: var(--ink-2);
+  }
+
+  .tools {
+    display: flex;
+    margin: -4px -10px -4px 0;
+    color: var(--ink-2);
+  }
+
+  .tools .icon-btn {
+    color: inherit;
+  }
+
+  .seal {
+    display: inline-flex;
+    flex: none;
+    align-items: center;
+    justify-content: center;
+    width: 24px;
+    height: 24px;
+    border: var(--stroke) solid var(--success);
+    border-radius: var(--radius-pill);
+    background: var(--success-wash);
+    color: var(--success);
+  }
+
+  .line {
+    overflow: hidden;
+    font: var(--fw-medium) 1.0625rem / var(--lh-snug) var(--font-num);
+    color: var(--ink);
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .sep {
+    color: var(--muted);
+  }
+
+  .rec {
+    text-decoration: underline;
+    text-decoration-color: var(--laurel-fill);
+    text-decoration-thickness: 2px;
+    text-underline-offset: 3px;
+  }
+
+  .foot-line {
     display: flex;
     align-items: center;
     justify-content: space-between;
     gap: var(--space-2);
   }
 
-  /* The name opens the exercise's history; it reads as a heading, not a button. */
-  .name {
-    min-width: 0;
-    text-align: left;
+  .note-record {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    color: var(--laurel);
   }
 
-  .order {
-    display: flex;
-    margin: -8px -10px -8px 0;
-    color: var(--ink-2);
-  }
-
-  .order .icon-btn {
-    color: inherit;
-  }
-
-  .order .icon-btn:disabled {
-    visibility: hidden;
-  }
-
-  .down :global(svg) {
-    transform: rotate(180deg);
+  .last {
+    margin: 0;
   }
 
   .last b {
@@ -328,6 +648,48 @@
     color: var(--ink-2);
   }
 
+  .suggest {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: var(--space-2);
+    margin-top: var(--space-2);
+  }
+
+  .sugg-chip {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    min-height: 36px;
+    padding: 0 var(--space-3);
+    border: var(--stroke) solid var(--accent);
+    border-radius: var(--radius-pill);
+    background: var(--accent-wash);
+    color: var(--accent);
+    font-size: 1.0625rem;
+  }
+
+  .suggest .meta {
+    min-width: 0;
+    flex: 1 1 8rem;
+  }
+
+  .ladder {
+    margin-top: var(--space-2);
+  }
+
+  .ladder-head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    min-height: var(--tap);
+  }
+
+  .ladder-actions {
+    display: flex;
+    gap: var(--space-1);
+  }
+
   .rows {
     display: grid;
     gap: 2px;
@@ -338,7 +700,7 @@
     display: grid;
     grid-template-columns:
       26px minmax(0, 1fr) 30px 12px minmax(0, 0.7fr) 14px minmax(0, 0.7fr)
-      44px;
+      auto;
     align-items: center;
     gap: 2px;
     min-height: var(--tap);
@@ -347,7 +709,7 @@
   }
 
   .row.timed {
-    grid-template-columns: 26px minmax(0, 1fr) 14px minmax(0, 0.7fr) 44px;
+    grid-template-columns: 26px minmax(0, 1fr) 14px minmax(0, 0.7fr) auto;
   }
 
   .row input {
@@ -359,6 +721,11 @@
     text-align: center;
   }
 
+  .row input::placeholder {
+    color: var(--muted);
+    opacity: 1;
+  }
+
   .row input:focus {
     border-bottom: var(--stroke-strong) solid var(--accent);
   }
@@ -366,7 +733,7 @@
   .n {
     min-height: var(--tap);
     font: var(--fw-strong) 0.9375rem / 1 var(--font-num);
-    color: var(--ink-2);
+    color: var(--ink);
   }
 
   .x {
@@ -376,6 +743,7 @@
   }
 
   .unit {
+    min-height: var(--tap);
     font: var(--fw-strong) var(--fs-label) / 1 var(--font-display);
     letter-spacing: 0.08em;
     text-transform: uppercase;
@@ -386,11 +754,20 @@
     display: flex;
     align-items: center;
     justify-content: flex-end;
+  }
+
+  .status {
+    display: inline-flex;
+    align-items: center;
+    justify-content: flex-end;
+    gap: 4px;
+    min-width: var(--tap);
+    min-height: var(--tap);
     color: var(--success);
   }
 
   .word {
-    font: italic 0.875rem / 1 var(--font-text);
+    font: italic 0.9375rem / 1 var(--font-text);
     color: var(--muted);
   }
 
@@ -398,11 +775,7 @@
     color: var(--ink-2);
   }
 
-  .pending {
-    outline: var(--stroke) dashed var(--line-strong);
-    outline-offset: -1.5px;
-  }
-
+  /* A warm-up is quiet: smaller figures, "W" in the display face, and no RPE to ask for. */
   .warm input {
     font-size: 1.0625rem;
     color: var(--ink-2);
@@ -414,11 +787,60 @@
     color: var(--muted);
   }
 
+  .warm .status {
+    color: var(--muted);
+  }
+
+  /* No RPE cells in a warm-up row: the figures take the room. */
+  .row.warm:not(.timed) {
+    grid-template-columns: 26px minmax(0, 1fr) 30px 12px minmax(0, 0.7fr) auto;
+  }
+
+  .row.warm.timed {
+    grid-template-columns: 26px minmax(0, 1fr) auto;
+  }
+
+  .row.pending {
+    outline: var(--stroke) dashed var(--line-strong);
+    outline-offset: -1.5px;
+  }
+
+  .row.pending input {
+    color: var(--ink);
+  }
+
+  .row.done .x {
+    color: var(--muted);
+  }
+
+  .row.done input[aria-label='RPE'] {
+    color: var(--ink-2);
+  }
+
   /* A skipped set was planned and deliberately not done: it stays, struck through. */
   .skipped input,
-  .skipped .n {
+  .skipped .n,
+  .skipped .x:not(:last-of-type) {
     text-decoration: line-through;
     color: var(--muted);
+  }
+
+  /* A record set: the gilded wash, and its load and reps underlined in gilt. */
+  .record {
+    background: var(--laurel-wash);
+  }
+
+  .record input[aria-label='Load'],
+  .record input[aria-label='Reps'] {
+    border-bottom: var(--stroke-strong) solid var(--laurel-fill);
+  }
+
+  .record .status {
+    color: var(--laurel);
+  }
+
+  .record-word {
+    color: var(--laurel);
   }
 
   /* The set being entered: the one inversion in the list, ringed in the accent. */
@@ -434,13 +856,22 @@
       0 0 0 4.5px var(--accent);
   }
 
+  .active input,
+  .active .n {
+    color: var(--on-figure);
+  }
+
   .active input {
     font-size: var(--fs-row-active);
     font-weight: var(--fw-num);
   }
 
   .active input::placeholder {
-    color: color-mix(in srgb, var(--on-figure) 55%, transparent);
+    color: var(--figure-accent);
+  }
+
+  .active input:focus {
+    border-bottom-color: var(--figure-accent);
   }
 
   .active .n {
@@ -459,6 +890,40 @@
     color: var(--figure-accent);
   }
 
+  /* A suggested warm-up: only a suggestion, so no box, italic and muted. */
+  .ghost {
+    grid-template-columns: 26px minmax(0, 1fr) auto;
+    font-style: italic;
+    color: var(--muted);
+  }
+
+  .ghost .n {
+    display: block;
+    text-align: center;
+    font: italic var(--fw-text) 0.9375rem / 1 var(--font-text);
+    color: var(--muted);
+  }
+
+  .ghost-fig {
+    font-size: 1.0625rem;
+    font-weight: var(--fw-medium);
+    text-align: center;
+    color: var(--muted);
+  }
+
+  .add {
+    display: inline-flex;
+    align-items: center;
+    gap: 2px;
+    min-height: var(--tap);
+    padding: 0 var(--space-2);
+    color: var(--accent);
+    font: var(--fw-display) var(--fs-label) / 1 var(--font-display);
+    font-style: normal;
+    letter-spacing: var(--ls-caps);
+    text-transform: uppercase;
+  }
+
   .actions {
     display: flex;
     gap: var(--space-2);
@@ -468,5 +933,22 @@
   .foot {
     display: flex;
     gap: var(--space-3);
+  }
+
+  .menu-title {
+    margin: 0 0 var(--space-2);
+    color: var(--ink-2);
+  }
+
+  .menu {
+    margin: 0;
+  }
+
+  .menu button:disabled {
+    opacity: 0.4;
+  }
+
+  .menu .destroy {
+    color: var(--danger);
   }
 </style>
