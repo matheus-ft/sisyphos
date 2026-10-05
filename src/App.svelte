@@ -8,7 +8,6 @@
   import ToastHost from './ui/kit/ToastHost.svelte';
   import { routeHash, tabOf } from './ui/route';
   import Agora from './ui/screens/Agora.svelte';
-  import Conflicts from './ui/screens/agora/Conflicts.svelte';
   import Setup from './ui/screens/agora/Setup.svelte';
   import ExerciseHistory from './ui/screens/ExerciseHistory.svelte';
   import History from './ui/screens/History.svelte';
@@ -18,7 +17,11 @@
   import Train from './ui/screens/Train.svelte';
   import FinishScreen from './ui/session/FinishScreen.svelte';
   import SessionView from './ui/session/SessionView.svelte';
+  import ConflictNotice from './ui/ConflictNotice.svelte';
+  import { noticeShown } from './ui/conflicts';
   import { bannerOf } from './ui/status';
+  import { update } from './ui/update.svelte';
+  import { showUpdateNotice } from './ui/update';
 
   /**
    * The shell: the screen the route names, the tab bar under it, and what
@@ -26,7 +29,10 @@
    * dialogs). State and actions live in ui/app.svelte.ts.
    */
 
-  onMount(() => app.boot());
+  onMount(() => {
+    update.start();
+    return app.boot();
+  });
 
   const route = $derived(app.route);
   /** A session is a focused mode, with its own back: the tab bar steps aside. */
@@ -64,6 +70,13 @@
             href: routeHash({ name: 'more', page: banner.action.to }),
           }
         : undefined}
+    />
+  {/if}
+  {#if showUpdateNotice({ waiting: update.waiting, inSession: app.inSession, takeover })}
+    <Banner
+      kind="info"
+      text="A new version is ready"
+      action={{ label: 'Reload', onclick: update.reload }}
     />
   {/if}
   {#if app.failure}<p class="failure" role="alert">{app.failure}</p>{/if}
@@ -118,10 +131,15 @@
     <TabBar current={tabOf(route)} {trainHref} {conflicts} />
   {/if}
 
-  {#if app.conflictNotice && !app.inSession && app.storage && !takeover}
-    <div class="notice" role="dialog" aria-modal="true" aria-label="Conflicts to settle">
-      <Conflicts notice onlater={() => (app.conflictNotice = false)} />
-    </div>
+  {#if app.storage && noticeShown( { requested: app.conflictNotice, count: conflicts, inSession: app.inSession, finishing: route.name === 'finish', takeover } )}
+    <ConflictNotice
+      count={conflicts}
+      onreview={() => {
+        app.conflictNotice = false;
+        app.go({ name: 'more', page: 'conflicts' });
+      }}
+      onlater={() => (app.conflictNotice = false)}
+    />
   {/if}
 
   <ToastHost />
@@ -150,15 +168,5 @@
 
   .boot {
     padding: 30dvh var(--gutter) 0;
-  }
-
-  .notice {
-    position: fixed;
-    inset: 0;
-    z-index: var(--z-banner);
-    overflow-y: auto;
-    padding: var(--safe-top) var(--safe-right) calc(var(--space-6) + var(--safe-bottom))
-      var(--safe-left);
-    background: var(--raised);
   }
 </style>

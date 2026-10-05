@@ -1,6 +1,17 @@
 import { describe, expect, it } from 'vitest';
-import type { ConflictRecord, Session } from '../src/model';
-import { describeConflict, diffLines } from '../src/ui/conflicts';
+import type { LibraryConflict } from '../src/library/assemble';
+import type { ConflictRecord, Exercise, Session } from '../src/model';
+import {
+  describeConflict,
+  describeLibraryConflict,
+  deviceLabel,
+  diffLines,
+  diffWords,
+  keptMessage,
+  noticeCopy,
+  noticeShown,
+  whenLabel,
+} from '../src/ui/conflicts';
 
 const names = new Map([['low_bar_squat', 'Low-Bar Squat']]);
 
@@ -54,8 +65,8 @@ describe('a conflict, as the sync screen shows it', () => {
   it('sets a session beside the saved one, set by set', () => {
     const view = describeConflict(record({}), session(8), names);
     expect(view.what).toBe('session 2026-10-04-k3f9');
-    expect(view.current).toEqual(['2026-10-04', 'Low-Bar Squat: 140 × 5 @ 8']);
-    expect(view.saved).toEqual(['2026-10-04', 'Low-Bar Squat: 140 × 5 @ 8.5']);
+    expect(view.current).toEqual(['Low-Bar Squat: 140 × 5 @ 8']);
+    expect(view.saved).toEqual(['Low-Bar Squat: 140 × 5 @ 8.5']);
   });
 
   it('shows a version that was deleted as deleted', () => {
@@ -73,8 +84,8 @@ describe('a conflict, as the sync screen shows it', () => {
       names,
     );
     expect(view.what).toBe('bodyweight: 2026-10-04');
-    expect(view.current).toContain('weight_kg: 83');
-    expect(view.saved).toContain('weight_kg: 82.5');
+    expect(view.current).toContain('weight kg: 83');
+    expect(view.saved).toContain('weight kg: 82.5');
   });
 });
 
@@ -142,7 +153,6 @@ describe('the lines of two versions, side by side', () => {
   it('comes with a conflict, so the screen can highlight what differs', () => {
     const view = describeConflict(record({}), session(8), names);
     expect(view.diff).toEqual([
-      same('2026-10-04'),
       { current: 'Low-Bar Squat: 140 × 5 @ 8', saved: 'Low-Bar Squat: 140 × 5 @ 8.5', same: false },
     ]);
   });
@@ -151,5 +161,230 @@ describe('the lines of two versions, side by side', () => {
     const view = describeConflict(record({ version: null }), session(8), names);
     expect(view.diff.every((r) => !r.same)).toBe(true);
     expect(view.diff[0].saved).toBe('deleted');
+  });
+});
+
+const text = (spans: { text: string }[]) => spans.map((s) => s.text).join('');
+const changed = (spans: { text: string; changed: boolean }[]) =>
+  spans.filter((s) => s.changed).map((s) => s.text);
+
+describe('two lines, word by word', () => {
+  it('marks only the figure that differs', () => {
+    const { a, b } = diffWords('Deadlift: 180 × 3 @ 8', 'Deadlift: 180 × 2 @ 8');
+    expect(changed(a)).toEqual(['3']);
+    expect(changed(b)).toEqual(['2']);
+    expect(text(a)).toBe('Deadlift: 180 × 3 @ 8');
+    expect(text(b)).toBe('Deadlift: 180 × 2 @ 8');
+  });
+
+  it('keeps a decimal whole, so 8 against 8.5 is one mark', () => {
+    const { a, b } = diffWords('squat @ 8', 'squat @ 8.5');
+    expect(changed(a)).toEqual(['8']);
+    expect(changed(b)).toEqual(['8.5']);
+  });
+
+  it('joins neighbouring changes into one mark, and leaves matching words between plain', () => {
+    const { a } = diffWords('140 × 5 @ 8', '150 × 5 @ 9');
+    expect(changed(a)).toEqual(['140', '8']);
+    const joined = diffWords('1 2 same', '3 4 same');
+    expect(changed(joined.a)).toEqual(['1 2']);
+  });
+
+  it('marks all of a line the other version lacks, and none of identical lines', () => {
+    expect(changed(diffWords('row 1', '').a)).toEqual(['row 1']);
+    expect(changed(diffWords('same', 'same').a)).toEqual([]);
+    expect(diffWords('', '')).toEqual({ a: [], b: [] });
+  });
+
+  it('never loses or adds a character', () => {
+    const a = 'Low-Bar Squat: 140 × 5 @ 8, 140 × 5 @ 8.5';
+    const b = 'Low-Bar Squat: 140 × 5 @ 8, 145 × 3 @ 9';
+    const pair = diffWords(a, b);
+    expect(text(pair.a)).toBe(a);
+    expect(text(pair.b)).toBe(b);
+  });
+});
+
+describe('the card of a conflict', () => {
+  const here = { id: 'phone', name: '' };
+
+  it('names it for what it is, in a plain line with the date', () => {
+    const view = describeConflict(record({ device_id: 'laptop' }), session(8), names, here);
+    expect(view.title).toBe('Two versions of one session');
+    expect(view.line).toBe('Sunday 4 October was changed on two devices. Keep one.');
+  });
+
+  it('says a deletion as a deletion', () => {
+    const view = describeConflict(record({ version: null }), session(8), names, here);
+    expect(view.line).toBe(
+      'Sunday 4 October was deleted on one device and changed on another. Keep one.',
+    );
+  });
+
+  it('puts this device first, named, and the other as another device', () => {
+    const view = describeConflict(
+      record({ device_id: 'laptop', version: { ...session(8.5), device_id: 'laptop' } }),
+      session(8),
+      names,
+      { id: 'phone', name: "Matheus's iPhone" },
+    );
+    expect(view.sides.map((s) => s.device)).toEqual(["Matheus's iPhone", 'Another device']);
+    // The log's version is this device's, so keeping it is "keep_log".
+    expect(view.sides.map((s) => s.choice)).toEqual(['keep_log', 'use_saved']);
+  });
+
+  it('calls this device "This phone" until it has a name', () => {
+    expect(deviceLabel('phone', here)).toBe('This phone');
+    expect(deviceLabel('phone', { id: 'phone', name: 'Pixel' })).toBe('Pixel');
+    expect(deviceLabel('laptop', here)).toBe('Another device');
+    expect(deviceLabel(null, here)).toBe('Another device');
+  });
+
+  it('puts the saved version first when it is this device that saved it', () => {
+    const view = describeConflict(
+      record({ device_id: 'phone' }),
+      { ...session(8), device_id: 'laptop' },
+      names,
+      here,
+    );
+    expect(view.sides.map((s) => s.choice)).toEqual(['use_saved', 'keep_log']);
+    expect(view.sides.map((s) => s.device)).toEqual(['This phone', 'Another device']);
+  });
+
+  it('marks only the changed figure in each version, with when each was changed', () => {
+    const view = describeConflict(record({ device_id: 'laptop' }), session(8), names, here);
+    const [mine, theirs] = view.sides;
+    expect(changed(mine.lines[0])).toEqual(['8']);
+    expect(changed(theirs.lines[0])).toEqual(['8.5']);
+    expect(mine.when).toBe('2026-10-04T17:30:00.000Z');
+  });
+
+  it('gives warm-ups a line of their own, so a difference in them still shows', () => {
+    const withWarmup = (reps: number): Session => {
+      const s = session(8);
+      s.exercises[0].performed.unshift({
+        ...s.exercises[0].performed[0],
+        id: 'w1',
+        is_warmup: true,
+        rpe: null,
+        reps,
+      });
+      return s;
+    };
+    const view = describeConflict(record({ version: withWarmup(3) }), withWarmup(5), names, here);
+    expect(view.current).toEqual(['Low-Bar Squat: 140 × 5 @ 8', 'Low-Bar Squat warm-up: 140 × 5']);
+    expect(view.diff.map((r) => r.same)).toEqual([true, false]);
+  });
+
+  it('leaves the key of a table row out of its lines, since the title says it', () => {
+    const view = describeConflict(
+      record({
+        path: 'lifter/bodyweight.csv',
+        key: { date: '2026-10-04' },
+        version: { date: '2026-10-04', weight_kg: '82.5', source: 'manual' },
+      }),
+      { date: '2026-10-04', weight_kg: '83', source: 'manual' },
+      names,
+      here,
+    );
+    expect(view.current).toEqual(['weight kg: 83', 'source: manual']);
+  });
+
+  it('knows nothing of when a table row changed, and says so by leaving it out', () => {
+    const view = describeConflict(
+      record({
+        path: 'lifter/bodyweight.csv',
+        key: { date: '2026-10-04' },
+        version: { date: '2026-10-04', weight_kg: '82.5', source: 'manual' },
+      }),
+      { date: '2026-10-04', weight_kg: '83', source: 'manual' },
+      names,
+      here,
+    );
+    expect(view.title).toBe('Two versions of one weigh-in');
+    expect(view.line).toBe(
+      'The weigh-in for Sunday 4 October was changed on two devices. Keep one.',
+    );
+    expect(view.sides.every((s) => s.when === null)).toBe(true);
+    expect(view.sides.map((s) => s.device).sort()).toEqual(['Another device', 'This phone']);
+  });
+});
+
+describe('a library conflict', () => {
+  const exercise = (name: string, tier: Exercise['tier']): Exercise =>
+    ({
+      id: 'pause_squat',
+      name,
+      base_lift: 'squat',
+      tier,
+      unilateral: false,
+      load_type: 'external',
+      default_unit: 'kg',
+      muscles: { primary: ['quads'], aux: ['glutes'] },
+    }) as Exercise;
+
+  it('sets the app version against the lifter own, marking what differs', () => {
+    const view = describeLibraryConflict({
+      id: 'pause_squat',
+      shipped: exercise('Pause Squat', 'high_spec'),
+      addition: exercise('Pause Squat', 'low_spec'),
+    } as LibraryConflict);
+    expect(view.title).toBe('Two versions of one exercise');
+    expect(view.sides.map((s) => s.keepMine)).toEqual([false, true]);
+    expect(changed(view.sides[0].lines[1])).toEqual(['high']);
+    expect(changed(view.sides[1].lines[1])).toEqual(['low']);
+  });
+});
+
+describe('when a version was changed', () => {
+  const at = (day: number, h: number, m: number) => new Date(2026, 9, day, h, m).toISOString();
+  const now = new Date(2026, 9, 5, 20, 0);
+
+  it('says today, yesterday, then the date', () => {
+    expect(whenLabel(at(5, 18, 2), now)).toBe('today 18:02');
+    expect(whenLabel(at(4, 9, 5), now)).toBe('yesterday 09:05');
+    expect(whenLabel(at(1, 17, 30), now)).toBe('Thu 1 Oct 17:30');
+  });
+
+  it('says nothing of a time it cannot read', () => {
+    expect(whenLabel('not a time', now)).toBe('');
+  });
+});
+
+describe('whether the full-screen notice is up', () => {
+  const gate = { requested: true, count: 2, inSession: false, finishing: false, takeover: false };
+
+  it('is up when asked for and conflicts remain', () => {
+    expect(noticeShown(gate)).toBe(true);
+  });
+
+  it('is never up in a session, where only the banner shows', () => {
+    expect(noticeShown({ ...gate, inSession: true })).toBe(false);
+  });
+
+  it('waits for Done on the finish screen, and for setup', () => {
+    expect(noticeShown({ ...gate, finishing: true })).toBe(false);
+    expect(noticeShown({ ...gate, takeover: true })).toBe(false);
+  });
+
+  it('goes once none is left, or once the lifter said Later', () => {
+    expect(noticeShown({ ...gate, count: 0 })).toBe(false);
+    expect(noticeShown({ ...gate, requested: false })).toBe(false);
+  });
+});
+
+describe('the toast after keeping one', () => {
+  it('names the device, in running text', () => {
+    expect(keptMessage('This phone')).toBe('Kept the version from this phone');
+    expect(keptMessage("Matheus's iPhone")).toBe("Kept the version from Matheus's iPhone");
+    expect(keptMessage('Another device')).toBe('Kept the version from another device');
+  });
+});
+
+describe('the launch notice', () => {
+  it('counts, and says nothing was lost', () => {
+    expect(noticeCopy(1).title).toBe('1 conflict to settle');
+    expect(noticeCopy(3).title).toBe('3 conflicts to settle');
+    expect(noticeCopy(2).line).toContain('Nothing was lost');
   });
 });

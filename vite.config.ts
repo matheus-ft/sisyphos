@@ -10,7 +10,8 @@ export default defineConfig(({ command }) => ({
   plugins: [
     svelte(),
     VitePWA({
-      registerType: 'autoUpdate',
+      // A new version waits for the lifter's Reload (ui/update.ts), so a session is never reloaded under them.
+      registerType: 'prompt',
       // Precaching the whole bundle is what makes the app launch with no signal.
       workbox: { globPatterns: ['**/*.{js,css,html,svg,png,woff2}'] },
       manifest: {
