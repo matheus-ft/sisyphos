@@ -41,7 +41,7 @@
     warmupsText,
     type CardMode,
   } from './cards';
-  import { applySuggestion, suggestionShows } from './flow';
+  import { applySuggestion, sessionsBefore, suggestionShows } from './flow';
   import { addWarmups, warmupPlan } from './warmups';
 
   /**
@@ -113,6 +113,7 @@
 
   // --- what the sets are offered ---------------------------------------------------
 
+  const earlier = $derived(sessionsBefore(app.sessions, session.date));
   const contexts = $derived(
     new Map(
       instance.performed
@@ -124,7 +125,7 @@
             instance,
             set: s,
             exercise,
-            sessions: app.sessions,
+            sessions: earlier,
             oneRms: app.oneRms,
             prefs: app.prefs,
           }),
@@ -251,7 +252,9 @@
       {#if mode === 'done'}
         <span class="line figure">
           {#each summary.sets as s, i (i)}
-            {#if i > 0}<span class="sep"> · </span>{/if}<span class:rec={s.record}>{s.text}</span>
+            {#if i > 0}<span class="sep">{' · '}</span>{/if}<span class:rec={s.record}
+              >{s.text}</span
+            >
           {:else}
             <span class="meta">No sets done</span>
           {/each}
@@ -312,7 +315,7 @@
           <Icon name={chip.delta > 0 ? 'up' : 'same'} size="sm" stroke={2.4} />
           <span class="figure-num">{chip.load} {chip.unit}</span>
         </button>
-        <span class="meta">suggested: {chip.reason}</span>
+        <span class="meta">{chip.reason}</span>
       </div>
     {/if}
 
@@ -805,10 +808,6 @@
     outline-offset: -1.5px;
   }
 
-  .row.pending input {
-    color: var(--ink);
-  }
-
   .row.done .x {
     color: var(--muted);
   }
@@ -866,7 +865,12 @@
     font-weight: var(--fw-num);
   }
 
+  /* A target not yet lifted reads as figures, a little dimmed; only the empty RPE is the accent's dash. */
   .active input::placeholder {
+    color: color-mix(in srgb, var(--on-figure) 80%, transparent);
+  }
+
+  .active input[aria-label='RPE']::placeholder {
     color: var(--figure-accent);
   }
 
@@ -899,6 +903,7 @@
 
   .ghost .n {
     display: block;
+    min-height: 0;
     text-align: center;
     font: italic var(--fw-text) 0.9375rem / 1 var(--font-text);
     color: var(--muted);

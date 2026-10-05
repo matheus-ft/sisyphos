@@ -14,6 +14,7 @@ import {
   restoreSet,
   savedSet,
   savedToast,
+  sessionsBefore,
   suggestionShows,
   targetOf,
   weighInOffer,
@@ -284,5 +285,17 @@ describe('the set after the rest', () => {
     expect(
       restNextSet(session([i]), { startedAt: 1, instanceId: i.id, setId: a.id, targetS: 120 }),
     ).toBeNull();
+  });
+});
+
+describe('what came before a session', () => {
+  it('is the sessions on or before its date', () => {
+    const old = session([], { id: 'old', date: '2026-09-01' });
+    const same = session([], { id: 'same', date: '2026-10-05' });
+    const later = session([], { id: 'later', date: '2026-10-12' });
+    expect(sessionsBefore([old, same, later], '2026-10-05').map((s) => s.id)).toEqual([
+      'old',
+      'same',
+    ]);
   });
 });

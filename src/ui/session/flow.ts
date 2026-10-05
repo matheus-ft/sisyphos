@@ -28,6 +28,17 @@ import type { Suggestion } from '../suggest';
  * put into the pending sets, the weigh-in offer. Pure; SessionView wires it.
  */
 
+// --- what came before ---------------------------------------------------------------
+
+/**
+ * The sessions "last time" and the suggested weight look back through: those on
+ * or before this session's date, so a session logged for last month is not
+ * compared with what the lifter did last week.
+ */
+export function sessionsBefore(sessions: Session[], date: Session['date']): Session[] {
+  return sessions.filter((s) => s.date <= date);
+}
+
 // --- a set just saved ---------------------------------------------------------------
 
 export interface SavedSet {

@@ -10,7 +10,7 @@
   import Icon from '../kit/Icon.svelte';
   import Meander from '../kit/Meander.svelte';
   import Switch from '../kit/Switch.svelte';
-  import { promptDialog, showToast } from '../overlays.svelte';
+  import { dismissToast, promptDialog, showToast } from '../overlays.svelte';
   import { adjustRest, parseRest, serializeRest } from '../rest';
   import {
     addExercise,
@@ -38,6 +38,7 @@
     restStarted,
     restoreSet,
     savedSet,
+    sessionsBefore,
     savedToast,
     targetOf,
     weighInOffer,
@@ -68,6 +69,8 @@
   const recentIds = $derived([
     ...new Set([...app.sessions].reverse().flatMap((s) => s.exercises.map((e) => e.exercise_id))),
   ]);
+  /** What came before this session's date: "last time" and suggestions for a past session look back from it, not from today. */
+  const earlier = $derived(sessionsBefore(app.sessions, session.date));
   const progress = $derived(climb(session, app.sessions));
   const label = $derived(programLabel(session.label));
   const records = $derived(recordSetIds(session, app.sessions, app.library, app.manualRecords));
@@ -111,7 +114,7 @@
       instance: entering.instance,
       set: entering.set,
       exercise: byId.get(entering.instance.exercise_id),
-      sessions: app.sessions,
+      sessions: earlier,
       oneRms: app.oneRms,
       prefs: app.prefs,
     });
@@ -123,6 +126,8 @@
   );
 
   function openEntry(instanceId: Id, set: PerformedSet): void {
+    // A toast sits over the panel's foot, where the chips are.
+    dismissToast();
     entry = { instanceId, setId: set.id };
   }
 
@@ -133,15 +138,22 @@
    * toast and, if it was a working set, starts the rest. The bell is primed
    * inside the tap, since iOS lets sound start only from one.
    */
-  function change(next: Session): void {
+  function change(next: Session, options: { toast?: boolean } = {}): void {
     if (app.prefs.chime) restBell().prime();
     const saved = open ? savedSet(session, next) : null;
+    // The set as it was, taken before the save: `session` shows the new one the moment it is saved.
+    const before = saved
+      ? session.exercises
+          .find((e) => e.id === saved.instance.id)
+          ?.performed.find((s) => s.id === saved.set.id)
+      : undefined;
     void app.save(next);
     if (!saved) return;
+    if (running && !saved.warmup) {
+      startRest(restStarted(saved, byId.get(saved.instance.exercise_id), Date.now()));
+    }
+    if (options.toast === false) return;
 
-    const before = session.exercises
-      .find((e) => e.id === saved.instance.id)
-      ?.performed.find((s) => s.id === saved.set.id);
     const exercise = byId.get(saved.instance.exercise_id);
     showToast({
       ...savedToast(saved, exercise),
@@ -155,7 +167,6 @@
           }
         : undefined,
     });
-    if (running && !saved.warmup) startRest(restStarted(saved, exercise, Date.now()));
   }
 
   // `entering` derives from `entry`: read it before closing the panel clears it.
@@ -167,15 +178,17 @@
     const unit = enteringContext?.unit ?? 'kg';
     const next = editSet(session, at.instance.id, at.set.id, edit, measure, unit);
     entry = null;
-    change(next);
-    // A warm-up is followed by the next warm-up of the ladder, with no tap to reopen the panel between.
-    if (at.set.is_warmup) {
-      const after = next.exercises
-        .find((e) => e.id === at.instance.id)
-        ?.performed.slice(at.instance.performed.findIndex((s) => s.id === at.set.id) + 1)
-        .find((s) => s.state === 'pending');
-      if (after?.is_warmup) openEntry(at.instance.id, after);
-    }
+    // A warm-up is followed by the next warm-up of the ladder, with no tap to reopen the panel between,
+    // and no toast either: it would cover that panel's Done.
+    const after = at.set.is_warmup
+      ? next.exercises
+          .find((e) => e.id === at.instance.id)
+          ?.performed.slice(at.instance.performed.findIndex((s) => s.id === at.set.id) + 1)
+          .find((s) => s.state === 'pending')
+      : undefined;
+    const chain = after?.is_warmup ? after : null;
+    change(next, { toast: chain === null });
+    if (chain) openEntry(at.instance.id, chain);
   }
 
   function skipEntry(): void {
@@ -241,7 +254,7 @@
       instance: next.instance,
       set: next.set,
       exercise,
-      sessions: app.sessions,
+      sessions: earlier,
       oneRms: app.oneRms,
       prefs: app.prefs,
     });
@@ -289,9 +302,10 @@
   }
 
   async function saveWeighIn(): Promise<void> {
-    if (!weighIn) return;
-    if (await app.saveRow('bodyweight', weighIn)) {
-      showToast({ message: 'Weigh-in saved', strong: `${weighIn.weight_kg} kg` });
+    const offer = weighIn;
+    if (!offer) return;
+    if (await app.saveRow('bodyweight', offer)) {
+      showToast({ message: 'Weigh-in saved', strong: `${offer.weight_kg} kg` });
     }
   }
 
@@ -375,8 +389,8 @@
         {instance}
         {exercise}
         mode={cardMode(instance, active)}
-        last={exercise ? lastInstance(exercise.id, app.sessions, session.id) : null}
-        unit={exercise ? lastUnit(exercise, app.sessions, session.id) : 'kg'}
+        last={exercise ? lastInstance(exercise.id, earlier, session.id) : null}
+        unit={exercise ? lastUnit(exercise, earlier, session.id) : 'kg'}
         {active}
         {records}
         warmupsHidden={hidden.has(instance.id)}
@@ -392,7 +406,6 @@
     <AddExercise library={app.library} {recentIds} onpick={pick} oncreate={app.startCreating} />
   </div>
 
-  <p class="sec caps">Session</p>
   <div class="details">
     <div class="field">
       <label for="session-date">Date</label>
@@ -507,8 +520,20 @@
     z-index: var(--z-sticky);
     padding-top: calc(var(--safe-top) + var(--space-1));
     margin-top: calc(-1 * var(--safe-top));
-    background: linear-gradient(180deg, var(--ground) 85%, transparent);
+    background: var(--ground);
     color: var(--figure);
+  }
+
+  /* The list slides under the header and fades out beneath its meander, not behind it. */
+  .head::after {
+    content: '';
+    position: absolute;
+    right: 0;
+    bottom: -10px;
+    left: 0;
+    height: 10px;
+    background: linear-gradient(180deg, var(--ground), transparent);
+    pointer-events: none;
   }
 
   .top {
@@ -675,7 +700,7 @@
   .details {
     display: grid;
     gap: var(--space-3);
-    margin: 0 var(--gutter);
+    margin: var(--space-6) var(--gutter) 0;
   }
 
   .switch-row {
@@ -683,6 +708,10 @@
     align-items: center;
     justify-content: space-between;
     min-height: var(--tap);
+  }
+
+  .field :global(.button-link) {
+    justify-self: start;
   }
 
   textarea {
