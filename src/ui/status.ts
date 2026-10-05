@@ -44,3 +44,49 @@ function describe(s: StatusSnapshot, inSession: boolean): StatusLine {
 function clock(at: Date): string {
   return at.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
 }
+
+export interface BannerView {
+  kind: 'conflict' | 'info' | 'offline';
+  text: string;
+  /** Where its action leads: the conflicts page, or the sync page. */
+  action: { label: string; to: 'conflicts' | 'sync' } | null;
+}
+
+/**
+ * The banner every screen shows, if any, from the most pressing down:
+ * conflicts, a sync that stopped, work at risk, being offline. During a
+ * session only conflicts are announced: syncing waits for the end on purpose.
+ * A device never set up says so in Agora rather than on every screen, since
+ * the lifter chose to go without sync.
+ */
+export function bannerOf(snapshot: StatusSnapshot, inSession: boolean): BannerView | null {
+  const conflicts = snapshot.conflicts + snapshot.libraryConflicts;
+  if (conflicts > 0) {
+    const noun = conflicts === 1 ? 'conflict' : 'conflicts';
+    return {
+      kind: 'conflict',
+      text: `${conflicts} ${noun} to settle`,
+      action: { label: 'Review', to: 'conflicts' },
+    };
+  }
+  if (inSession) return null;
+  switch (snapshot.status) {
+    case 'needs_token':
+    case 'repo_problem':
+    case 'needs_update':
+      return {
+        kind: 'info',
+        text: snapshot.message ?? 'Sync stopped.',
+        action: { label: 'Fix', to: 'sync' },
+      };
+    case 'offline':
+    case 'retrying':
+      return { kind: 'offline', text: 'Offline. Sets save here and sync later.', action: null };
+    case 'idle':
+      return snapshot.exposure.level === 'at_risk'
+        ? { kind: 'info', text: snapshot.exposure.message, action: { label: 'Sync', to: 'sync' } }
+        : null;
+    default:
+      return null;
+  }
+}

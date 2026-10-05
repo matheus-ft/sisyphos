@@ -1,10 +1,13 @@
 <script lang="ts">
   import { untrack } from 'svelte';
-  import musclesCsv from '../library/muscles.csv?raw';
-  import { parseMuscles } from '../library/parse';
-  import type { CompetitionLift, Exercise, LoadType, LoadUnit, Tier } from '../model';
-  import { exerciseIdFrom, nameProblem } from './session';
+  import musclesCsv from '../../library/muscles.csv?raw';
+  import { parseMuscles } from '../../library/parse';
+  import type { CompetitionLift, Exercise, LoadType, LoadUnit, Tier } from '../../model';
+  import Button from '../kit/Button.svelte';
+  import ScreenHeader from '../kit/ScreenHeader.svelte';
+  import { exerciseIdFrom, nameProblem } from '../session';
 
+  /** A new exercise for the library, saved on this phone and proposed to the shared library. */
   interface Props {
     /** What was typed in the search, as a start for the name. */
     name: string;
@@ -66,146 +69,111 @@
   }
 </script>
 
-<article>
-  <button class="link" onclick={onclose}>‹ back</button>
-  <h1>New exercise</h1>
-  <p class="muted">
+<ScreenHeader title="New exercise" back={{ onclick: onclose }} />
+
+<div class="body">
+  <p class="meta">
     Saved on this phone at once. Saving also opens a prefilled proposal on github.com to add it to
     the shared library, for you to submit if you like.
   </p>
 
   <form onsubmit={save}>
-    <label>name <input bind:value={name} autocomplete="off" /></label>
-    <label>
-      serves
-      <select bind:value={baseLift}>
+    <div class="field">
+      <label for="new-name">Name</label>
+      <input id="new-name" bind:value={name} autocomplete="off" />
+    </div>
+    <div class="field">
+      <label for="new-lift">Serves</label>
+      <select id="new-lift" bind:value={baseLift}>
         <option value="">no competition lift</option>
         <option value="squat">squat</option>
         <option value="bench">bench</option>
         <option value="deadlift">deadlift</option>
       </select>
-    </label>
-    <label>
-      as a
-      <select bind:value={tier}>
+    </div>
+    <div class="field">
+      <label for="new-tier">As a</label>
+      <select id="new-tier" bind:value={tier}>
         {#each TIERS as [value, label] (value)}<option {value}>{label}</option>{/each}
       </select>
-    </label>
-    <label>
-      loaded by
-      <select bind:value={loadType}>
+    </div>
+    <div class="field">
+      <label for="new-load">Loaded by</label>
+      <select id="new-load" bind:value={loadType}>
         <option value="external">a weight</option>
         <option value="bw_plus">bodyweight plus a weight</option>
         <option value="none">nothing: timed</option>
       </select>
-    </label>
-    <label>
-      usually in
-      <select bind:value={unit}>
+    </div>
+    <div class="field">
+      <label for="new-unit">Usually in</label>
+      <select id="new-unit" bind:value={unit}>
         <option value="kg">kg</option>
         <option value="lb">lb</option>
         <option value="pins">pins</option>
       </select>
-    </label>
+    </div>
     <label class="check"
-      ><input type="checkbox" bind:checked={unilateral} /> one side at a time</label
+      ><input type="checkbox" bind:checked={unilateral} /> One side at a time</label
     >
 
-    <p class="muted">Muscles: tap once for primary, twice for aux, again to clear.</p>
+    <p class="meta">Muscles: tap once for primary, twice for aux, again to clear.</p>
     <div class="muscles">
       {#each muscles as muscle (muscle.id)}
         <button
           type="button"
-          class:primary={primary.includes(muscle.id)}
+          class="chip"
           class:aux={aux.includes(muscle.id)}
-          onclick={() => cycle(muscle.id)}>{muscle.name}</button
+          aria-pressed={primary.includes(muscle.id)}
+          onclick={() => cycle(muscle.id)}
+          >{muscle.name}{#if aux.includes(muscle.id)}<span class="tag">aux</span>{/if}</button
         >
       {/each}
     </div>
 
     {#if problem}<p class="problem" role="alert">{problem}</p>{/if}
-    <button type="submit" class="save">Save</button>
+    <Button type="submit" variant="primary" bench full>Save</Button>
   </form>
-</article>
+</div>
 
 <style>
-  h1 {
-    font-size: 1.4rem;
-  }
-
-  .muted {
-    color: var(--muted);
-    font-size: 0.9rem;
+  .body {
+    padding: 0 var(--gutter);
   }
 
   form {
     display: grid;
-    gap: 0.25rem;
-  }
-
-  label {
-    display: grid;
-    grid-template-columns: 6rem 1fr;
-    align-items: center;
-    color: var(--muted);
-  }
-
-  label input,
-  select {
-    color: var(--ink);
-  }
-
-  select {
-    min-height: 2.75rem;
-    border: 0;
-    border-bottom: 1px solid var(--line);
-    background: none;
-    font: inherit;
-    font-size: 1rem;
+    gap: var(--space-4);
+    margin-top: var(--space-4);
   }
 
   .check {
     display: flex;
-    gap: 0.5rem;
-    color: var(--ink);
+    align-items: center;
+    gap: var(--space-2);
+    min-height: var(--tap);
   }
 
   .check input {
     min-height: 0;
+    width: 20px;
+    height: 20px;
+    accent-color: var(--figure);
   }
 
   .muscles {
     display: flex;
     flex-wrap: wrap;
-    gap: 0.4rem;
+    gap: 6px;
   }
 
-  .muscles button {
-    min-height: 2.5rem;
-    padding: 0 0.75rem;
-    border: 1px solid var(--line);
-    border-radius: 1.25rem;
-    font-size: 0.9rem;
+  /* Aux is outlined in the figure colour: chosen, but less than primary. */
+  .aux {
+    border: var(--stroke-strong) solid var(--figure);
   }
 
-  .muscles .primary {
-    border-color: var(--ink);
-    background: var(--ink);
-    color: var(--ground);
-  }
-
-  .muscles .aux {
-    border-color: var(--ink);
-  }
-
-  .problem {
-    color: var(--accent);
-  }
-
-  .save {
-    margin-top: 1rem;
-    border: 1px solid var(--ink);
-    border-radius: 0.5rem;
-    font-weight: 600;
+  .tag {
+    font: italic 0.8125rem / 1 var(--font-text);
+    color: var(--ink-2);
   }
 </style>
