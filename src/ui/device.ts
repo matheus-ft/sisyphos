@@ -137,3 +137,14 @@ export function chime(win: Window = window): Chime {
     },
   };
 }
+
+let bell: Chime | null = null;
+
+/**
+ * The app's one bell. The tap that saves a set primes it and the rest takeover
+ * rings it at zero, so both must hold the same audio context: iOS unlocks sound
+ * per context, within a tap.
+ */
+export function restBell(): Chime {
+  return (bell ??= chime());
+}
