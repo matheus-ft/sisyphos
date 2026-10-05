@@ -56,10 +56,15 @@ src/
   library/    muscles.csv, exercises.csv, the parser for them, and how the
               lifter's own exercises combine with them
   metrics/    definitions.json, the two lookup charts, and the code reading them
-  ui/         the screens: logging a session, setup, the status line
+  ui/         the four tabs (Train, History, Progress, More), the session, the
+              design system's components, and the rules behind every screen
   storage/    the device store, sync with the log repo, setup, scheduling,
               durability
+e2e/          the main flows driven in a browser at phone size
 ```
+
+What the lifter wants from each screen, the brief a designer works from, is in
+[`docs/UI.md`](docs/UI.md).
 
 **No training data lives in this repo.** Sessions, bodyweight, reference maxes
 and records go in a separate private log repo you create once. See

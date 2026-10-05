@@ -209,16 +209,21 @@ Any other file you put in the log repo is yours: the app never touches it.
 
 ## Exports
 
-Not built yet; the screen that will make them is in `UI.md`, Sync and settings.
-Generated on demand, never a source of truth, and they carry no library-derived
+Made on demand from Agora › Settings (`src/ui/export.ts`), never a source of truth, and they carry no library-derived
 data — no muscles, no tier, no base lift. Exports reference `exercise_id` and the
 consumer joins against `exercises.csv`, which is the whole point of having a
 truth table.
 
 ```
 sets.csv       session_id, date, exercise_id, set_n, reps, rpe, load_kg, is_warmup, state
-sessions.csv   session_id, date, tz, duration_min, program labels, bodyweight_kg, notes
+sessions.csv   session_id, date, tz, duration_min, program_name, program_block,
+               program_week, program_day, program_weekday, bodyweight_kg, notes
 ```
+
+Cells follow Serialisation above. `load_kg` is the weight in kilograms (pounds
+converted), the load added for a bodyweight-plus set, and empty for pins, timed
+and distance sets, whose numbers stay in the log. `set_n` counts an exercise's
+sets through its session, so session, exercise and `set_n` identify a set.
 
 In a notebook that's one join:
 
@@ -243,10 +248,16 @@ df = pd.read_csv('sets.csv').merge(pd.read_csv('exercises.csv'), on='exercise_id
 | `metrics/stress.ts`      | The fatigue chart, stress index, central balance                                 |
 | `metrics/load.ts`        | Unit conversion, effective load, tonnage                                         |
 | `metrics/volume.ts`      | Volume by muscle, by tier and by event                                           |
+| `metrics/e1rm.ts`        | e1RM of a set and over time; `records.ts` the best weight at each rep count      |
+| `metrics/weekly.ts`      | Working sets per muscle per week; `dates.ts` calendar arithmetic on local dates  |
+| `ui/app.svelte.ts`       | The app's state and every action a screen takes, over `startStorage()`           |
+| `ui/route.ts`            | Every screen's address, kept in the URL hash                                     |
+| `ui/kit/`                | Shared components; with the tokens in `app.css`, the design system               |
+| `ui/screens/`            | One file per tab and page; `screens/agora/` holds the More pages                 |
+| `ui/session/`            | The session screen, the entry panel, the rest takeover and the finish            |
 | `ui/session.ts`          | Every change the session screen makes, as pure functions over a session          |
 | `ui/template.ts`         | The same for the template screen                                                 |
-| `ui/conflicts.ts`        | A conflict as short lines to compare, for the sync screen                        |
-| `ui/*.svelte`            | The screens; `App.svelte` at the root of `src/` wires them to the storage layer  |
+| `ui/*.ts`                | Every other rule and number a screen shows, one tested pure module per concern   |
 | `storage/app.ts`         | What the UI calls: `startStorage()` wires everything below                       |
 | `storage/log.ts`         | Sessions, templates, rows and conflicts, read and written as records             |
 | `storage/formats.ts`     | Every log-repo file to and from its record (see Serialisation above)             |

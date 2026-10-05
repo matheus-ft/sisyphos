@@ -27,9 +27,8 @@ export const SETS_COLUMNS = [
 ] as const;
 
 /**
- * The doc says only "program labels" for one slot; these are its five
- * `ProgramLabel` fields, one column each, so a block or a week can be filtered
- * on without parsing a cell.
+ * The program label as its five `ProgramLabel` fields, one column each, so a
+ * block or a week can be filtered on without parsing a cell.
  */
 export const SESSIONS_COLUMNS = [
   'session_id',
