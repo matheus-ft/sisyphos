@@ -50,6 +50,12 @@
     color: var(--ink-2);
   }
 
+  /* Stretched, each choice is centred in its share, so its padding only sets how
+     narrow the row can get: four lifts must fit a 360 phone. */
+  .full button {
+    padding-inline: var(--space-2);
+  }
+
   button[aria-pressed='true'] {
     background: var(--raised);
     color: var(--ink);

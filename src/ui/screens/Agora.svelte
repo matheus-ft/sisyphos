@@ -26,7 +26,12 @@
 
   const today = localDate(new Date());
   const conflicts = $derived((app.status?.conflicts ?? 0) + (app.status?.libraryConflicts ?? 0));
-  const sync = $derived(app.status ? statusLine(app.status, app.inSession).text : 'Opening…');
+  // Conflicts have their own row here, so the sync line leaves them out.
+  const sync = $derived(
+    app.status
+      ? statusLine({ ...app.status, conflicts: 0, libraryConflicts: 0 }, app.inSession).text
+      : 'Opening…',
+  );
   const href = (p: AgoraPage) => routeHash({ name: 'more', page: p });
 </script>
 

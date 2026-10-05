@@ -15,8 +15,10 @@
    */
   interface Props {
     view: ProgressView;
+    /** The exercise the route names, as from an exercise's history. */
+    exercise?: string;
   }
-  let { view }: Props = $props();
+  let { view, exercise }: Props = $props();
 
   const VIEWS: { value: ProgressView; label: string }[] = [
     { value: 'body', label: 'Body' },
@@ -28,6 +30,9 @@
 
   /** The exercise last picked, kept when switching between Strength and Labours. */
   let picked = $state<string | null>(null);
+  $effect(() => {
+    if (exercise) picked = exercise;
+  });
 </script>
 
 <ScreenHeader title="Progress" />

@@ -23,6 +23,14 @@
   const line = $derived(app.status ? statusLine(app.status, false) : null);
   const notSetUp = $derived(app.status?.status === 'not_set_up');
   const busy = $derived(syncing || app.status?.status === 'syncing');
+  /** The way out of a sync that stopped on the token or the repo, rather than Sync now. */
+  const fix = $derived(
+    app.status?.status === 'needs_token'
+      ? 'Paste a new token'
+      : app.status?.status === 'repo_problem'
+        ? 'Change repo or token'
+        : null,
+  );
 
   $effect(() => {
     // Reread when the status changes: a setup just finished changes both.
@@ -74,9 +82,14 @@
         <p>{line.text}</p>
       </div>
       {#if app.status}<p class="meta">{app.status.exposure.message}</p>{/if}
-      <Button variant="primary" bench full disabled={busy || !repo} onclick={syncNow}
-        >{busy ? 'Syncing…' : 'Sync now'}</Button
-      >
+      {#if fix}
+        <!-- Syncing again cannot help until the repo or token changes. -->
+        <Button variant="primary" bench full onclick={() => (changing = true)}>{fix}</Button>
+      {:else}
+        <Button variant="primary" bench full disabled={busy || !repo} onclick={syncNow}
+          >{busy ? 'Syncing…' : 'Sync now'}</Button
+        >
+      {/if}
     </div>
   {/if}
 
@@ -111,9 +124,9 @@
   </p>
 
   {#if app.status?.unreadable.length}
-    <p class="sec caps">Left alone</p>
+    <p class="sec caps">Files sync skips</p>
     <p class="group-foot top">
-      These files in the log repo do not read as the app writes them, so sync leaves them as they
+      These files in the log repo are not in the form the app writes, so sync leaves them as they
       are. Fix or remove them on github.com.
     </p>
     <ul class="group">

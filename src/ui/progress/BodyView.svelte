@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { untrack } from 'svelte';
   import musclesCsv from '../../library/muscles.csv?raw';
   import { parseMuscles } from '../../library/parse';
   import { setsBehindMuscle, weeklyVolume, type VolumeWindow } from '../../metrics/weekly';
@@ -10,6 +11,7 @@
     legendCaption,
     levelsOf,
     muscleRowText,
+    openingWindow,
     topMuscles,
     volumeHeading,
     VOLUME_WINDOWS,
@@ -27,7 +29,11 @@
 
   const muscles = parseMuscles(musclesCsv);
 
-  let period = $state<VolumeWindow>('this_week');
+  let period = $state<VolumeWindow>(
+    untrack(() =>
+      openingWindow(weeklyVolume(app.current, app.library, muscles, 'this_week', today)),
+    ),
+  );
   let selected = $state<string | null>(null);
   let table = $state(false);
 
@@ -118,7 +124,8 @@
               ><button onclick={() => (selected = v.muscle.id)}>{v.muscle.name}</button></th
             >
             <td class="num figure-num">{formatCount(v.sets)}</td>
-            <td class="num figure-num">{v.level}</td>
+            <!-- The legend's own words for the shade, not its index. -->
+            <td class="num figure-num">{LEGEND_LABELS[v.level]}</td>
           </tr>
         {/each}
       </tbody>
@@ -212,6 +219,7 @@
   .caption {
     font: italic 0.8125rem / 1.3 var(--font-text);
     text-align: center;
+    text-wrap: balance;
     opacity: 0.85;
   }
 

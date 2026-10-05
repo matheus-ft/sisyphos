@@ -24,6 +24,9 @@
   const minutes = $derived(sessionMinutes(session));
   const live = $derived(session.started_at !== null && session.ended_at === null);
   const best = $derived(exerciseId ? row.best : null);
+  /** The italic line over the main one: the program label, or the filter's count. */
+  const lead = $derived(exerciseId ? filteredLead(row, exerciseId) : label);
+  const main = $derived(exerciseId ? (label ?? 'No sets yet') : exerciseSummary(session, names));
 </script>
 
 <li class="row-link">
@@ -32,40 +35,50 @@
       <span class="num">{dayOfMonth(session.date)}</span>
       <span class="wd caps">{weekdayShort(session.date)}</span>
     </span>
+    <!-- Each line keeps its own right-hand side, so the label is cut only by
+         the duration beside it, never by the marks beneath. -->
     <span class="grow">
-      {#if exerciseId}
-        <span class="s">{filteredLead(row, exerciseId)}</span>
+      {#if lead}
+        <span class="line">
+          <span class="s">{lead}</span>
+          {@render aside()}
+        </span>
+      {/if}
+      <span class="line">
         {#if best}
           <span class="t best">{best.text}</span>
         {:else}
-          <span class="t what">{label ?? 'No sets yet'}</span>
+          <span class="t what">{main}</span>
         {/if}
-      {:else}
-        {#if label}<span class="s">{label}</span>{/if}
-        <span class="t what">{exerciseSummary(session, names)}</span>
-      {/if}
-    </span>
-    <span class="r">
-      {#if live}
-        <span class="live">in progress</span>
-      {:else if row.planned}
-        <span class="plan">planned</span>
-      {:else if best?.e1rm != null}
-        <span class="e1rm">e1RM {e1rmText(best.e1rm)}</span>
-      {:else if !exerciseId && minutes !== null}
-        <span>{formatMinutes(minutes)}</span>
-      {/if}
-      {#if (row.pendingSets > 0 && !row.planned) || record}
-        <span class="marks">
-          {#if row.pendingSets > 0 && !row.planned}
-            <span class="pending"><i></i>{row.pendingSets} pending</span>
-          {/if}
-          {#if record}<Laurel label="Set a record" />{/if}
-        </span>
-      {/if}
+        {#if !lead}{@render aside()}{/if}
+        {@render marks()}
+      </span>
     </span>
   </button>
 </li>
+
+{#snippet aside()}
+  {#if live}
+    <span class="r live">in progress</span>
+  {:else if row.planned && !exerciseId}
+    <span class="r plan">planned</span>
+  {:else if best?.e1rm != null}
+    <span class="r e1rm">e1RM {e1rmText(best.e1rm)}</span>
+  {:else if !exerciseId && minutes !== null}
+    <span class="r">{formatMinutes(minutes)}</span>
+  {/if}
+{/snippet}
+
+{#snippet marks()}
+  {#if (row.pendingSets > 0 && !row.planned) || record}
+    <span class="r marks">
+      {#if row.pendingSets > 0 && !row.planned}
+        <span class="pending"><i></i>{row.pendingSets} pending</span>
+      {/if}
+      {#if record}<Laurel label="Set a record" />{/if}
+    </span>
+  {/if}
+{/snippet}
 
 <style>
   /* Heavy on the figures: the day is what the eye scans down the list for. */
@@ -102,11 +115,19 @@
     font: var(--fw-num) var(--fs-row) / var(--lh-snug) var(--font-num);
   }
 
-  .r {
+  .line {
     display: flex;
-    flex-direction: column;
-    align-items: flex-end;
-    gap: 4px;
+    align-items: baseline;
+    gap: var(--space-3);
+  }
+
+  .line > :first-child {
+    flex: 1;
+    min-width: 0;
+  }
+
+  .r {
+    flex: none;
     font-size: var(--fs-meta);
     color: var(--muted);
     white-space: nowrap;

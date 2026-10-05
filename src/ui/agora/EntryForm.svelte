@@ -15,9 +15,20 @@
     children: Snippet;
   }
   let { submitLabel, problem, onsubmit, oncancel, children }: Props = $props();
+
+  /** Opened by a link above it, the form may start below the fold: bring it up. */
+  function arrive(node: HTMLElement): void {
+    requestAnimationFrame(() =>
+      node.scrollIntoView({
+        block: 'nearest',
+        behavior: matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth',
+      }),
+    );
+  }
 </script>
 
 <form
+  use:arrive
   class="card entry"
   onsubmit={(event) => {
     event.preventDefault();
@@ -38,6 +49,8 @@
     gap: var(--space-3);
     margin: 0 12px var(--space-3);
     padding: var(--space-4);
+    /* Clear of the tab bar when scrolled into view. */
+    scroll-margin-bottom: calc(var(--dock, 0px) + var(--space-3));
   }
 
   .fields {

@@ -24,7 +24,8 @@ export type AgoraPage = (typeof AGORA_PAGES)[number];
 export type Route =
   | { name: 'train' }
   | { name: 'history' }
-  | { name: 'progress'; view: ProgressView }
+  /** `exercise` opens Strength or Labours on that exercise, as from its history's records. */
+  | { name: 'progress'; view: ProgressView; exercise?: string }
   /** Agora: its list of pages when `page` is null. */
   | { name: 'more'; page: AgoraPage | null }
   | { name: 'session'; id: string }
@@ -54,8 +55,13 @@ export function parseRoute(hash: string): Route {
       return HOME;
     case 'history':
       return { name: 'history' };
-    case 'progress':
-      return { name: 'progress', view: oneOf(PROGRESS_VIEWS, second) ?? 'body' };
+    case 'progress': {
+      const view = oneOf(PROGRESS_VIEWS, second) ?? 'body';
+      // The body view is of every muscle, so it takes no exercise.
+      return third && view !== 'body'
+        ? { name: 'progress', view, exercise: third }
+        : { name: 'progress', view };
+    }
     case 'more':
       return { name: 'more', page: oneOf(AGORA_PAGES, second) ?? null };
     case 'session':
@@ -76,7 +82,10 @@ export function routeHash(route: Route): string {
     case 'history':
       return `#/${route.name}`;
     case 'progress':
-      return route.view === 'body' ? '#/progress' : `#/progress/${route.view}`;
+      if (route.view === 'body') return '#/progress';
+      return route.exercise
+        ? `#/progress/${route.view}/${encodeURIComponent(route.exercise)}`
+        : `#/progress/${route.view}`;
     case 'more':
       return route.page === null ? '#/more' : `#/more/${route.page}`;
     case 'session':

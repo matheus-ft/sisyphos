@@ -43,5 +43,7 @@
     margin: 4px 0 var(--space-4);
     font-size: var(--fs-meta);
     color: var(--ink-2);
+    /* Centred, a one-word last line reads as a mistake. */
+    text-wrap: balance;
   }
 </style>

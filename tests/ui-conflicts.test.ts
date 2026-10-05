@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import type { LibraryConflict } from '../src/library/assemble';
 import type { ConflictRecord, Exercise, Session } from '../src/model';
 import {
+  conflictSubject,
   describeConflict,
   describeLibraryConflict,
   deviceLabel,
@@ -14,6 +15,8 @@ import {
 } from '../src/ui/conflicts';
 
 const names = new Map([['low_bar_squat', 'Low-Bar Squat']]);
+/** A set as a version's line holds it: kept whole with no-break spaces. */
+const set = (text: string) => text.replaceAll(' ', ' ');
 
 const session = (rpe: number): Session => ({
   id: '2026-10-04-k3f9',
@@ -65,8 +68,8 @@ describe('a conflict, as the sync screen shows it', () => {
   it('sets a session beside the saved one, set by set', () => {
     const view = describeConflict(record({}), session(8), names);
     expect(view.what).toBe('session 2026-10-04-k3f9');
-    expect(view.current).toEqual(['Low-Bar Squat: 140 × 5 @ 8']);
-    expect(view.saved).toEqual(['Low-Bar Squat: 140 × 5 @ 8.5']);
+    expect(view.current).toEqual([`Low-Bar Squat: ${set('140 × 5 @ 8')}`]);
+    expect(view.saved).toEqual([`Low-Bar Squat: ${set('140 × 5 @ 8.5')}`]);
   });
 
   it('shows a version that was deleted as deleted', () => {
@@ -84,8 +87,8 @@ describe('a conflict, as the sync screen shows it', () => {
       names,
     );
     expect(view.what).toBe('bodyweight: 2026-10-04');
-    expect(view.current).toContain('weight kg: 83');
-    expect(view.saved).toContain('weight kg: 82.5');
+    expect(view.current).toContain('83 kg');
+    expect(view.saved).toContain('82.5 kg');
   });
 });
 
@@ -153,7 +156,11 @@ describe('the lines of two versions, side by side', () => {
   it('comes with a conflict, so the screen can highlight what differs', () => {
     const view = describeConflict(record({}), session(8), names);
     expect(view.diff).toEqual([
-      { current: 'Low-Bar Squat: 140 × 5 @ 8', saved: 'Low-Bar Squat: 140 × 5 @ 8.5', same: false },
+      {
+        current: `Low-Bar Squat: ${set('140 × 5 @ 8')}`,
+        saved: `Low-Bar Squat: ${set('140 × 5 @ 8.5')}`,
+        same: false,
+      },
     ]);
   });
 
@@ -272,7 +279,10 @@ describe('the card of a conflict', () => {
       return s;
     };
     const view = describeConflict(record({ version: withWarmup(3) }), withWarmup(5), names, here);
-    expect(view.current).toEqual(['Low-Bar Squat: 140 × 5 @ 8', 'Low-Bar Squat warm-up: 140 × 5']);
+    expect(view.current).toEqual([
+      `Low-Bar Squat: ${set('140 × 5 @ 8')}`,
+      `Low-Bar Squat warm-up: ${set('140 × 5')}`,
+    ]);
     expect(view.diff.map((r) => r.same)).toEqual([true, false]);
   });
 
@@ -287,7 +297,28 @@ describe('the card of a conflict', () => {
       names,
       here,
     );
-    expect(view.current).toEqual(['weight kg: 83', 'source: manual']);
+    expect(view.current).toEqual(['83 kg', 'entered by hand']);
+  });
+
+  it('says a record by hand in words, leaving its empty cells out', () => {
+    const view = describeConflict(
+      record({
+        path: 'lifter/manual-records.csv',
+        key: { date: '2026-03-14', exercise_id: 'low_bar_squat', reps: '1' },
+        version: {
+          date: '2026-03-14',
+          exercise_id: 'low_bar_squat',
+          reps: '1',
+          weight_kg: '155',
+          rpe: '',
+          context: 'Mock meet',
+        },
+      }),
+      null,
+      names,
+      here,
+    );
+    expect(view.saved).toEqual(['155 kg', '“Mock meet”']);
   });
 
   it('knows nothing of when a table row changed, and says so by leaving it out', () => {
@@ -386,5 +417,23 @@ describe('the launch notice', () => {
     expect(noticeCopy(1).title).toBe('1 conflict to settle');
     expect(noticeCopy(3).title).toBe('3 conflicts to settle');
     expect(noticeCopy(2).line).toContain('Nothing was lost');
+  });
+
+  it('names what each conflict is about, from the record alone', () => {
+    expect(conflictSubject(record({}), names)).toBe('The session of Sunday 4 October');
+    // A deleted session still has its date, in its id.
+    expect(conflictSubject(record({ version: null }), names)).toBe(
+      'The session of Sunday 4 October',
+    );
+    expect(
+      conflictSubject(
+        record({
+          path: 'lifter/manual-records.csv',
+          key: { date: '2026-03-14', exercise_id: 'low_bar_squat', reps: '1' },
+          version: null,
+        }),
+        names,
+      ),
+    ).toBe('The record for Saturday 14 March, Low-Bar Squat, 1 rep');
   });
 });

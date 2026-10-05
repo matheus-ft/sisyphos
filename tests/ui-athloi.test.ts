@@ -17,6 +17,7 @@ import {
   levelsOf,
   liftChoices,
   muscleRowText,
+  openingWindow,
   pointText,
   recordedExercises,
   recordRows,
@@ -103,6 +104,13 @@ describe('the body', () => {
 
   it('lists none when nothing was trained', () => {
     expect(topMuscles(weeklyVolume([], library, muscles, 'this_week', today))).toEqual([]);
+  });
+
+  it('opens on this week, or on four weeks while this week is still bare', () => {
+    expect(openingWindow(volume)).toBe('this_week');
+    expect(openingWindow(weeklyVolume([], library, muscles, 'this_week', today))).toBe(
+      'last_4_weeks',
+    );
   });
 
   it('says what the shades mean for each window', () => {

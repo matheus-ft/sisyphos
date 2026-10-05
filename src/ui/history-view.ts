@@ -58,10 +58,20 @@ export function exerciseSets(session: Session, exerciseId: string): number {
     .reduce((n, e) => n + e.performed.filter((s) => s.state === 'done' && !s.is_warmup).length, 0);
 }
 
-/** The row's second line when filtered: "4 sets · best". */
+/** The working sets a plan holds for one exercise, done or not. */
+function plannedSets(session: Session, exerciseId: string): number {
+  return session.exercises
+    .filter((e) => e.exercise_id === exerciseId)
+    .reduce((n, e) => n + e.performed.filter((s) => !s.is_warmup).length, 0);
+}
+
+/** The row's italic line when filtered: "4 sets · best", or for a plan "4 sets planned". */
 export function filteredLead(row: HistoryRow, exerciseId: string): string {
-  const n = exerciseSets(row.session, exerciseId);
-  return row.planned ? 'Planned' : `${plural(n, 'set', 'sets')} · best`;
+  if (row.planned) {
+    const n = plannedSets(row.session, exerciseId);
+    return n > 0 ? `${plural(n, 'set', 'sets')} planned` : 'Planned';
+  }
+  return `${plural(exerciseSets(row.session, exerciseId), 'set', 'sets')} · best`;
 }
 
 /** The week header's summary: "3 sessions · 41 sets", or "best e1RM 112" when filtered. */
@@ -155,14 +165,25 @@ export interface ExerciseHistoryView {
   sessions: number;
   /** The best e1RM of any visit, with when it was set; null when no set can be priced. */
   bestE1rm: { kg: number; date: IsoDate } | null;
+  /** For timed work, which has no e1RM: the longest hold, as a clock, and when. */
+  longest: { text: string; date: IsoDate } | null;
   /** Rep counts that hold a record for this exercise: the Labours rows with a weight. */
   records: number;
+}
+
+/** A hold as a clock, "0:45", so that 45 s and 1:00 read as one kind of figure in a list. */
+function clock(seconds: number): string {
+  return `${Math.floor(seconds / 60)}:${String(Math.round(seconds % 60)).padStart(2, '0')}`;
+}
+
+function setText(set: PerformedSet, exercise: Exercise): string {
+  return set.load?.kind === 'time' ? clock(set.load.seconds) : formatSet(set, exercise);
 }
 
 function fold(sets: PerformedSet[], exercise: Exercise): string[] {
   const out: { text: string; n: number }[] = [];
   for (const set of sets) {
-    const text = formatSet(set, exercise);
+    const text = setText(set, exercise);
     const last = out.at(-1);
     if (last?.text === text) last.n += 1;
     else out.push({ text, n: 1 });
@@ -183,11 +204,12 @@ export function exerciseHistory(
       .flatMap((e) => e.performed.filter((s) => s.state === 'done'));
     const working = performed.filter((s) => !s.is_warmup);
     if (working.length === 0) continue;
+    const best = bestSetOf(session, exercise, bodyweightAt);
     visits.push({
       session,
       sets: fold(working, exercise),
       warmups: performed.length - working.length,
-      best: bestSetOf(session, exercise, bodyweightAt),
+      best: best && { ...best, text: setText(best.set, exercise) },
     });
   }
 
@@ -209,10 +231,19 @@ export function exerciseHistory(
     }
   }
 
+  let longest: { seconds: number; date: IsoDate } | null = null;
+  for (const { session, best } of visits) {
+    const load = best?.set.load;
+    if (load?.kind === 'time' && (longest === null || load.seconds > longest.seconds)) {
+      longest = { seconds: load.seconds, date: session.date };
+    }
+  }
+
   return {
     months,
     sessions: visits.length,
     bestE1rm,
+    longest: longest && { text: clock(longest.seconds), date: longest.date },
     records: book.filter((r) => r.exercise_id === exercise.id).length,
   };
 }
