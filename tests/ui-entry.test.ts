@@ -7,6 +7,7 @@ import type {
   Session,
 } from '../src/model';
 import {
+  convertLoad,
   entryContext,
   entryPrefill,
   rowTargets,
@@ -89,6 +90,26 @@ describe('what the entry panel starts from', () => {
     expect(entryPrefill(instance([first, second], [p]), second, ctx())).toEqual({
       amount: 80,
       reps: 5,
+    });
+  });
+
+  it('converts the set before when it was in the other unit, never carrying its number across', () => {
+    const lb = { kind: 'weight' as const, value: 225, unit: 'lb' as const };
+    const first = set({ load: lb, reps: 5, rpe: 7, state: 'done' });
+    const second = set();
+    expect(entryPrefill(instance([first, second]), second, ctx())).toEqual({
+      amount: 102.5,
+      reps: 5,
+    });
+  });
+
+  it('drops a pin setting from the set before: it is no weight', () => {
+    const pins = { kind: 'weight' as const, value: 7, unit: 'pins' as const };
+    const first = set({ load: pins, reps: 10, rpe: 7, state: 'done' });
+    const second = set();
+    expect(entryPrefill(instance([first, second]), second, ctx())).toEqual({
+      amount: null,
+      reps: 10,
     });
   });
 
@@ -245,6 +266,27 @@ describe('the context of a set', () => {
     expect(got.suggestion).toMatchObject({ load: 92.5, delta: 2.5 });
   });
 
+  it("enters a set in today's unit, not last time's, and converts last time's suggestion", () => {
+    const lb = (value: number) => ({ kind: 'weight' as const, value, unit: 'lb' as const });
+    const lastTime = set({ load: lb(225), reps: 5, rpe: 7, state: 'done' });
+    const before = session('before', '2026-10-01', [instance([lastTime])]);
+    const today = set({ load: kg(100), reps: 5, rpe: 7, state: 'done' });
+    const s = set();
+    const got = entryContext({
+      session: session('now', '2026-10-05', [instance([today, s])]),
+      instance: instance([today, s]),
+      set: s,
+      exercise,
+      sessions: [before],
+      oneRms: [],
+      prefs: DEFAULT_PREFS,
+    });
+    expect(got).toMatchObject({ unit: 'kg', step: DEFAULT_PREFS.plateKg });
+    // 225 lb at RPE 7 with no target is +5 lb: 230 lb, which is 104.3 kg, on the plates.
+    expect(got.suggestion).toMatchObject({ load: 105, unit: 'kg' });
+    expect(got.suggestion?.reason).toMatch(/^\+5 lb: /);
+  });
+
   it('has no suggestion for an exercise the library lacks', () => {
     const s = set();
     const got = entryContext({
@@ -257,6 +299,19 @@ describe('the context of a set', () => {
       prefs: DEFAULT_PREFS,
     });
     expect(got.suggestion).toBeNull();
+  });
+});
+
+describe('a load in the other unit', () => {
+  it('converts kilograms and pounds onto the plates of the unit converted to', () => {
+    expect(convertLoad(100, 'kg', 'lb', 5)).toBe(220);
+    expect(convertLoad(225, 'lb', 'kg', 2.5)).toBe(102.5);
+    expect(convertLoad(92.5, 'kg', 'kg', 2.5)).toBe(92.5);
+  });
+
+  it('converts nothing to or from a pin setting', () => {
+    expect(convertLoad(7, 'pins', 'kg', 2.5)).toBeNull();
+    expect(convertLoad(100, 'kg', 'pins', 1)).toBeNull();
   });
 });
 

@@ -18,7 +18,6 @@
     editSet,
     isLive,
     lastInstance,
-    lastUnit,
     measureOf,
     parseNumber,
     planSet,
@@ -427,7 +426,6 @@
         {exercise}
         mode={cardMode(instance, active)}
         last={exercise ? lastInstance(exercise.id, earlier, session.id) : null}
-        unit={exercise ? lastUnit(exercise, earlier, session.id) : 'kg'}
         {active}
         {records}
         warmupsHidden={hidden.has(instance.id)}

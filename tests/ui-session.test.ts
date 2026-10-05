@@ -37,6 +37,7 @@ import {
   setRest,
   targetsOf,
   templateFrom,
+  unitFor,
 } from '../src/ui/session';
 import { statusLine } from '../src/ui/status';
 import { parseSession, serializeSession } from '../src/storage/formats';
@@ -206,6 +207,81 @@ describe('what came before', () => {
     };
     expect(lastUnit(squat, [inLb], started().id)).toBe('lb');
     expect(lastUnit(squat, [], started().id)).toBe(squat.default_unit);
+  });
+
+  describe('the unit a set is entered in', () => {
+    const inLb: Session = {
+      ...earlier,
+      exercises: earlier.exercises.map((e) => ({
+        ...e,
+        performed: e.performed.map((s) => ({
+          ...s,
+          load: { kind: 'weight', value: 315, unit: 'lb' },
+        })),
+      })),
+    };
+    /** Today's session: squat 100 kg × 5 @ 8, then an empty set. */
+    const today = () => {
+      const newId = ids();
+      let s = addExercise(started(), squat, newId);
+      const e = s.exercises[0];
+      s = editSet(s, e.id, e.performed[0].id, { amount: 100, reps: 5, rpe: 8 }, 'weight', 'kg');
+      return addSet(s, e.id, newId);
+    };
+    const unitOfSet = (session: Session, instance = 0, set = -1) => {
+      const e = session.exercises[instance];
+      const at = e.performed.at(set)!;
+      const blank = { ...at, load: null };
+      const s = {
+        ...session,
+        exercises: session.exercises.map((x) =>
+          x.id === e.id
+            ? { ...x, performed: x.performed.map((p) => (p.id === at.id ? blank : p)) }
+            : x,
+        ),
+      };
+      const inst = s.exercises[instance];
+      return unitFor({ session: s, instance: inst, set: blank, exercise: squat, sessions: [inLb] });
+    };
+
+    it("is today's, not last time's: a lifter who switched to kg today gets kg", () => {
+      expect(unitOfSet(today())).toBe('kg');
+    });
+
+    it('is the nearest earlier weighted set of the exercise', () => {
+      let s = today();
+      const e = s.exercises[0];
+      s = addSet(s, e.id, () => 'third');
+      const second = s.exercises[0].performed[1].id;
+      s = editSet(s, e.id, second, { amount: 225, unit: 'lb' }, 'weight', 'kg');
+      expect(unitOfSet(s)).toBe('lb');
+    });
+
+    it('is found in another visit to the exercise in the session', () => {
+      const s = addExercise(today(), squat, () => 'again');
+      expect(unitOfSet(s, 1, 0)).toBe('kg');
+    });
+
+    it("is last time's when today has no weight yet, else the library's hint", () => {
+      const s = addExercise(started(), squat, ids());
+      const [e] = s.exercises;
+      const set = e.performed[0];
+      const input = { session: s, instance: e, set, exercise: squat };
+      expect(unitFor({ ...input, sessions: [inLb] })).toBe('lb');
+      expect(unitFor({ ...input, sessions: [] })).toBe(squat.default_unit);
+    });
+
+    it('is the set its own when it has a load', () => {
+      const s = today();
+      const [e] = s.exercises;
+      const set = {
+        ...e.performed[0],
+        load: { kind: 'weight' as const, value: 7, unit: 'pins' as const },
+      };
+      expect(unitFor({ session: s, instance: e, set, exercise: squat, sessions: [inLb] })).toBe(
+        'pins',
+      );
+    });
   });
 });
 

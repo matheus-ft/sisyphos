@@ -1,3 +1,4 @@
+import { fromKg, toKg } from '../metrics/load';
 import type {
   Exercise,
   ExerciseInstance,
@@ -8,8 +9,8 @@ import type {
   Session,
 } from '../model';
 import { plateStep, type Prefs } from './prefs';
-import { amountOf, formatSeconds, lastUnit, targetsOf, unitOf } from './session';
-import { resolveLoad, stepLoad, suggestLoad, type Suggestion } from './suggest';
+import { amountOf, formatSeconds, targetsOf, unitFor, unitOf } from './session';
+import { resolveLoad, roundToPlate, stepLoad, suggestLoad, type Suggestion } from './suggest';
 
 /**
  * What the screen offers for a set before it is lifted: the figures the entry
@@ -38,9 +39,9 @@ export interface EntryContext {
 }
 
 /**
- * The context for one set: its unit (its own, else the one this exercise was
- * last logged in), that unit's plate step from the lifter's settings, and the
- * suggested weight from last time.
+ * The context for one set: its unit (its own, else today's, else the one this
+ * exercise was last logged in: `unitFor`), that unit's plate step from the
+ * lifter's settings, and the suggested weight from last time, in that unit.
  */
 export function entryContext(input: {
   session: Session;
@@ -52,23 +53,62 @@ export function entryContext(input: {
   prefs: Prefs;
 }): EntryContext {
   const { session, instance, set, exercise } = input;
-  const unit = unitOf(set) ?? (exercise ? lastUnit(exercise, input.sessions, session.id) : 'kg');
+  const unit = unitFor(input);
+  const step = plateStep(input.prefs, unit);
+  const suggestion = exercise
+    ? suggestLoad({
+        exercise,
+        instance,
+        set,
+        sessions: input.sessions,
+        except: session.id,
+        unit,
+      })
+    : null;
   return {
     date: session.date,
     oneRms: input.oneRms,
     unit,
-    step: plateStep(input.prefs, unit),
-    suggestion: exercise
-      ? suggestLoad({
-          exercise,
-          instance,
-          set,
-          sessions: input.sessions,
-          except: session.id,
-          unit,
-        })
-      : null,
+    step,
+    suggestion: suggestion && suggestionIn(suggestion, unit, step),
   };
+}
+
+/**
+ * A load as it reads in another unit, on that unit's plates. Kilograms and
+ * pounds convert; a pin setting is no mass, so nothing converts to or from it.
+ */
+export function convertLoad(
+  value: number,
+  from: LoadUnit,
+  to: LoadUnit,
+  step: number,
+): number | null {
+  if (from === to) return value;
+  const kg = toKg(value, from);
+  const v = kg === null ? null : fromKg(kg, to);
+  return v === null ? null : roundToPlate(v, step);
+}
+
+/**
+ * The suggestion in the unit the set is entered in. It is reckoned from last
+ * time, in last time's unit, which a lifter who switched units today no longer
+ * uses: the weight is converted, and the reason names the unit its step was in.
+ */
+function suggestionIn(s: Suggestion, unit: LoadUnit, step: number): Suggestion | null {
+  if (s.unit === unit) return s;
+  const load = convertLoad(s.load, s.unit, unit, step);
+  if (load === null || unit === 'pins') return null;
+  // Not on the plates: the step is only said, never loaded.
+  const delta = convertLoad(s.delta, s.unit, unit, 0.01) ?? 0;
+  return { load, unit, delta, reason: s.reason.replace(/^\+([\d.]+)/, `+$1 ${s.unit}`) };
+}
+
+/** A set's number in the unit being entered: a load in another unit converted, a pin setting dropped. */
+function amountIn(set: PerformedSet, ctx: EntryContext): number | null {
+  const amount = amountOf(set);
+  const unit = unitOf(set);
+  return amount === null || unit === null ? amount : convertLoad(amount, unit, ctx.unit, ctx.step);
 }
 
 /** What the set's prescription asks to load, resolved to a number; null where it names none. */
@@ -97,10 +137,10 @@ export function entryPrefill(
     .find((s) => amountOf(s) !== null || s.reps !== null);
   return {
     amount:
-      amountOf(set) ??
+      amountIn(set, ctx) ??
       targetAmount(instance, set, ctx) ??
       ctx.suggestion?.load ??
-      (before ? amountOf(before) : null),
+      (before ? amountIn(before, ctx) : null),
     reps: set.reps ?? p?.reps?.[0] ?? before?.reps ?? null,
   };
 }

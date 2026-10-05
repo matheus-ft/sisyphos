@@ -61,8 +61,6 @@
     mode: CardMode;
     /** The last other session's visit to this exercise. */
     last: ExerciseInstance | null;
-    /** The unit a new set starts in. */
-    unit: LoadUnit;
     /** The set being entered in the whole session, drawn inverted; at most one. */
     active: Id | null;
     /** The sets that were records when lifted: the laurel and the gilded wash. */
@@ -82,7 +80,6 @@
     exercise,
     mode,
     last,
-    unit,
     active,
     records,
     warmupsHidden,
@@ -161,9 +158,13 @@
   /** A session not started yet is being planned: what is typed is to be lifted, so nothing is done. */
   const planning = $derived(session.started_at === null);
 
+  /** The unit a row shows and is typed in: its own, else the entry panel's for that set (`unitFor`). */
+  const unitOfRow = (set: PerformedSet): LoadUnit =>
+    unitOf(set) ?? contexts.get(set.id)?.unit ?? 'kg';
+
   function edit(set: PerformedSet, change: SetEdit): void {
     const apply = planning ? planSet : editSet;
-    onchange(apply(session, instance.id, set.id, change, measure, unit));
+    onchange(apply(session, instance.id, set.id, change, measure, unitOfRow(set)));
   }
 
   /** A field that does not hold a valid number is put back as it was. */
@@ -201,8 +202,7 @@
   }
 
   function nextUnit(set: PerformedSet): LoadUnit {
-    const now = unitOf(set) ?? unit;
-    return UNITS[(UNITS.indexOf(now) + 1) % UNITS.length];
+    return UNITS[(UNITS.indexOf(unitOfRow(set)) + 1) % UNITS.length];
   }
 
   function shownAmount(set: PerformedSet): string {
@@ -403,8 +403,8 @@
           {#if !timed}
             <button
               class="unit"
-              aria-label="Unit, {unitOf(set) ?? unit}"
-              onclick={() => edit(set, { unit: nextUnit(set) })}>{unitOf(set) ?? unit}</button
+              aria-label="Unit, {unitOfRow(set)}"
+              onclick={() => edit(set, { unit: nextUnit(set) })}>{unitOfRow(set)}</button
             >
             <span class="x">×</span>
             <input
