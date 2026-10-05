@@ -78,7 +78,7 @@
         <div class="now">
           {#if view.inForce}
             <span class="kg figure-num"
-              >{kgText(view.inForce.weight_kg)}<span class="unit"> kg</span></span
+              >{kgText(view.inForce.weight_kg)}<span class="unit">kg</span></span
             >
             <span class="meta">set {whenText(view.inForce.date, today)}</span>
           {:else}
@@ -148,8 +148,7 @@
               <span class="t">{whenText(entry.date, today)}</span>
               {#if entry.note}<span class="s">{entry.note}</span>{/if}
             </span>
-            <span class="kg figure-num">{kgText(entry.weight_kg)}<span class="unit"> kg</span></span
-            >
+            <span class="kg figure-num">{kgText(entry.weight_kg)}<span class="unit">kg</span></span>
             <button
               class="icon-btn gone"
               aria-label="Delete the {view.lift} max of {whenText(entry.date, today)}"
@@ -171,7 +170,7 @@
     display: grid;
     gap: var(--space-1);
     margin: 0 12px var(--space-3);
-    padding: var(--space-3) var(--space-4) var(--space-1);
+    padding: var(--space-3) var(--space-4) 0;
   }
 
   .top {
@@ -191,6 +190,7 @@
   }
 
   .unit {
+    margin-left: 0.25em;
     font: italic var(--fs-meta) var(--font-text);
     color: var(--muted);
   }
@@ -203,14 +203,14 @@
 
   /* The link is the 44 floor tall; pull it toward its caption so the pair reads as one. */
   .suggest :global(.button-link) {
-    margin-top: -10px;
+    margin-top: -12px;
     margin-right: calc(-1 * var(--space-2));
   }
 
   .tools {
     display: flex;
     justify-content: space-between;
-    margin: 0 calc(-1 * var(--space-2));
+    margin: -8px calc(-1 * var(--space-2)) 0;
   }
 
   .gone {

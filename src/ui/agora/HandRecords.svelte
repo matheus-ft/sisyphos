@@ -8,6 +8,7 @@
     RECORD_RPES,
     recordFigures,
     recordFrom,
+    recordLine,
     recordProblem,
     recordsNewestFirst,
     whenText,
@@ -152,17 +153,12 @@
   {:else}
     <ul class="group">
       {#each rows as record (`${record.date}/${record.exercise_id}/${record.reps}`)}
-        {@const figures = recordFigures(record)}
         <li>
           <span class="grow">
             <span class="t">{names.get(record.exercise_id) ?? record.exercise_id}</span>
-            <span class="s"
-              >{whenText(record.date, today)}{record.context ? ` · ${record.context}` : ''}</span
-            >
+            <span class="s">{recordLine(record, today)}</span>
           </span>
-          <span class="fig figure-num"
-            >{figures.text}{#if figures.rpe}<span class="rpe"> {figures.rpe}</span>{/if}</span
-          >
+          <span class="fig figure-num">{recordFigures(record)}</span>
           <button
             class="icon-btn gone"
             aria-label="Delete the record of {record.reps} × {record.weight_kg} kg on {whenText(
@@ -217,11 +213,6 @@
   .fig {
     font-size: var(--fs-row);
     white-space: nowrap;
-  }
-
-  .rpe {
-    font-size: var(--fs-meta);
-    color: var(--ink-2);
   }
 
   .gone {

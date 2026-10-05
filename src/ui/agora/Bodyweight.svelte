@@ -113,7 +113,7 @@
             <span class="t">{longDate(entry.date)}</span>
             {#if change !== null}<span class="s">{changeText(change)} kg</span>{/if}
           </span>
-          <span class="kg figure-num">{kgText(entry.weight_kg)}<span class="unit"> kg</span></span>
+          <span class="kg figure-num">{kgText(entry.weight_kg)}<span class="unit">kg</span></span>
           <button
             class="icon-btn gone"
             aria-label="Delete the weigh-in of {longDate(entry.date)}"
@@ -150,6 +150,7 @@
   }
 
   .unit {
+    margin-left: 0.25em;
     font: italic var(--fs-meta) var(--font-text);
     color: var(--muted);
   }

@@ -17,7 +17,7 @@ export function libraryValue(count: number): string {
 
 /** "Phone · plates 2.5 kg, 5 lb": what Settings holds, at a glance. */
 export function settingsSummary(prefs: Prefs): string {
-  const name = prefs.deviceName || 'This device is not named';
+  const name = prefs.deviceName || 'Device not named';
   return `${name} · plates ${prefs.plateKg} kg, ${prefs.plateLb} lb`;
 }
 
@@ -48,7 +48,6 @@ export function persistenceText(persisted: boolean | null): {
   granted: boolean;
 } {
   if (persisted === true) return { line: 'the browser will not clear the log', granted: true };
-  if (persisted === false)
-    return { line: 'the browser may clear the log under pressure', granted: false };
+  if (persisted === false) return { line: 'the browser may clear the log', granted: false };
   return { line: 'checking', granted: false };
 }

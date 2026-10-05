@@ -178,7 +178,7 @@
   form {
     display: grid;
     gap: var(--space-4);
-    margin-top: var(--space-4);
+    margin-top: var(--space-5);
   }
 
   .check {

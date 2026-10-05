@@ -217,10 +217,18 @@ export function recordFrom(form: RecordForm): ManualRecord {
   };
 }
 
-/** "1 × 155 kg @ 9.5", the way a set reads, with the × and @ the screen mutes. */
-export function recordFigures(record: ManualRecord): { text: string; rpe: string | null } {
-  return {
-    text: `${record.reps} × ${kgText(record.weight_kg)} kg`,
-    rpe: record.rpe === null ? null : `@ ${record.rpe}`,
-  };
+/** "1 × 155 kg": what the record lifted. */
+export function recordFigures(record: ManualRecord): string {
+  return `${record.reps} × ${kgText(record.weight_kg)} kg`;
+}
+
+/** "14 March · @ 9.5 · Gym mock meet": when, how hard, and where, whichever are known. */
+export function recordLine(record: ManualRecord, today: IsoDate): string {
+  return [
+    whenText(record.date, today),
+    record.rpe === null ? null : `@ ${record.rpe}`,
+    record.context,
+  ]
+    .filter((part): part is string => part !== null && part !== '')
+    .join(' · ');
 }
