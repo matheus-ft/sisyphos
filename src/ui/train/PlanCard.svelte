@@ -27,7 +27,10 @@
 
 <article class="card">
   <button class="open" onclick={() => app.openSession(session)}>
-    {#if label}<span class="label caps">{label}</span>{/if}
+    {#if label}<span class="label caps"
+        >{#each label.split(' · ') as part, i (i)}{#if i > 0}&nbsp;·
+          {/if}<span class="part">{part}</span>{/each}</span
+      >{/if}
     <span class="head">
       <h2>{sessionName(session, app.library)}</h2>
       <Icon name="chev" size="sm" />
@@ -72,8 +75,14 @@
     color: var(--muted);
   }
 
+  /* A label too long for one line breaks after a dot, never inside "week 6", and evenly. */
   .label {
     color: var(--accent);
+    text-wrap: balance;
+  }
+
+  .part {
+    white-space: nowrap;
   }
 
   h2 {

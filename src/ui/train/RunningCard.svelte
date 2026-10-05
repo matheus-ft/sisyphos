@@ -29,7 +29,10 @@
 </script>
 
 <article class="card card-current" aria-label="Session in progress">
-  {#if label}<p class="label caps">{label}</p>{/if}
+  {#if label}<p class="label caps">
+      {#each label.split(' · ') as part, i (i)}{#if i > 0}&nbsp;·
+        {/if}<span class="part">{part}</span>{/each}
+    </p>{/if}
   <div class="body">
     <dl class="stats">
       <div>
@@ -62,8 +65,14 @@
     gap: var(--space-3);
   }
 
+  /* A label too long for one line breaks after a dot, never inside "week 6", and evenly. */
   .label {
     color: var(--accent);
+    text-wrap: balance;
+  }
+
+  .part {
+    white-space: nowrap;
   }
 
   .body {

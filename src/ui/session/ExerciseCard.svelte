@@ -118,7 +118,7 @@
   const contexts = $derived(
     new Map(
       instance.performed
-        .filter((s) => s.state === 'pending')
+        .filter((s) => s.state !== 'done')
         .map((s) => [
           s.id,
           entryContext({
@@ -186,7 +186,8 @@
     apply: (value: number) => SetEdit,
     set: PerformedSet,
   ): void {
-    if (input.value !== '' || target === '') return;
+    // A skipped set shows its target struck through; typing into it is not lifting it.
+    if (set.state !== 'pending' || input.value !== '' || target === '') return;
     const value = parse(target);
     if (value === null || value === undefined) return;
     edit(set, apply(value));
@@ -418,7 +419,8 @@
                 )}
             />
           {/if}
-          {#if !set.is_warmup}
+          <!-- A set skipped before it had an RPE has none to strike through. -->
+          {#if !set.is_warmup && !(skipped && set.rpe === null)}
             <span class="x">@</span>
             <input
               inputmode="decimal"
@@ -762,8 +764,10 @@
     color: var(--muted);
   }
 
+  /* Always the last column, even in a row that has no RPE cells before it. */
   .st {
     display: flex;
+    grid-column: -2;
     align-items: center;
     justify-content: flex-end;
   }
@@ -827,8 +831,9 @@
 
   /* A skipped set was planned and deliberately not done: it stays, struck through. */
   .skipped input,
+  .skipped input::placeholder,
   .skipped .n,
-  .skipped .x:not(:last-of-type) {
+  .skipped .x {
     text-decoration: line-through;
     color: var(--muted);
   }
@@ -945,10 +950,16 @@
     text-transform: uppercase;
   }
 
+  /* Under the set's figures, the words starting where its load does; a narrow phone wraps them whole. */
   .actions {
     display: flex;
-    gap: var(--space-2);
-    padding-left: 26px;
+    flex-wrap: wrap;
+    gap: 0 var(--space-1);
+    padding-left: calc(26px - var(--space-2));
+  }
+
+  .actions :global(.button-link) {
+    white-space: nowrap;
   }
 
   .foot {
