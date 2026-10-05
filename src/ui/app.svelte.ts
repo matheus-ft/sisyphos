@@ -57,7 +57,7 @@ class App {
   failure = $state<string | null>(null);
   /** The first-launch greeting: set up sync, or go without. */
   showSetup = $state(false);
-  /** The full-screen conflict notice (at launch, and when a sync brings one); never mid-session. */
+  /** The full-screen conflict notice (at launch, and when a sync brings one). */
   conflictNotice = $state(false);
   /** Every session, newest last, as last loaded or saved. */
   sessions = $state.raw<Session[]>([]);
@@ -518,8 +518,13 @@ class App {
     this.showSetup = false;
   };
 
+  /**
+   * Always asked for: the shell's own gate (conflicts.ts, noticeShown) holds the
+   * notice back during a session and on the finish screen, so one announced
+   * meanwhile still comes after.
+   */
   #announceConflicts(): void {
-    if (!this.inSession) this.conflictNotice = true;
+    this.conflictNotice = true;
   }
 
   // --- the lifter and this device -----------------------------------------------------

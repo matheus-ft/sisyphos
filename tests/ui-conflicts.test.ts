@@ -393,6 +393,13 @@ describe('whether the full-screen notice is up', () => {
     expect(noticeShown({ ...gate, inSession: true })).toBe(false);
   });
 
+  it('comes once the session is over, when it was asked for during it', () => {
+    const asked = { ...gate, inSession: true };
+    expect(noticeShown(asked)).toBe(false);
+    expect(noticeShown({ ...asked, inSession: false, finishing: true })).toBe(false);
+    expect(noticeShown({ ...asked, inSession: false })).toBe(true);
+  });
+
   it('waits for Done on the finish screen, and for setup', () => {
     expect(noticeShown({ ...gate, finishing: true })).toBe(false);
     expect(noticeShown({ ...gate, takeover: true })).toBe(false);
