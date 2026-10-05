@@ -291,6 +291,17 @@ export function start(session: Session, at: Date): Session {
   };
 }
 
+/**
+ * A session being lifted now: started, not finished, and timed to the instant.
+ * One logged after the fact is open too, but dated by the day only, its clock
+ * says nothing about now: nothing in it rests, rings or keeps the screen on.
+ */
+export function isLive(session: Session): boolean {
+  return (
+    session.started_at !== null && session.ended_at === null && session.time_precision === 'instant'
+  );
+}
+
 export function finish(session: Session, at: Date): Session {
   return { ...session, ended_at: at.toISOString() };
 }

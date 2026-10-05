@@ -18,6 +18,7 @@ import {
   finish,
   formatSet,
   fromTemplate,
+  isLive,
   lastTime,
   lastUnit,
   localDate,
@@ -424,6 +425,30 @@ describe('a planned session', () => {
   it('reads back from the log exactly as written', () => {
     const s = addExercise(planned(), squat, ids());
     expect(parseSession(serializeSession(s))).toEqual(s);
+  });
+});
+
+describe('a session lifted now', () => {
+  it('is one started and not finished, timed to the instant', () => {
+    expect(isLive(started())).toBe(true);
+  });
+
+  it('is not one planned, nor one finished', () => {
+    const planned = newSession({
+      id: 'p',
+      at: new Date(2026, 9, 4, 12),
+      tz: 'Europe/Lisbon',
+      deviceId: 'phone',
+      planned: true,
+    });
+    expect(isLive(planned)).toBe(false);
+    expect(isLive(finish(started(), new Date(2026, 9, 4, 20)))).toBe(false);
+  });
+
+  it('is not one logged after the fact, open though it is: its clock says nothing about now', () => {
+    const past = setDate(started(), '2026-09-28');
+    expect(past.ended_at).toBeNull();
+    expect(isLive(past)).toBe(false);
   });
 });
 

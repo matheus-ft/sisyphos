@@ -15,6 +15,7 @@
   import {
     addExercise,
     editSet,
+    isLive,
     lastInstance,
     lastUnit,
     measureOf,
@@ -62,7 +63,8 @@
   const byId = $derived(new Map(app.library.map((e) => [e.id, e])));
   const open = $derived(session.ended_at === null);
   const planned = $derived(session.started_at === null);
-  const running = $derived(open && !planned);
+  /** Lifted now: only then does a set start a rest, the rest ring, the screen stay on. */
+  const live = $derived(isLive(session));
   const hasBodyweightWork = $derived(
     session.exercises.some((e) => byId.get(e.exercise_id)?.load_type === 'bw_plus'),
   );
@@ -92,10 +94,10 @@
     collapsed = collapsed ? y > 8 : y > 24;
   }
 
-  // Awake while the session runs and the lifter asked for it.
+  // Awake while the session is lifted and the lifter asked for it.
   $effect(() => {
     const wake = screenAwake();
-    wake.set(running && app.prefs.keepAwake);
+    wake.set(live && app.prefs.keepAwake);
     return () => wake.dispose();
   });
 
@@ -150,7 +152,7 @@
       : undefined;
     void app.save(next);
     if (!saved) return;
-    if (running && !saved.warmup) {
+    if (live && !saved.warmup) {
       startRest(restStarted(saved, byId.get(saved.instance.exercise_id), Date.now()));
     }
     if (options.toast === false) return;
@@ -242,9 +244,9 @@
     restInstance ? targetOf(restInstance, byId.get(restInstance.exercise_id)) : null,
   );
   const restReading = $derived(
-    running && rest && restTarget !== null ? restReadout(rest.startedAt, restTarget, now) : null,
+    live && rest && restTarget !== null ? restReadout(rest.startedAt, restTarget, now) : null,
   );
-  const restUp = $derived(restOpen && running && rest !== null && restInstance !== null);
+  const restUp = $derived(restOpen && live && rest !== null && restInstance !== null);
 
   const restFollowing = $derived.by(() => {
     if (!rest) return null;
@@ -442,7 +444,7 @@
         value={session.notes ?? ''}
         onchange={(e) => setNotes(e.currentTarget.value)}></textarea>
     </div>
-    {#if running}
+    {#if live}
       <div class="switch-row">
         <span id="awake-label">Keep screen on</span>
         <Switch
