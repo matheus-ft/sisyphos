@@ -63,7 +63,9 @@
   }
 
   .x {
-    padding: 0 var(--space-3) 0 var(--space-2);
+    justify-content: center;
+    min-width: var(--tap);
+    padding: 0 var(--space-2);
   }
 
   .chip:disabled {
