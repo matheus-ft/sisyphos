@@ -2,12 +2,15 @@ import type { ConflictRecord, IsoDate, Session, TableRow, Template } from '../mo
 import { decideFile, decideTable, type Mode } from './decide';
 import { FormatError, SyncError } from './errors';
 import {
+  isMigrated,
   lineRow,
+  migrateFile,
   parseConflict,
   parseFormatMarker,
   parseSession,
   parseTemplate,
   serializeConflict,
+  serializeFormatMarker,
   serializeSession,
   serializeTemplate,
   TABLES,
@@ -26,7 +29,7 @@ import {
   TABLE_KINDS,
   TABLE_PATHS,
 } from './paths';
-import type { Remote, RemoteTree } from './remote/remote';
+import type { Remote, RemoteChange, RemoteTree } from './remote/remote';
 import type { Inflight, LocalStore, StoreOp, SyncEntry } from './store/store';
 
 /**
@@ -52,6 +55,10 @@ import type { Inflight, LocalStore, StoreOp, SyncEntry } from './store/store';
  *
  * Deterministic given `now` and `random`: paths are decided in sorted order,
  * and `random` is only drawn for conflict ids, in that order.
+ *
+ * A log in an older format is migrated before anything is decided (`migrateLog`),
+ * and so is any base the device kept in that format (`migrateBases`): the
+ * decision compares shas, so both sides must be in the format this build writes.
  */
 
 export interface SyncDeps {
@@ -162,9 +169,73 @@ async function recover(context: Context): Promise<void> {
   );
 }
 
-/** Step 10's bases: each pushed path now agrees with the remote on what was pushed. */
+/**
+ * Step 10's bases: each pushed path now agrees with the remote on what was
+ * pushed. A commit an older build recorded pushed files in its format, and
+ * their bases say so (`SyncEntry.base_format`) until `migrateBases` reads them.
+ */
 function settleBases(inflight: Inflight): StoreOp[] {
-  return inflight.pushed.map(({ path, sha, body }) => ({ op: 'base', path, sha, body }));
+  return inflight.pushed.map(({ path, sha, body }) => ({
+    op: 'base',
+    path,
+    sha,
+    body,
+    format: sha !== null && isMigrated(path) ? inflight.format : null,
+  }));
+}
+
+// --- Bases an older build left -------------------------------------------------------
+
+/**
+ * Brings to this format each base the store's upgrade could not
+ * (`SyncEntry.base_format`). The remote holds every version it ever held under
+ * its sha, so the base is read from there and migrated exactly as the log's
+ * copy of it is, or was: where the log has not changed the file since, the two
+ * match again, and the device's own change is pushed rather than taken for a
+ * conflict.
+ *
+ * A base the remote does not hold, or that does not parse, keeps its old sha,
+ * which no file in this format can match. Both sides then read as changed, so
+ * where they differ the result is a conflict, which loses nothing.
+ */
+async function migrateBases(context: Context): Promise<void> {
+  const { store, remote } = context;
+  const stale = (await onDevice(() => store.entries())).filter((e) => e.base_format !== null);
+  if (stale.length === 0) return;
+
+  const tried = new Set<string>();
+  for (const e of stale) if (e.base_sha !== null && isMigrated(e.path)) tried.add(e.base_sha);
+  const fetched = new Map<string, string>();
+  await fetchAll(remote, [...tried].sort(), context.concurrency, fetched, new Set(), true);
+
+  await onDevice(() =>
+    store.exclusive(async (s) => {
+      const ops: StoreOp[] = [];
+      for (const entry of await s.entries()) {
+        const { path, base_sha: sha, base_format: format } = entry;
+        if (format === null) continue;
+        let next = sha;
+        if (sha !== null && isMigrated(path)) {
+          // Marked since the read above: the next sync reads it.
+          if (!tried.has(sha)) continue;
+          const text = fetched.get(sha);
+          if (text !== undefined) next = checked(() => migratedSha(path, text, format) ?? sha);
+        }
+        ops.push({ op: 'base', path, sha: next, body: entry.base_body });
+      }
+      if (ops.length > 0) await s.apply(ops);
+    }),
+  );
+}
+
+/** The sha of a file migrated from `format`, or null when it does not parse in that format. */
+function migratedSha(path: string, text: string, format: number): string | null {
+  try {
+    return blobSha(migrateFile(path, text, format));
+  } catch (e) {
+    if (e instanceof FormatError) return null;
+    throw e;
+  }
 }
 
 // --- One round -------------------------------------------------------------------
@@ -191,6 +262,9 @@ async function syncRound(
   if (last !== null && head !== last && !(await remote.contains(last, head))) {
     await onDevice(() => store.resetSync());
   }
+  // Only once the head has been read: a remote that cannot be reached at all
+  // must not pass for one that lacks those versions.
+  await migrateBases(context);
 
   // One snapshot of the device, taken in the write queue so that no write can
   // land inside it: the entries, and each table the device has changed as it
@@ -233,7 +307,15 @@ async function syncRound(
   const known = new Map(entries.map((e) => [e.path, e]));
   /** Remote content by blob sha, exactly as the remote holds it. */
   const fetched = new Map<string, string>();
-  await checkFormat(context, remoteShas, known, fetched);
+  const format = await checkFormat(context, remoteShas, known, fetched);
+  if (format < FORMAT_VERSION) {
+    // Deciding needs the log in this build's format, and a pull never commits:
+    // it leaves the log, and the device, for the next full sync to migrate.
+    if (mode === 'pull') return result(head, null, [], found, []);
+    await migrateLog(context, head, tree, format, fetched);
+    // Moved or raced, the head is not what this round read.
+    return 'raced';
+  }
 
   // 4. Fetch what the decision needs: remote versions that are neither the base
   // nor what the device holds. By sha, so equal files are fetched once.
@@ -350,6 +432,7 @@ async function syncRound(
       sha: content === null ? null : blobSha(content),
       body,
     })),
+    format: null,
   };
   await onDevice(() => store.exclusive((s) => s.apply([{ op: 'inflight', inflight }])));
 
@@ -397,14 +480,15 @@ function result(
 /**
  * The remote's `sisyphos.json` must be there and readable, in a format this
  * build knows, before anything else is read. Its content is left in `fetched`
- * when it had to be asked for, so step 5 can take it.
+ * when it had to be asked for, so step 5 can take it. Returns the format: an
+ * older one is migrated by the caller.
  */
 async function checkFormat(
   context: Context,
   remoteShas: Map<string, string>,
   known: Map<string, SyncEntry>,
   fetched: Map<string, string>,
-): Promise<void> {
+): Promise<number> {
   const sha = remoteShas.get(FORMAT_PATH);
   if (sha === undefined) {
     throw new SyncError(
@@ -435,21 +519,76 @@ async function checkFormat(
       `The log is in format ${format}, newer than this version of the app reads. Update the app.`,
     );
   }
-  // There is no older format yet. When there is, its migration goes here (DATA.md, The files).
-  if (format < FORMAT_VERSION) {
-    throw new SyncError('bug', `This version of the app cannot migrate a log in format ${format}`);
+  return format;
+}
+
+/**
+ * An older log brought to this format in one commit, before anything else
+ * (DATA.md, The files): every session, template and conflict record rewritten
+ * as this build writes it, and the marker. A file that does not parse is left
+ * as it is; the sync reports it, as it would have before.
+ *
+ * Nothing on the device changes, so a sync killed anywhere in here leaves it
+ * as it was, and the next one sees either the old log again or the migrated
+ * one. The branch moves fast-forward only, from the head these files were read
+ * at: if anything was committed meanwhile, by a device on either side of the
+ * change, the move fails, and the next round reads the log again rather than
+ * overwrite it. Two devices migrating at once write the same files, and the
+ * one that loses the race finds the log migrated.
+ */
+async function migrateLog(
+  context: Context,
+  head: string,
+  tree: RemoteTree,
+  from: number,
+  fetched: Map<string, string>,
+): Promise<void> {
+  const { remote } = context;
+  const files = tree.files.filter((file) => isMigrated(file.path));
+  files.sort((a, b) => (a.path < b.path ? -1 : a.path > b.path ? 1 : 0));
+  const notText = new Set<string>();
+  const wanted = [...new Set(files.map((file) => file.sha))].filter((sha) => !fetched.has(sha));
+  await fetchAll(remote, wanted.sort(), context.concurrency, fetched, notText);
+
+  const changes: RemoteChange[] = [];
+  for (const { path, sha } of files) {
+    if (notText.has(sha)) continue;
+    const text = fetched.get(sha)!;
+    const next = checked(() => {
+      try {
+        return migrateFile(path, text, from);
+      } catch (e) {
+        if (e instanceof FormatError) return text;
+        throw e;
+      }
+    });
+    if (next !== text) changes.push({ path, content: next });
   }
+  changes.push({ path: FORMAT_PATH, content: serializeFormatMarker({ format: FORMAT_VERSION }) });
+
+  const next = await remote.commit({
+    parent: head,
+    baseTree: tree.sha,
+    changes,
+    message: `sync: migrate the log to format ${FORMAT_VERSION}`,
+  });
+  await remote.moveBranch(head, next.commit);
 }
 
 // --- 4: fetching -----------------------------------------------------------------
 
-/** Fetches every sha into `into`, at most `limit` at a time. Stops starting new ones after a failure. */
+/**
+ * Fetches every sha into `into`, at most `limit` at a time. Stops starting new
+ * ones after a failure. With `missingOk`, a blob the remote does not have is
+ * left out instead: asked for by sha alone, outside any tree, it may be gone.
+ */
 async function fetchAll(
   remote: Remote,
   shas: string[],
   limit: number,
   into: Map<string, string>,
   notText: Set<string>,
+  missingOk = false,
 ): Promise<void> {
   let next = 0;
   let failed = false;
@@ -465,6 +604,7 @@ async function fetchAll(
           notText.add(sha);
           continue;
         }
+        if (missingOk && e instanceof SyncError && e.notFound) continue;
         failed = true;
         throw e;
       }

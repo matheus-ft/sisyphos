@@ -2,7 +2,11 @@ import { describe, it, expect } from 'vitest';
 import { MemoryStore } from '../src/storage/store/memory';
 import { storeContract } from './store-contract';
 
-storeContract('MemoryStore', async (options) => new MemoryStore(options));
+storeContract(
+  'MemoryStore',
+  async (options) => new MemoryStore(options),
+  async (records, options) => MemoryStore.upgraded(records, options),
+);
 
 describe('MemoryStore', () => {
   it('survives a restart with everything that was applied', async () => {

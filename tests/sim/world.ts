@@ -385,6 +385,7 @@ export class World {
           id: `day-${suffix(n)}`,
           name: `Day ${n}`,
           intention: `v${n}`,
+          label: { name: null, block: null, week: null, day: null, weekday: null },
           exercises: [],
           created_at: now,
           updated_at: now,

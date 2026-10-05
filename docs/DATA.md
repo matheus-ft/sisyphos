@@ -118,7 +118,9 @@ their git blob hash.
 - **All files:** UTF-8, no byte-order mark, `\n` line endings, ending in exactly
   one `\n`.
 - **JSON:** two-space indentation, keys in a fixed order per type, absent values
-  as `null`, never omitted.
+  as `null`, never omitted. A file missing a key its format has does not parse:
+  a key a newer format adds reaches the files written before it only by
+  migrating them (The files).
 - **CSV:** a header row, then one row per record, sorted by the table's key
   (numbers numerically, everything else by code point). A cell containing a
   comma, a double quote, `\r` or `\n`, starting with `#`, or starting or ending
@@ -134,18 +136,32 @@ app's form by the next sync.
 
 ### The files
 
-`sisyphos.json` — `{ "format": 1 }`. Marks the repo as a log and says which
+`sisyphos.json` — `{ "format": 2 }`. Marks the repo as a log and says which
 format its files are in. An app that finds a newer format stops syncing and asks
 to be updated; logging on the device carries on. An older format is migrated, in
-one commit, before anything else.
+one commit, before anything else: every session, template and conflict record is
+rewritten in the new format, with the marker; a file that does not parse is left
+as it is. Nothing a device still on the old version logs is lost: it stops at the
+migrated log, and once updated, syncs what it logged meanwhile into it like any
+other change.
+
+Format 2 added two keys, which a format-1 file means as null and is migrated
+with:
+
+- to every template, `label`: the program label (`name`, `block`, `week`, `day`,
+  `weekday`, each nullable) that a session started from it copies;
+- to every exercise, in a template and in a session, `rest_s`: the target rest
+  between its sets, in whole seconds above zero, or null for its tier's default.
 
 `sessions/<YYYY>/<id>.json` — one session, with its exercises and sets. The folder
 is the year in the id, so moving a session to another date edits the file and
 moves nothing. Nested, machine-written, never edited by hand. A session planned ahead
 has `started_at` null until it starts; an app older than that rule leaves such a
-file alone rather than misreading it.
+file alone rather than misreading it. An exercise's `rest_s` is the session's own:
+it starts as the template's and changes when the rest timer is nudged.
 
-`templates/<id>.json` — one template: the skeleton a session starts from.
+`templates/<id>.json` — one template: the skeleton a session starts from, with
+the program label and target rests it hands on.
 
 `lifter/bodyweight.csv` — `date, weight_kg, source`. Key: `date`, since there is
 at most one weigh-in a day. Needed for `bw_plus` loads.

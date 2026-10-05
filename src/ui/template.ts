@@ -1,5 +1,12 @@
-import type { Exercise, Id, LoadPrescription, PrescribedSet, Template } from '../model';
-import { measureOf, move } from './session';
+import type {
+  Exercise,
+  Id,
+  LoadPrescription,
+  PrescribedSet,
+  ProgramLabel,
+  Template,
+} from '../model';
+import { measureOf, move, restSeconds } from './session';
 
 /**
  * What the template screen does to a template, as pure functions, like
@@ -15,6 +22,7 @@ export function newTemplate(input: { id: Id; name: string; at: Date }): Template
     id: input.id,
     name: input.name,
     intention: null,
+    label: { name: null, block: null, week: null, day: null, weekday: null },
     exercises: [],
     created_at: now,
     updated_at: now,
@@ -33,9 +41,32 @@ export function rename(template: Template, name: string): Template {
   return { ...template, name };
 }
 
+/** Some of the program label's fields; those not given are kept. */
+export function setLabel(template: Template, label: Partial<ProgramLabel>): Template {
+  return { ...template, label: { ...template.label, ...label } };
+}
+
 export function addTemplateExercise(template: Template, exercise: Exercise): Template {
-  const entry = { exercise_id: exercise.id, prescribed: [emptyTarget(measureOf(exercise))] };
+  const entry = {
+    exercise_id: exercise.id,
+    rest_s: null,
+    prescribed: [emptyTarget(measureOf(exercise))],
+  };
   return { ...template, exercises: [...template.exercises, entry] };
+}
+
+/** The exercise's target rest; null is its tier's default. */
+export function setTemplateRest(
+  template: Template,
+  index: number,
+  seconds: number | null,
+): Template {
+  return {
+    ...template,
+    exercises: template.exercises.map((e, i) =>
+      i === index ? { ...e, rest_s: restSeconds(seconds) } : e,
+    ),
+  };
 }
 
 export function removeTemplateExercise(template: Template, index: number): Template {

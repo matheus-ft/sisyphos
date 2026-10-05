@@ -18,6 +18,7 @@ const session = (rpe: number): Session => ({
     {
       id: 'e1',
       exercise_id: 'low_bar_squat',
+      rest_s: null,
       prescribed: [],
       performed: [
         {

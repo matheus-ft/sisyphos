@@ -119,6 +119,13 @@ export function isComplete(set: PerformedSet): boolean {
 export interface ExerciseInstance {
   id: Id;
   exercise_id: string;
+  /**
+   * Target rest between sets, in whole seconds; null is the default for the
+   * exercise's tier, which the screen decides. Saved rather than kept on the
+   * screen: nudging the rest timer changes it for the rest of the session, and
+   * another device showing the session shows the same rest.
+   */
+  rest_s: number | null;
   prescribed: PrescribedSet[];
   performed: PerformedSet[];
   notes: string | null;
@@ -181,8 +188,12 @@ export interface Template {
   id: Id;
   name: string;
   intention: string | null;
+  /** Where the template sits in a program; a session started from it copies this. */
+  label: ProgramLabel;
   exercises: Array<{
     exercise_id: string;
+    /** Copied into a session started from the template (`ExerciseInstance.rest_s`). */
+    rest_s: number | null;
     prescribed: Omit<PrescribedSet, 'id'>[];
   }>;
   created_at: Instant;

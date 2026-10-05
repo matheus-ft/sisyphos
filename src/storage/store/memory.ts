@@ -9,6 +9,7 @@ import {
   type SyncEntry,
   type SyncMeta,
 } from './store';
+import { upgradeToFormat2, type Format1Records } from './upgrade';
 
 /**
  * The store in memory: for tests and the multi-device simulation.
@@ -67,6 +68,21 @@ export class MemoryStore implements LocalStore {
   /** A new instance over the same persisted state, as if the app had been killed and relaunched. */
   restart(options: MemoryStoreOptions = {}): MemoryStore {
     return new MemoryStore({ now: options.now ?? this.now }, copy(this.state));
+  }
+
+  /**
+   * A store over what a build in log format 1 left on a device, upgraded as
+   * `IndexedDbStore` upgrades its database when it opens (`upgrade.ts`): how a
+   * test stands for a device the previous version of the app wrote.
+   */
+  static upgraded(records: Format1Records, options: MemoryStoreOptions = {}): MemoryStore {
+    const store = new MemoryStore(options);
+    const next = upgradeToFormat2(structuredClone(records), store.now().toISOString());
+    store.state.content = new Map(next.content.map(({ path, text }) => [path, text]));
+    store.state.entries = new Map(next.entries.map((entry) => [entry.path, entry]));
+    store.state.meta = next.meta ?? { last_synced_head: null, last_synced_tree: null };
+    store.state.inflight = next.inflight;
+    return store;
   }
 
   // --- reads -------------------------------------------------------------------
@@ -140,6 +156,7 @@ export class MemoryStore implements LocalStore {
           local_sha,
           unsynced_since: nextUnsyncedSince(null, { local_sha, base_sha: null }, now),
           base_body: null,
+          base_format: null,
         });
       }
       this.state.entries = entries;
@@ -167,6 +184,7 @@ export class MemoryStore implements LocalStore {
             local_sha,
             unsynced_since: nextUnsyncedSince(previous, { local_sha, base_sha }, now),
             base_body: previous?.base_body ?? null,
+            base_format: previous?.base_format ?? null,
           });
           break;
         }
@@ -179,6 +197,7 @@ export class MemoryStore implements LocalStore {
             local_sha,
             unsynced_since: nextUnsyncedSince(previous, { local_sha, base_sha: op.sha }, now),
             base_body: op.body ?? null,
+            base_format: op.format ?? null,
           });
           break;
         }
