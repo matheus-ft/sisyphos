@@ -21,6 +21,8 @@
 
   const names = $derived(new Map(app.library.map((e) => [e.id, e.name])));
   const label = $derived(programLabel(session.label));
+  /** The dot between a label's parts holds to the part before it, so a line ends on it. */
+  const DOT = '\u00a0· ';
   const lines = $derived(exerciseLines(session.exercises, names));
   const running = $derived(app.running !== null);
 </script>
@@ -28,7 +30,7 @@
 <article class="card">
   <button class="open" onclick={() => app.openSession(session)}>
     {#if label}<span class="label caps"
-        >{#each label.split(' · ') as part, i (i)}{#if i > 0}{'\u00a0· '}{/if}<span class="part"
+        >{#each label.split(' · ') as part, i (i)}{#if i > 0}{DOT}{/if}<span class="part"
             >{part}</span
           >{/each}</span
       >{/if}
