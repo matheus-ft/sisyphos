@@ -149,6 +149,11 @@ export function restStarted(
   };
 }
 
+/** The same rest: one started by the same save, whatever object holds it now. */
+export function sameRest(a: RestState | null, b: RestState): boolean {
+  return a !== null && a.startedAt === b.startedAt && a.setId === b.setId;
+}
+
 /**
  * A rest worth keeping on screen: one kept past the longest target there is
  * (a session left open overnight, a tab restored days later) would only show a

@@ -12,6 +12,7 @@ import {
   restReadout,
   restStarted,
   restoreSet,
+  sameRest,
   savedSet,
   savedToast,
   sessionsBefore,
@@ -176,6 +177,15 @@ describe('the rest a set starts', () => {
     const i = instance([warm, lifted, done(40, 8, null, { is_warmup: true })]);
     expect(startsRest({ instance: i, set: warm, number: 1, warmup: true })).toBe(false);
     expect(startsRest({ instance: i, set: lifted, number: 1, warmup: false })).toBe(true);
+  });
+
+  it('is the same rest when read back from the tab, and another once a later set starts one', () => {
+    const s = done(90, 5, 8);
+    const i = instance([s]);
+    const started = restStarted({ instance: i, set: s, number: 1, warmup: false }, bench, 1000);
+    expect(sameRest({ ...started }, started)).toBe(true);
+    expect(sameRest({ ...started, startedAt: 9000, setId: 'later' }, started)).toBe(false);
+    expect(sameRest(null, started)).toBe(false);
   });
 
   it('is kept per session', () => {

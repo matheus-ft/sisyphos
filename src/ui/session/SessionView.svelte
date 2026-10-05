@@ -42,6 +42,7 @@
     savedSet,
     sessionsBefore,
     savedToast,
+    sameRest,
     serializeUnits,
     startsRest,
     targetOf,
@@ -65,6 +66,11 @@
   let { session }: Props = $props();
 
   const byId = $derived(new Map(app.library.map((e) => [e.id, e])));
+  /**
+   * What the tab keeps for the session (the rest, hidden warm-ups, picked units)
+   * reloads when another session comes on screen, not at every edit of this one.
+   */
+  const sessionId = $derived(session.id);
   const open = $derived(session.ended_at === null);
   const planned = $derived(session.started_at === null);
   /** Lifted now: only then does a set start a rest, the rest ring, the screen stay on. */
@@ -151,7 +157,7 @@
   function change(next: Session, options: { toast?: boolean } = {}): void {
     if (app.prefs.chime) restBell().prime();
     // The undo toast outlives this screen, whose `session` is gone once the lifter leaves.
-    const sessionId = session.id;
+    const savedIn = session.id;
     const saved = open ? savedSet(session, next) : null;
     // The set as it was, taken before the save: `session` shows the new one the moment it is saved.
     const before = saved
@@ -175,10 +181,10 @@
         ? {
             label: 'Undo',
             run: () => {
-              const undone = undoSet(app.current, sessionId, saved.instance.id, before);
+              const undone = undoSet(app.current, savedIn, saved.instance.id, before);
               if (undone) void app.save(undone);
               // Only the rest this save started goes with it; one already running stays.
-              if (rested !== null && rest === rested) endRest(sessionId);
+              if (rested !== null && sameRest(rest, rested)) endRest(savedIn);
             },
           }
         : undefined,
@@ -222,7 +228,7 @@
   let restOpen = $state(false);
   $effect(() => {
     try {
-      const kept = parseRest(sessionStorage.getItem(restKey(session.id)));
+      const kept = parseRest(sessionStorage.getItem(restKey(sessionId)));
       rest = kept && restFresh(kept, Date.now()) ? kept : null;
     } catch {
       rest = null;
@@ -233,18 +239,18 @@
     rest = state;
     restOpen = true;
     try {
-      sessionStorage.setItem(restKey(session.id), serializeRest(state));
+      sessionStorage.setItem(restKey(sessionId), serializeRest(state));
     } catch {
       // The timer still runs; it only forgets on reload.
     }
   }
 
   /** Takes the session's id rather than reading `session`: an undo may end a rest after the screen is gone. */
-  function endRest(sessionId: Id): void {
+  function endRest(of: Id): void {
     rest = null;
     restOpen = false;
     try {
-      sessionStorage.removeItem(restKey(sessionId));
+      sessionStorage.removeItem(restKey(of));
     } catch {
       // Nothing kept, nothing to forget.
     }
@@ -314,7 +320,7 @@
   let hidden = $state.raw<Set<Id>>(new Set());
   $effect(() => {
     try {
-      hidden = parseHidden(sessionStorage.getItem(hiddenKey(session.id)));
+      hidden = parseHidden(sessionStorage.getItem(hiddenKey(sessionId)));
     } catch {
       hidden = new Set();
     }
@@ -323,7 +329,7 @@
   function hideWarmups(instanceId: Id): void {
     hidden = new Set([...hidden, instanceId]);
     try {
-      sessionStorage.setItem(hiddenKey(session.id), serializeHidden(hidden));
+      sessionStorage.setItem(hiddenKey(sessionId), serializeHidden(hidden));
     } catch {
       // Hidden until the card is next drawn; nothing worse.
     }
@@ -334,7 +340,7 @@
   let units = $state.raw<Map<string, LoadUnit>>(new Map());
   $effect(() => {
     try {
-      units = parseUnits(sessionStorage.getItem(unitsKey(session.id)));
+      units = parseUnits(sessionStorage.getItem(unitsKey(sessionId)));
     } catch {
       units = new Map();
     }
@@ -343,7 +349,7 @@
   function pickUnit(exerciseId: string, unit: LoadUnit): void {
     units = new Map([...units, [exerciseId, unit]]);
     try {
-      sessionStorage.setItem(unitsKey(session.id), serializeUnits(units));
+      sessionStorage.setItem(unitsKey(sessionId), serializeUnits(units));
     } catch {
       // Picked until the screen is next drawn; a number typed in it keeps it in the log.
     }
@@ -572,7 +578,7 @@
     chime={app.prefs.chime}
     awake={app.prefs.keepAwake}
     onadjust={adjustTarget}
-    onskip={() => endRest(session.id)}
+    onskip={() => endRest(sessionId)}
     onclose={() => (restOpen = false)}
     onlognext={restFollowing
       ? () => {
