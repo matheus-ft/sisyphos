@@ -14,8 +14,7 @@
 
 <div class="toast" role="status">
   <span class="grow"
-    >{message}{#if strong}
-      · <b class="tabular">{strong}</b>{/if}</span
+    >{message}{#if strong}{' · '}<b class="tabular">{strong}</b>{/if}</span
   >
   {#if action}
     <button class="act" onclick={action.run}>{action.label}</button>
