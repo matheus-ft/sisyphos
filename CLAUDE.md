@@ -5,11 +5,11 @@
 | Kind                                                             | Home                 |
 | ---------------------------------------------------------------- | -------------------- |
 | What the app is, how to run it, the top-level layout             | `README.md`          |
-| Why a design was chosen, what was rejected, hosting              | `docs/DESIGN.md`     |
+| Why the architecture was chosen, what was rejected, hosting      | `docs/DECISIONS.md`  |
 | The log repo's files: layout, ids, serialisation, columns, setup | `docs/DATA.md`       |
 | What the lifter is told about keeping their data safe            | `docs/DURABILITY.md` |
 | Why each muscle group covers what it does                        | `docs/MUSCLES.md`    |
-| Screens not built yet, pruned section by section as each ships   | `docs/UI.md`         |
+| What the lifter wants from each screen: the v1 designer's brief  | `docs/UI.md`         |
 | How anything works                                               | The code             |
 
 The exercises and muscle groups are `src/library/exercises.csv` and

@@ -21,7 +21,7 @@ sisyphos-log/                      ← your own PRIVATE repo. Your training.
 Nothing personal is committed here. Your bodyweight is not a project asset.
 
 How the two are kept in step is the code in `src/storage/`, starting at
-`sync.ts`; why it works that way is in [`DESIGN.md`](DESIGN.md#storage).
+`sync.ts`; why it works that way is in [`DECISIONS.md`](DECISIONS.md#storage).
 
 ## Setup: you create the log repo
 

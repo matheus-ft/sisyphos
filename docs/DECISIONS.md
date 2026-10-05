@@ -1,4 +1,4 @@
-# Design decisions
+# Decisions
 
 What was settled and why, so the reasoning survives past the point where anyone
 remembers having the argument.

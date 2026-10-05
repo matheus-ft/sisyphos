@@ -26,7 +26,7 @@ complete (a set's field left, a set marked done), not per keystroke, and is
 shown as saved only once its write resolves. Only setup waits on GitHub.
 
 **Derived numbers are computed where they are shown,** never saved
-(`DESIGN.md`).
+(`DECISIONS.md`).
 
 ## v0: logging a session
 

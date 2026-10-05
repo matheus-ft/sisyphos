@@ -97,7 +97,7 @@ Set on github.com, not in the repo:
 ## Data model
 
 The schema and its invariants are in [`src/model/`](src/model/); the decisions
-behind it, and what was rejected, are in [`docs/DESIGN.md`](docs/DESIGN.md).
+behind it, and what was rejected, are in [`docs/DECISIONS.md`](docs/DECISIONS.md).
 
 Four things worth knowing up front.
 
