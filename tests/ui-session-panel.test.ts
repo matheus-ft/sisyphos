@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import type { ExerciseInstance, PerformedSet, PrescribedSet } from '../src/model';
 import {
   activeSetId,
+  panelSave,
   ringedRpe,
   RPE_COURSES,
   panelFigure,
@@ -108,6 +109,18 @@ describe('the chips', () => {
   it('say the size of a step', () => {
     expect(stepText('weight', 2.5, 'kg')).toBe('± 2.5 kg');
     expect(stepText('time', 5, 's')).toBe('± 5 or 15 s');
+  });
+});
+
+describe('how the panel saves a set', () => {
+  it('takes the RPE of a working set and Done for a warm-up, in a session under way', () => {
+    expect(panelSave(set(), false)).toBe('rpe');
+    expect(panelSave(set({ is_warmup: true }), false)).toBe('done');
+  });
+
+  it('takes a plain Save while the session is only planned: nothing has been lifted yet', () => {
+    expect(panelSave(set(), true)).toBe('save');
+    expect(panelSave(set({ is_warmup: true }), true)).toBe('save');
   });
 });
 

@@ -187,6 +187,25 @@ export function editSet(
   });
 }
 
+/**
+ * A set filled in ahead, in a session not started yet. Its numbers are what is
+ * to be lifted, not what was, so it stays pending whatever it holds (a warm-up
+ * or a hold would otherwise count as done) and takes no RPE, which is what the
+ * set will feel like once it is lifted.
+ */
+export function planSet(
+  session: Session,
+  instanceId: Id,
+  setId: Id,
+  edit: SetEdit,
+  measure: 'weight' | 'time',
+  defaultUnit: LoadUnit,
+): Session {
+  const { rpe: _felt, ...numbers } = edit;
+  const next = editSet(session, instanceId, setId, numbers, measure, defaultUnit);
+  return updateSet(next, instanceId, setId, (set) => ({ ...set, state: 'pending' }));
+}
+
 /** The number a set's load holds, whatever it measures. */
 export function amountOf(set: PerformedSet): number | null {
   if (!set.load) return null;

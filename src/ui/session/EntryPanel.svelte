@@ -4,8 +4,9 @@
    * from the end button of a set row. Load and reps on −/+ steppers that step
    * by the plate increment, then the RPE chips 6 to 10 in halves, laid out in
    * two staggered courses: tapping one saves the set. A warm-up takes Done (or
-   * Skip) instead of an RPE. The owner (SessionView) applies `onsave`'s edit
-   * with `editSet`, closes the panel and opens the rest.
+   * Skip) instead of an RPE, and a set of a session only planned takes a plain
+   * Save. The owner (SessionView) applies `onsave`'s edit with `editSet` (or
+   * `planSet`), closes the panel and opens the rest.
    */
   import { untrack } from 'svelte';
   import type { LoadUnit, PerformedSet } from '../../model';
@@ -13,7 +14,7 @@
   import Button from '../kit/Button.svelte';
   import Sheet from '../kit/Sheet.svelte';
   import { parseNumber, parseSeconds, type SetEdit } from '../session';
-  import { panelFigure, RPE_COURSES, stepText } from './panel';
+  import { panelFigure, panelSave, RPE_COURSES, stepText } from './panel';
   import Stepper from './Stepper.svelte';
 
   interface Props {
@@ -41,6 +42,8 @@
     unit: LoadUnit;
     /** How far − and + move the load, in `unit`. */
     plateStep: number;
+    /** The session is planned, not started: the set's numbers are saved, never its RPE. */
+    planning?: boolean;
     /** Saves the set: amount and reps, and the RPE tapped (none for a warm-up). */
     onsave: (edit: SetEdit) => void;
     /** A warm-up's Skip: the owner marks the set skipped. */
@@ -59,6 +62,7 @@
     measure,
     unit,
     plateStep,
+    planning = false,
     onsave,
     onskip,
     onclose,
@@ -84,6 +88,7 @@
   const ready = $derived(
     typeof amountValue === 'number' && (measure === 'time' || typeof repsValue === 'number'),
   );
+  const saving = $derived(panelSave(set, planning));
 
   function stepAmountBy(direction: 1 | -1): void {
     const now = typeof amountValue === 'number' ? amountValue : 0;
@@ -133,7 +138,13 @@
     {/if}
   </div>
 
-  {#if set.is_warmup}
+  {#if saving === 'save'}
+    <p class="meta planned">Planned: the RPE comes when the set is lifted.</p>
+    <Button variant="primary" bench full disabled={!ready} onclick={() => save(null)}>Save</Button>
+    {#if !ready}
+      <p class="meta need">Enter the {measure === 'weight' ? 'load and reps' : 'time'} to save.</p>
+    {/if}
+  {:else if saving === 'done'}
     <p class="hint caps">Warm-ups take no RPE</p>
     <div class="warm">
       <Button bench onclick={onskip}>Skip</Button>
@@ -258,6 +269,10 @@
   .need {
     margin: var(--space-2) 0 0;
     text-align: center;
+  }
+
+  .planned {
+    margin: var(--space-2) 0 var(--space-3);
   }
 
   .warm {

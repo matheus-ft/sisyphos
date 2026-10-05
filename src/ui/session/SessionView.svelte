@@ -19,6 +19,7 @@
     lastUnit,
     measureOf,
     parseNumber,
+    planSet,
     setDate,
     setRest,
     skipSet,
@@ -176,7 +177,8 @@
     const exercise = byId.get(at.instance.exercise_id);
     const measure = exercise ? measureOf(exercise) : 'weight';
     const unit = enteringContext?.unit ?? 'kg';
-    const next = editSet(session, at.instance.id, at.set.id, edit, measure, unit);
+    const apply = planned ? planSet : editSet;
+    const next = apply(session, at.instance.id, at.set.id, edit, measure, unit);
     entry = null;
     // A warm-up is followed by the next warm-up of the ladder, with no tap to reopen the panel between,
     // and no toast either: it would cover that panel's Done.
@@ -481,6 +483,7 @@
     measure={exercise ? measureOf(exercise) : 'weight'}
     unit={enteringContext.unit}
     plateStep={enteringContext.step}
+    planning={planned}
     onsave={saveEntry}
     onskip={skipEntry}
     onclose={() => (entry = null)}

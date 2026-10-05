@@ -25,6 +25,7 @@
     parseNumber,
     parseRpe,
     parseSeconds,
+    planSet,
     removeExercise,
     removeSet,
     setExerciseNotes,
@@ -157,8 +158,12 @@
 
   // --- editing ---------------------------------------------------------------------
 
+  /** A session not started yet is being planned: what is typed is to be lifted, so nothing is done. */
+  const planning = $derived(session.started_at === null);
+
   function edit(set: PerformedSet, change: SetEdit): void {
-    onchange(editSet(session, instance.id, set.id, change, measure, unit));
+    const apply = planning ? planSet : editSet;
+    onchange(apply(session, instance.id, set.id, change, measure, unit));
   }
 
   /** A field that does not hold a valid number is put back as it was. */
@@ -425,6 +430,7 @@
             <input
               inputmode="decimal"
               aria-label="RPE"
+              disabled={planning}
               placeholder={isActive ? '—' : target.rpe || '—'}
               value={set.rpe ?? ''}
               onchange={(e) =>

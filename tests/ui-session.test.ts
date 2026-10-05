@@ -28,6 +28,7 @@ import {
   parseNumber,
   parseRpe,
   parseSeconds,
+  planSet,
   removeExercise,
   removeSet,
   restSeconds,
@@ -392,6 +393,32 @@ describe('a planned session', () => {
     });
     // Starting it is a write, which stamps updated_at.
     expect(sessionInProgress([{ ...s, updated_at: tonight.toISOString() }], tonight)).toBe(true);
+  });
+
+  it('fills a set in ahead without lifting it: numbers kept, still pending, no RPE', () => {
+    const s = addExercise(planned(), squat, ids());
+    const [e] = s.exercises;
+    const set = e.performed[0].id;
+    const edit = { amount: 140, reps: 5, rpe: 8 };
+    const next = planSet(s, e.id, set, edit, 'weight', 'kg').exercises[0].performed[0];
+    expect(next).toMatchObject({
+      state: 'pending',
+      load: { kind: 'weight', value: 140, unit: 'kg' },
+      reps: 5,
+      rpe: null,
+    });
+  });
+
+  it('keeps a planned warm-up and a planned hold pending too, though their numbers would finish them', () => {
+    const newId = ids();
+    let s = addExercise(addExercise(planned(), squat, newId), plank, newId);
+    const [lift, hold] = s.exercises;
+    const warm = { amount: 60, reps: 5, is_warmup: true };
+    s = planSet(s, lift.id, lift.performed[0].id, warm, 'weight', 'kg');
+    s = planSet(s, hold.id, hold.performed[0].id, { amount: 60 }, 'time', 'kg');
+    expect(s.exercises.map((e) => e.performed[0].state)).toEqual(['pending', 'pending']);
+    expect(s.exercises[0].performed[0].is_warmup).toBe(true);
+    expect(s.exercises[1].performed[0].load).toEqual({ kind: 'time', seconds: 60 });
   });
 
   it('reads back from the log exactly as written', () => {
