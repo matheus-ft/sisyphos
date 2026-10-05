@@ -15,6 +15,8 @@ import {
 } from '../src/ui/conflicts';
 
 const names = new Map([['low_bar_squat', 'Low-Bar Squat']]);
+/** A set as a version's line holds it: kept whole with no-break spaces. */
+const set = (text: string) => text.replaceAll(' ', ' ');
 
 const session = (rpe: number): Session => ({
   id: '2026-10-04-k3f9',
@@ -66,8 +68,8 @@ describe('a conflict, as the sync screen shows it', () => {
   it('sets a session beside the saved one, set by set', () => {
     const view = describeConflict(record({}), session(8), names);
     expect(view.what).toBe('session 2026-10-04-k3f9');
-    expect(view.current).toEqual(['Low-Bar Squat: 140 × 5 @ 8']);
-    expect(view.saved).toEqual(['Low-Bar Squat: 140 × 5 @ 8.5']);
+    expect(view.current).toEqual([`Low-Bar Squat: ${set('140 × 5 @ 8')}`]);
+    expect(view.saved).toEqual([`Low-Bar Squat: ${set('140 × 5 @ 8.5')}`]);
   });
 
   it('shows a version that was deleted as deleted', () => {
@@ -154,7 +156,11 @@ describe('the lines of two versions, side by side', () => {
   it('comes with a conflict, so the screen can highlight what differs', () => {
     const view = describeConflict(record({}), session(8), names);
     expect(view.diff).toEqual([
-      { current: 'Low-Bar Squat: 140 × 5 @ 8', saved: 'Low-Bar Squat: 140 × 5 @ 8.5', same: false },
+      {
+        current: `Low-Bar Squat: ${set('140 × 5 @ 8')}`,
+        saved: `Low-Bar Squat: ${set('140 × 5 @ 8.5')}`,
+        same: false,
+      },
     ]);
   });
 
@@ -273,7 +279,10 @@ describe('the card of a conflict', () => {
       return s;
     };
     const view = describeConflict(record({ version: withWarmup(3) }), withWarmup(5), names, here);
-    expect(view.current).toEqual(['Low-Bar Squat: 140 × 5 @ 8', 'Low-Bar Squat warm-up: 140 × 5']);
+    expect(view.current).toEqual([
+      `Low-Bar Squat: ${set('140 × 5 @ 8')}`,
+      `Low-Bar Squat warm-up: ${set('140 × 5')}`,
+    ]);
     expect(view.diff.map((r) => r.same)).toEqual([true, false]);
   });
 

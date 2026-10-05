@@ -145,6 +145,7 @@
   /* Beside Not yet and Ask the line is what the button is for: let it wrap, not cut. */
   .s.wraps {
     white-space: normal;
+    text-wrap: balance;
   }
 
   .granted {

@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { untrack } from 'svelte';
   import musclesCsv from '../../library/muscles.csv?raw';
   import { parseMuscles } from '../../library/parse';
   import { setsBehindMuscle, weeklyVolume, type VolumeWindow } from '../../metrics/weekly';
@@ -10,6 +11,7 @@
     legendCaption,
     levelsOf,
     muscleRowText,
+    openingWindow,
     topMuscles,
     volumeHeading,
     VOLUME_WINDOWS,
@@ -27,7 +29,11 @@
 
   const muscles = parseMuscles(musclesCsv);
 
-  let period = $state<VolumeWindow>('this_week');
+  let period = $state<VolumeWindow>(
+    untrack(() =>
+      openingWindow(weeklyVolume(app.current, app.library, muscles, 'this_week', today)),
+    ),
+  );
   let selected = $state<string | null>(null);
   let table = $state(false);
 

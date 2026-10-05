@@ -61,6 +61,15 @@ export const VOLUME_WINDOWS: { value: VolumeWindow; label: string }[] = [
   { value: 'last_4_weeks', label: 'Last 4 weeks' },
 ];
 
+/**
+ * The window the body view opens on: this week, unless nothing has been
+ * trained yet this week (a Monday morning), when a bare statue would say less
+ * than the last four weeks do.
+ */
+export function openingWindow(thisWeek: readonly MuscleVolume[]): VolumeWindow {
+  return thisWeek.some((v) => v.sets > 0) ? 'this_week' : 'last_4_weeks';
+}
+
 /** The statue's shades: one muscle id to its level. */
 export function levelsOf(volume: readonly MuscleVolume[]): Map<string, number> {
   return new Map(volume.map((v) => [v.muscle.id, v.level]));
@@ -76,7 +85,8 @@ export const LEGEND_LABELS = ['0', '1–4', '5–9', '10–14', '15+'] as const;
 export function legendCaption(window: VolumeWindow): string {
   return window === 'this_week'
     ? 'working sets this week, auxiliary muscles count half'
-    : 'working sets a week, averaged over 4 weeks, auxiliary muscles count half';
+    : // The no-break space keeps "4 weeks" whole when the caption wraps.
+      'working sets a week, averaged over 4 weeks, auxiliary muscles count half';
 }
 
 export function volumeHeading(window: VolumeWindow): string {

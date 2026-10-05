@@ -437,7 +437,8 @@ function linesOf(version: Version, names: Map<string, string>, key: TableRow | n
         const sets = (warmup: boolean) =>
           done
             .filter((s) => s.is_warmup === warmup)
-            .map((s) => formatSet(s))
+            // No-break spaces: a narrow card wraps between sets, never inside one.
+            .map((s) => formatSet(s).replaceAll(' ', ' '))
             .join(', ');
         return [
           `${name}: ${sets(false) || 'no sets'}`,
