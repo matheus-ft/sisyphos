@@ -75,12 +75,12 @@
 </header>
 
 <div class="intention">
-  <input
+  <textarea
     aria-label="Intention"
+    rows="1"
     placeholder="What this session is for"
     value={template.intention ?? ''}
-    onchange={(e) => onchange(setIntention(template, e.currentTarget.value))}
-  />
+    onchange={(e) => onchange(setIntention(template, e.currentTarget.value))}></textarea>
 </div>
 
 <p class="sec caps">Program label</p>
@@ -198,8 +198,12 @@
     padding: 0 var(--gutter);
   }
 
-  .intention input {
+  /* Grows with what is written: an intention is a sentence, and a line cut off reads as lost. */
+  .intention textarea {
+    display: block;
     width: 100%;
+    resize: none;
+    field-sizing: content;
     font-family: var(--font-text);
     font-style: italic;
     color: var(--ink-2);

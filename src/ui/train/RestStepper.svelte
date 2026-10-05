@@ -17,14 +17,15 @@
   }
   let { exercise, value, onchange }: Props = $props();
 
+  const uid = $props.id();
   const own = $derived(value !== null);
   const label = $derived(restShown(exercise, value));
   const standard = $derived(formatClock(restTargetS(exercise?.tier ?? 'acc', null)));
 </script>
 
 <div class="rest">
-  <span class="name caps" id="rest-name">Rest</span>
-  <div class="stepper" role="group" aria-labelledby="rest-name">
+  <span class="name caps" id="{uid}-rest">Rest</span>
+  <div class="stepper" role="group" aria-labelledby="{uid}-rest">
     <button
       class="icon-btn"
       aria-label="Rest 15 seconds shorter"
@@ -46,7 +47,12 @@
     >
   </div>
   {#if own}
-    <Button variant="link" onclick={() => onchange(null)}>Use default</Button>
+    <Button
+      variant="link"
+      class="reset"
+      aria-label="Use the default rest"
+      onclick={() => onchange(null)}>Default</Button
+    >
   {/if}
 </div>
 
@@ -69,13 +75,17 @@
     margin-left: auto;
   }
 
+  .rest :global(.reset) {
+    white-space: nowrap;
+  }
+
   .stepper .icon-btn {
     border: var(--hairline) solid var(--line-strong);
     border-radius: var(--radius-sm);
   }
 
   .value {
-    min-width: 7.5em;
+    min-width: 6em;
     text-align: center;
   }
 

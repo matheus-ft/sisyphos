@@ -204,6 +204,7 @@
 
   .fields {
     display: grid;
+    margin-top: var(--space-1);
     grid-template-columns: repeat(3, minmax(0, 1fr));
     gap: var(--space-4);
   }
