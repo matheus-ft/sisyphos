@@ -98,6 +98,24 @@ export function bellStep(
 
 export const BELL_WINDOW_MS = 1500;
 
+/**
+ * The bell for a rest at `now`, as the session screen polls it. It rings from
+ * the screen that holds the rest, not from the takeover: the lifter may have
+ * closed the takeover or opened the next set's panel, and a rest picked up again
+ * after a reload has no takeover up at all.
+ */
+export function bellAt(
+  state: BellState,
+  rest: { startedAt: number; targetS: number },
+  now: number,
+  visible: boolean,
+  chime: boolean,
+): { state: BellState; ring: boolean } {
+  const face = { over: restClock(rest.startedAt, rest.targetS, now).over };
+  const overtimeMs = now - (rest.startedAt + rest.targetS * 1000);
+  return bellStep(state, face, overtimeMs, visible, chime);
+}
+
 /** "92.5 × 5 @ 8" as parts, so the × and @ can be set muted. */
 export function figureParts(figures: string): { text: string; muted: boolean }[] {
   return figures

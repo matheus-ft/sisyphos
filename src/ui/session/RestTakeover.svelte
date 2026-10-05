@@ -14,7 +14,7 @@
   import Icon from '../kit/Icon.svelte';
   import Meander from '../kit/Meander.svelte';
   import { overlays } from '../overlays.svelte';
-  import { bellStep, figureParts, restFace, type BellState } from '../restview';
+  import { figureParts, restFace } from '../restview';
 
   interface Props {
     /** When the rest began (the set was saved), in epoch ms. */
@@ -35,7 +35,7 @@
       exerciseFirst?: boolean;
       rest?: string | null;
     } | null;
-    /** Play a chime at zero, while the app is open. */
+    /** The chime at zero is on; the session screen, which holds the rest, rings it. */
     chime: boolean;
     /** Keep the screen awake (Wake Lock). */
     awake: boolean;
@@ -66,24 +66,12 @@
   }: Props = $props();
 
   let now = $state(Date.now());
-  let bell: BellState = { rung: false };
   let root: HTMLElement | undefined = $state();
 
   const face = $derived(restFace(startedAt, targetS, now));
 
   function tick(): void {
     now = Date.now();
-    if (targetS === null) return;
-    const overtimeMs = now - (startedAt + targetS * 1000);
-    const step = bellStep(
-      bell,
-      restFace(startedAt, targetS, now),
-      overtimeMs,
-      document.visibilityState === 'visible',
-      chime,
-    );
-    bell = step.state;
-    if (step.ring) restBell().play();
   }
 
   onMount(() => {

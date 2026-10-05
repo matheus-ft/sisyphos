@@ -12,6 +12,7 @@
   import Switch from '../kit/Switch.svelte';
   import { dismissToast, promptDialog, showToast } from '../overlays.svelte';
   import { adjustRest, parseRest, serializeRest } from '../rest';
+  import { bellAt, type BellState } from '../restview';
   import {
     addExercise,
     editSet,
@@ -267,6 +268,30 @@
       prefs: app.prefs,
     });
     return { next, view: restNext(next, exercise, ctx) };
+  });
+
+  // The bell at zero rings from here, whether the takeover is up, closed, or never
+  // opened since a reload; the takeover has none, so it cannot ring twice.
+  let bell: BellState = { rung: false };
+  $effect(() => {
+    if (!live || !rest || restTarget === null) return;
+    const kept = { startedAt: rest.startedAt, targetS: restTarget };
+    function tick(): void {
+      const visible = document.visibilityState === 'visible';
+      const step = bellAt(bell, kept, Date.now(), visible, app.prefs.chime);
+      bell = step.state;
+      if (step.ring) restBell().play();
+    }
+    tick();
+    const timer = setInterval(tick, 250);
+    // iOS suspends a backgrounded app: timers stop, and the first thing back is one of these.
+    document.addEventListener('visibilitychange', tick);
+    window.addEventListener('pageshow', tick);
+    return () => {
+      clearInterval(timer);
+      document.removeEventListener('visibilitychange', tick);
+      window.removeEventListener('pageshow', tick);
+    };
   });
 
   function adjustTarget(delta: number): void {

@@ -1,5 +1,13 @@
 import { describe, expect, it } from 'vitest';
-import { BELL_WINDOW_MS, bellStep, clockText, figureParts, restFace } from '../src/ui/restview';
+import {
+  BELL_WINDOW_MS,
+  bellAt,
+  bellStep,
+  clockText,
+  figureParts,
+  restFace,
+  type BellState,
+} from '../src/ui/restview';
 
 const T0 = 1_000_000;
 
@@ -87,6 +95,33 @@ describe('bellStep', () => {
     const moved = bellStep(rung, under, 0, true, true).state;
     expect(moved.rung).toBe(false);
     expect(bellStep(moved, over, 200, true, true).ring).toBe(true);
+  });
+});
+
+describe('bellAt', () => {
+  const rest = { startedAt: 1_000_000, targetS: 120 };
+  const zero = rest.startedAt + rest.targetS * 1000;
+  /** The screen polling every 250 ms from `from` to `to`, counting the rings. */
+  const poll = (from: number, to: number, state: BellState = { rung: false }) => {
+    let rings = 0;
+    for (let now = from; now <= to; now += 250) {
+      const step = bellAt(state, rest, now, true, true);
+      state = step.state;
+      if (step.ring) rings++;
+    }
+    return { rings, state };
+  };
+
+  it('rings once at zero for a rest followed from its start, whatever screen is up', () => {
+    expect(poll(rest.startedAt, zero + 30_000).rings).toBe(1);
+  });
+
+  it('rings at zero for a rest picked up again after a reload, before its zero', () => {
+    expect(poll(zero - 20_000, zero + 5_000).rings).toBe(1);
+  });
+
+  it('stays silent for a rest picked up again past its zero', () => {
+    expect(poll(zero + 20_000, zero + 40_000).rings).toBe(0);
   });
 });
 
