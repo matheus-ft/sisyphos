@@ -685,8 +685,9 @@
     display: none;
   }
 
+  /* Clear of the header's fade, which would otherwise wash over the button's ring. */
   .start {
-    margin: var(--space-3) 12px 0;
+    margin: var(--space-5) 12px 0;
   }
 
   .list {
@@ -710,8 +711,10 @@
     min-height: var(--tap);
   }
 
+  /* The link's words, not its padding, line up with the field above. */
   .field :global(.button-link) {
     justify-self: start;
+    margin-left: calc(-1 * var(--space-2));
   }
 
   textarea {

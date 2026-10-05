@@ -13,7 +13,7 @@
   import Button from '../kit/Button.svelte';
   import Sheet from '../kit/Sheet.svelte';
   import { parseNumber, parseSeconds, type SetEdit } from '../session';
-  import { RPE_COURSES, stepText } from './panel';
+  import { panelFigure, RPE_COURSES, stepText } from './panel';
   import Stepper from './Stepper.svelte';
 
   interface Props {
@@ -71,7 +71,7 @@
   $effect(() => {
     void set.id;
     untrack(() => {
-      amount = prefill.amount === null ? '' : String(prefill.amount);
+      amount = prefill.amount === null ? '' : panelFigure(measure, prefill.amount, unit).text;
       reps = prefill.reps === null ? '' : String(prefill.reps);
     });
   });
@@ -85,16 +85,18 @@
     typeof amountValue === 'number' && (measure === 'time' || typeof repsValue === 'number'),
   );
 
-  const round = (n: number) => String(Math.round(n * 100) / 100);
-
   function stepAmountBy(direction: 1 | -1): void {
     const now = typeof amountValue === 'number' ? amountValue : 0;
-    amount = round(stepAmount(now, direction, { measure, step: plateStep }));
+    amount = panelFigure(
+      measure,
+      stepAmount(now, direction, { measure, step: plateStep }),
+      unit,
+    ).text;
   }
 
   function stepReps(direction: 1 | -1): void {
     const now = typeof repsValue === 'number' ? repsValue : 0;
-    reps = round(Math.max(0, now + direction));
+    reps = String(Math.max(0, now + direction));
   }
 
   function save(rpe: number | null): void {
@@ -106,7 +108,9 @@
     });
   }
 
-  const unitLabel = $derived(measure === 'time' ? 's' : unit);
+  const unitLabel = $derived(
+    panelFigure(measure, typeof amountValue === 'number' ? amountValue : 0, unit).unit,
+  );
 </script>
 
 <Sheet {open} {onclose} accent label="{exerciseName}, {setLabel}">
