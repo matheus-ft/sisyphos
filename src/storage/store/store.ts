@@ -65,6 +65,21 @@ export interface Settings {
   token: string | null;
   /** Random, generated once per install, never copied between devices. */
   device_id: string;
+  /**
+   * Device preferences, all optional: `saveSettings` merges whole objects, so a
+   * record saved before they existed still reads as settings, and `readPrefs`
+   * (src/ui/prefs.ts) fills what is absent. They stay on the device and never
+   * enter the log repo.
+   */
+  /** How this device names itself where a conflict puts two versions side by side. */
+  deviceName?: string;
+  /** Plate increment in kilograms and in pounds, the step of the entry panel's - and +. */
+  plateKg?: number;
+  plateLb?: number;
+  /** Hold a Wake Lock while a session is open. */
+  keepAwake?: boolean;
+  /** Chime when a rest reaches zero. */
+  chime?: boolean;
 }
 
 /**

@@ -291,7 +291,7 @@ export function formatSeconds(seconds: number): string {
 }
 
 /** The most recent other session holding this exercise, newest first by date and start. */
-function lastInstance(
+export function lastInstance(
   exerciseId: string,
   sessions: Session[],
   except: Id,

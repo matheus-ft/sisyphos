@@ -21,6 +21,12 @@ export function toKg(value: number, unit: LoadUnit): number | null {
   return unit === 'kg' ? value : value / LB_PER_KG;
 }
 
+/** A mass in kilograms as it reads in `unit`: the inverse of `toKg`. Null for `pins`. */
+export function fromKg(kg: number, unit: LoadUnit): number | null {
+  if (!isConvertible(unit)) return null;
+  return unit === 'kg' ? kg : kg * LB_PER_KG;
+}
+
 /** The weight in a load, in kg, or null when it was not measured as a mass. */
 export function weightKg(load: Load | null): number | null {
   if (!load || load.kind !== 'weight') return null;

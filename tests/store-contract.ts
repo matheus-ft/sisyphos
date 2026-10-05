@@ -373,6 +373,25 @@ export function storeContract(name: string, make: StoreFactory): void {
       });
     });
 
+    it('keeps device preferences beside the repo settings, merged and never required', async () => {
+      const store = await make({});
+      const before = await store.settings();
+      expect(before).not.toHaveProperty('plateKg');
+
+      await store.saveSettings({ deviceName: 'Phone', plateKg: 1.25, chime: true });
+      await store.saveSettings({ owner: 'lifter', keepAwake: true, plateLb: 10 });
+      await store.saveSettings({ chime: false });
+      expect(await store.settings()).toEqual({
+        ...before,
+        owner: 'lifter',
+        deviceName: 'Phone',
+        plateKg: 1.25,
+        plateLb: 10,
+        keepAwake: true,
+        chime: false,
+      });
+    });
+
     it('forgets every base on resetSync, keeping content', async () => {
       const c = clock();
       const store = await make({ now: c.now });
