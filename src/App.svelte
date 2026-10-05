@@ -30,7 +30,7 @@
    */
 
   onMount(() => {
-    update.start();
+    update.start(() => app.inSession);
     return app.boot();
   });
 
