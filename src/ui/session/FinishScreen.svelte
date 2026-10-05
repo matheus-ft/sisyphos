@@ -278,16 +278,15 @@
     gap: var(--space-3);
     margin-top: auto;
     padding-top: var(--space-6);
-    /* Done stays in reach on a long list, and a toast (which sits over the foot) lifts it clear. */
-    position: sticky;
-    bottom: var(--safe-bottom);
-    padding-bottom: var(--space-2);
-    background: linear-gradient(transparent, var(--ground) var(--space-6));
-    transition: bottom var(--dur-fast) var(--ease-out);
   }
 
-  .toasting .acts {
-    bottom: calc(var(--safe-bottom) + 72px);
+  /* A toast sits over the foot; the extra room lets Done scroll clear of it. */
+  .body {
+    transition: padding-bottom var(--dur-fast) var(--ease-out);
+  }
+
+  .toasting .body {
+    padding-bottom: calc(var(--space-6) + 72px);
   }
 
   .pair {
