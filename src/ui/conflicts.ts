@@ -241,7 +241,9 @@ function wording(
   }
   if (kind.kind === 'table') {
     const noun = TABLE_NOUN[kind.table] ?? 'entry';
-    const key = Object.values(record.key ?? {}).join(' ');
+    const key = Object.values(record.key ?? {})
+      .map((value) => (/^\d{4}-\d\d-\d\d$/.test(value) ? longDate(value) : value))
+      .join(' ');
     return about(noun, key ? `The ${noun} for ${key}` : `This ${noun}`);
   }
   return about('record', 'This record');
@@ -258,8 +260,8 @@ export function describeConflict(
     kind.kind === 'table'
       ? `${kind.table}: ${Object.values(record.key ?? {}).join(', ')}`
       : `${kind.kind} ${'id' in kind ? kind.id : record.path}`;
-  const currentLines = linesOf(current, names);
-  const savedLines = linesOf(record.version, names);
+  const currentLines = linesOf(current, names, record.key);
+  const savedLines = linesOf(record.version, names, record.key);
   const diff = diffLines(currentLines, savedLines);
   const spans = markedLines(diff);
 
@@ -339,6 +341,11 @@ export function whenLabel(instant: string, now: Date = new Date()): string {
   return `${date.replace(',', '')} ${clock}`;
 }
 
+/** The toast after keeping a version: "Kept the version from this phone". */
+export function keptMessage(device: string): string {
+  return `Kept the version from ${device === 'This phone' || device === 'Another device' ? device.toLowerCase() : device}`;
+}
+
 export interface NoticeGate {
   /** A sync found conflicts, or the app launched with some, and the lifter has not said Later. */
   requested: boolean;
@@ -369,14 +376,27 @@ export function noticeCopy(count: number): { title: string; line: string } {
   };
 }
 
-function linesOf(version: Version, names: Map<string, string>): string[] {
+/**
+ * One version as lines to compare. The session's date is in the card's title,
+ * so it is not repeated; warm-ups get a line of their own so a difference in
+ * them is still seen without crowding the working sets.
+ */
+function linesOf(version: Version, names: Map<string, string>, key: TableRow | null): string[] {
   if (version === null) return ['deleted'];
   if (isSession(version)) {
     return [
-      version.date,
-      ...version.exercises.map((e) => {
-        const sets = e.performed.filter((s) => s.state === 'done').map((s) => formatSet(s));
-        return `${names.get(e.exercise_id) ?? e.exercise_id}: ${sets.join(', ') || 'no sets'}`;
+      ...version.exercises.flatMap((e) => {
+        const name = names.get(e.exercise_id) ?? e.exercise_id;
+        const done = e.performed.filter((s) => s.state === 'done');
+        const sets = (warmup: boolean) =>
+          done
+            .filter((s) => s.is_warmup === warmup)
+            .map((s) => formatSet(s))
+            .join(', ');
+        return [
+          `${name}: ${sets(false) || 'no sets'}`,
+          ...(sets(true) ? [`${name} warm-up: ${sets(true)}`] : []),
+        ];
       }),
       ...(version.notes ? [`notes: ${version.notes}`] : []),
     ];
@@ -389,7 +409,10 @@ function linesOf(version: Version, names: Map<string, string>): string[] {
       ),
     ];
   }
-  return Object.entries(version).map(([column, value]) => `${column}: ${value || '—'}`);
+  // The key names the row, and the title already says it.
+  return Object.entries(version)
+    .filter(([column]) => !(key && column in key))
+    .map(([column, value]) => `${column.replaceAll('_', ' ')}: ${value || '—'}`);
 }
 
 /** A session has exercises and a start; a template has exercises only; a table row neither. */

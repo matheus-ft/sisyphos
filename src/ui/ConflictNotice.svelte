@@ -2,6 +2,7 @@
   import { noticeCopy } from './conflicts';
   import Button from './kit/Button.svelte';
   import Icon from './kit/Icon.svelte';
+  import Meander from './kit/Meander.svelte';
 
   /**
    * The full-screen notice that two devices changed the same thing: how many,
@@ -32,7 +33,8 @@
   aria-describedby="notice-line"
 >
   <div class="body">
-    <span class="mark"><Icon name="conflict" size={28} /></span>
+    <div class="rule"><Meander framed /></div>
+    <span class="mark"><Icon name="conflict" size={40} /></span>
     <h1 id="notice-title" tabindex="-1" use:arrive>{copy.title}</h1>
     <p id="notice-line" class="line">{copy.line}</p>
     <div class="acts">
@@ -58,7 +60,13 @@
     align-items: flex-start;
     max-width: 40rem;
     margin: 0 auto;
-    padding: var(--space-16) var(--gutter) var(--space-8);
+    padding: max(var(--space-16), 16dvh) var(--gutter) var(--space-8);
+  }
+
+  .rule {
+    width: 100%;
+    margin-bottom: var(--space-8);
+    color: var(--warning);
   }
 
   .mark {

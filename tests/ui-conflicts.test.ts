@@ -7,6 +7,7 @@ import {
   deviceLabel,
   diffLines,
   diffWords,
+  keptMessage,
   noticeCopy,
   noticeShown,
   whenLabel,
@@ -64,8 +65,8 @@ describe('a conflict, as the sync screen shows it', () => {
   it('sets a session beside the saved one, set by set', () => {
     const view = describeConflict(record({}), session(8), names);
     expect(view.what).toBe('session 2026-10-04-k3f9');
-    expect(view.current).toEqual(['2026-10-04', 'Low-Bar Squat: 140 × 5 @ 8']);
-    expect(view.saved).toEqual(['2026-10-04', 'Low-Bar Squat: 140 × 5 @ 8.5']);
+    expect(view.current).toEqual(['Low-Bar Squat: 140 × 5 @ 8']);
+    expect(view.saved).toEqual(['Low-Bar Squat: 140 × 5 @ 8.5']);
   });
 
   it('shows a version that was deleted as deleted', () => {
@@ -83,8 +84,8 @@ describe('a conflict, as the sync screen shows it', () => {
       names,
     );
     expect(view.what).toBe('bodyweight: 2026-10-04');
-    expect(view.current).toContain('weight_kg: 83');
-    expect(view.saved).toContain('weight_kg: 82.5');
+    expect(view.current).toContain('weight kg: 83');
+    expect(view.saved).toContain('weight kg: 82.5');
   });
 });
 
@@ -152,7 +153,6 @@ describe('the lines of two versions, side by side', () => {
   it('comes with a conflict, so the screen can highlight what differs', () => {
     const view = describeConflict(record({}), session(8), names);
     expect(view.diff).toEqual([
-      same('2026-10-04'),
       { current: 'Low-Bar Squat: 140 × 5 @ 8', saved: 'Low-Bar Squat: 140 × 5 @ 8.5', same: false },
     ]);
   });
@@ -254,10 +254,40 @@ describe('the card of a conflict', () => {
   it('marks only the changed figure in each version, with when each was changed', () => {
     const view = describeConflict(record({ device_id: 'laptop' }), session(8), names, here);
     const [mine, theirs] = view.sides;
-    expect(changed(mine.lines[1])).toEqual(['8']);
-    expect(changed(theirs.lines[1])).toEqual(['8.5']);
-    expect(mine.lines[0]).toEqual([{ text: '2026-10-04', changed: false }]);
+    expect(changed(mine.lines[0])).toEqual(['8']);
+    expect(changed(theirs.lines[0])).toEqual(['8.5']);
     expect(mine.when).toBe('2026-10-04T17:30:00.000Z');
+  });
+
+  it('gives warm-ups a line of their own, so a difference in them still shows', () => {
+    const withWarmup = (reps: number): Session => {
+      const s = session(8);
+      s.exercises[0].performed.unshift({
+        ...s.exercises[0].performed[0],
+        id: 'w1',
+        is_warmup: true,
+        rpe: null,
+        reps,
+      });
+      return s;
+    };
+    const view = describeConflict(record({ version: withWarmup(3) }), withWarmup(5), names, here);
+    expect(view.current).toEqual(['Low-Bar Squat: 140 × 5 @ 8', 'Low-Bar Squat warm-up: 140 × 5']);
+    expect(view.diff.map((r) => r.same)).toEqual([true, false]);
+  });
+
+  it('leaves the key of a table row out of its lines, since the title says it', () => {
+    const view = describeConflict(
+      record({
+        path: 'lifter/bodyweight.csv',
+        key: { date: '2026-10-04' },
+        version: { date: '2026-10-04', weight_kg: '82.5', source: 'manual' },
+      }),
+      { date: '2026-10-04', weight_kg: '83', source: 'manual' },
+      names,
+      here,
+    );
+    expect(view.current).toEqual(['weight kg: 83', 'source: manual']);
   });
 
   it('knows nothing of when a table row changed, and says so by leaving it out', () => {
@@ -272,6 +302,9 @@ describe('the card of a conflict', () => {
       here,
     );
     expect(view.title).toBe('Two versions of one weigh-in');
+    expect(view.line).toBe(
+      'The weigh-in for Sunday 4 October was changed on two devices. Keep one.',
+    );
     expect(view.sides.every((s) => s.when === null)).toBe(true);
     expect(view.sides.map((s) => s.device).sort()).toEqual(['Another device', 'This phone']);
   });
@@ -337,6 +370,14 @@ describe('whether the full-screen notice is up', () => {
   it('goes once none is left, or once the lifter said Later', () => {
     expect(noticeShown({ ...gate, count: 0 })).toBe(false);
     expect(noticeShown({ ...gate, requested: false })).toBe(false);
+  });
+});
+
+describe('the toast after keeping one', () => {
+  it('names the device, in running text', () => {
+    expect(keptMessage('This phone')).toBe('Kept the version from this phone');
+    expect(keptMessage("Matheus's iPhone")).toBe("Kept the version from Matheus's iPhone");
+    expect(keptMessage('Another device')).toBe('Kept the version from another device');
   });
 });
 

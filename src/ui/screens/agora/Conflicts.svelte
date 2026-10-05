@@ -9,6 +9,7 @@
     describeConflict,
     describeLibraryConflict,
     exerciseNames,
+    keptMessage,
     whenLabel,
     type ConflictSide,
     type ConflictView,
@@ -89,7 +90,7 @@
     busy = true;
     try {
       await storage.log.resolveConflict(id, side.choice);
-      await settled(`Kept the version from ${side.device}`);
+      await settled(keptMessage(side.device));
     } finally {
       busy = false;
     }
