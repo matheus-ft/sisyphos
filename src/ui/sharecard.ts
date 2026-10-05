@@ -2,8 +2,7 @@ import type { Exercise, Id, IsoDate, Session } from '../model';
 import { finishStats, type FinishStats, type TopSet } from './finish';
 import { longDate, programLabel } from './format';
 import {
-  HILL_PATH,
-  RIDGE_LINE,
+  RIDGE_PATH,
   STANDING_HEAD,
   STANDING_PATH,
   STONE_INCISIONS,
@@ -153,7 +152,11 @@ const PAD_BOTTOM = 56;
 const BAND_UNIT = 6;
 const BAND_H = BAND_UNIT * 7;
 const SCENE_W = 920;
-const ROW_H = 66;
+/** Header-drawing units to card px: the hill's two slopes fill the scene's width at this size. */
+const SCENE_SCALE = 4.4;
+/** Where the ridge tops out; the hill is mirrored about it so the summit sits mid-card. */
+const SUMMIT_X = 186;
+const ROW_H = 68;
 
 export interface CardMetrics {
   bandTop: number;
@@ -179,14 +182,14 @@ export function cardMetrics(hasLabel: boolean): CardMetrics {
   const bandTop = PAD_TOP;
   const dateBase = bandTop + BAND_H + 44 + Math.round(40 * CINZEL_CAP);
   const labelBase = hasLabel ? dateBase + 10 + 36 : null;
-  const sceneScale = SCENE_W / 200;
+  const sceneScale = SCENE_SCALE;
   const sceneTop = (labelBase ?? dateBase) + 26;
   const sceneBottom = sceneTop + Math.round(72 * sceneScale);
-  const title1 = sceneBottom + 34 + Math.round(58 * CINZEL_CAP);
+  const title1 = sceneBottom + 40 + Math.round(58 * CINZEL_CAP);
   const title2 = title1 + 70;
-  const statFigureBase = title2 + 38 + Math.round(104 * GARAMOND_FIG);
+  const statFigureBase = title2 + 52 + Math.round(104 * GARAMOND_FIG);
   const statLabelBase = statFigureBase + 14 + Math.round(26 * CINZEL_CAP);
-  const rowsTop = statLabelBase + 32;
+  const rowsTop = statLabelBase + 46;
   const footerBase = CARD_H - PAD_BOTTOM;
   const footBandTop = footerBase - Math.round(28 * CINZEL_CAP) - 22 - BAND_H;
   return {
@@ -369,40 +372,58 @@ function drawLaurel(
   ctx.restore();
 }
 
-/** The hill with its strata, Sisyphos standing and the stone at the summit, from hill.ts. */
+/**
+ * The hill with its strata, Sisyphos standing and the stone at the summit, from
+ * hill.ts. The header drawing climbs to a cliff; a card wants a mound, so the
+ * ridge is mirrored about its summit and the two slopes cropped to the scene.
+ */
 function drawScene(
   ctx: CanvasRenderingContext2D,
   t: CardTheme,
-  x: number,
+  cx: number,
   y: number,
   k: number,
 ): void {
   const px = 2.4 / k; // a 2.4px line on the card, in header units
+  const half = SCENE_W / 2 / k;
   ctx.save();
-  ctx.translate(x, y);
+  ctx.translate(cx, y);
   ctx.scale(k, k);
-  const hill = new Path2D(HILL_PATH);
-  ctx.fillStyle = t.figure;
-  ctx.fill(hill);
+  ctx.translate(-SUMMIT_X, 0);
+  ctx.beginPath();
+  ctx.rect(SUMMIT_X - half, -20, half * 2, 92);
+  ctx.clip();
 
-  ctx.save();
-  ctx.clip(hill);
-  ctx.strokeStyle = t.ground;
-  ctx.lineWidth = px;
-  ctx.lineCap = 'round';
-  const ridge = new Path2D(RIDGE_LINE);
-  [
+  const slope = new Path2D(`M0,72 L0,67 L${RIDGE_PATH.slice(1)} L${SUMMIT_X},72 Z`);
+  const ridge = new Path2D(RIDGE_PATH);
+  const strata: [number, number[]][] = [
     [7, []],
     [14, [5 * px, 4 * px]],
     [21, [1.5 * px, 4 * px]],
-  ].forEach(([down, dash]) => {
+  ];
+  for (const mirrored of [false, true]) {
     ctx.save();
-    ctx.translate(0, down as number);
-    ctx.setLineDash(dash as number[]);
-    ctx.stroke(ridge);
+    if (mirrored) {
+      ctx.translate(SUMMIT_X * 2, 0);
+      ctx.scale(-1, 1);
+    }
+    ctx.fillStyle = t.figure;
+    ctx.fill(slope);
+    ctx.save();
+    ctx.clip(slope);
+    ctx.strokeStyle = t.ground;
+    ctx.lineWidth = px;
+    ctx.lineCap = 'round';
+    for (const [down, dash] of strata) {
+      ctx.save();
+      ctx.translate(0, down);
+      ctx.setLineDash(dash);
+      ctx.stroke(ridge);
+      ctx.restore();
+    }
     ctx.restore();
-  });
-  ctx.restore();
+    ctx.restore();
+  }
 
   const pose = poseAt(1);
   ctx.translate(pose.x, pose.y);
@@ -495,8 +516,7 @@ export function drawShareCard(canvas: HTMLCanvasElement, content: CardContent, t
     ctx.fillText(fit(ctx, content.label, innerW), centre, m.labelBase);
   }
 
-  const sceneW = 200 * m.sceneScale;
-  drawScene(ctx, t, centre - sceneW / 2, m.sceneTop, m.sceneScale);
+  drawScene(ctx, t, centre, m.sceneTop, m.sceneScale);
 
   ctx.fillStyle = t.ink;
   ctx.font = `700 58px ${DISPLAY}`;

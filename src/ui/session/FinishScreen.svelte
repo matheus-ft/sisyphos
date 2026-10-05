@@ -167,12 +167,6 @@
     min-height: calc(100dvh - var(--safe-top) - var(--safe-bottom));
     padding-top: var(--space-3);
     color: var(--figure);
-    /* Eases the foot clear of a toast, which would otherwise sit over Done. */
-    transition: padding-bottom var(--dur-fast) var(--ease-out);
-  }
-
-  .finish.toasting {
-    padding-bottom: 72px;
   }
 
   .body {
@@ -284,6 +278,16 @@
     gap: var(--space-3);
     margin-top: auto;
     padding-top: var(--space-6);
+    /* Done stays in reach on a long list, and a toast (which sits over the foot) lifts it clear. */
+    position: sticky;
+    bottom: var(--safe-bottom);
+    padding-bottom: var(--space-2);
+    background: linear-gradient(transparent, var(--ground) var(--space-6));
+    transition: bottom var(--dur-fast) var(--ease-out);
+  }
+
+  .toasting .acts {
+    bottom: calc(var(--safe-bottom) + 72px);
   }
 
   .pair {
