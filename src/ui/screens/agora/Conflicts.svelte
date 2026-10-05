@@ -95,17 +95,28 @@
         notSettled(error);
         return;
       }
-      app.failure = null;
+      clearNotSettled();
       await settled(keptMessage(side.device));
     } finally {
       busy = false;
     }
   }
 
-  /** Said where every screen shows it, with the conflict left as it was to try again. */
+  const NOT_SETTLED = 'The conflict was not settled, so it is still there';
+
+  /**
+   * Said where every screen shows it, and at once where the lifter is looking (the
+   * button may be far below the shell's line), with the conflict left to try again.
+   */
   function notSettled(error: unknown): void {
     const why = error instanceof Error ? error.message : String(error);
-    app.failure = `The conflict was not settled, so it is still there: ${why}`;
+    app.failure = `${NOT_SETTLED}: ${why}`;
+    showToast({ message: `${NOT_SETTLED}.`, strong: why });
+  }
+
+  /** Clears only this screen's own failure: another, such as a set not saved, still stands. */
+  function clearNotSettled(): void {
+    if (app.failure?.startsWith(NOT_SETTLED)) app.failure = null;
   }
 
   async function resolveLibrary(conflict: LibraryConflict, keepMine: boolean): Promise<void> {
@@ -129,7 +140,7 @@
       }
       if (tab && kind) tab.location.href = submissionUrl(conflict.addition, kind);
       else tab?.close();
-      app.failure = null;
+      clearNotSettled();
       await settled(keepMine ? 'Kept your exercise' : "Kept the app's exercise");
     } finally {
       busy = false;

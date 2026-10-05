@@ -171,6 +171,15 @@ describe('the rest a set starts', () => {
     expect(startsRest({ instance: i, set: second, number: 2, warmup: false })).toBe(false);
   });
 
+  it('is not restarted by an earlier exercise finished once the next is under way', () => {
+    const last = done(90, 5, 8);
+    const squat = instance([done(90, 5, 8), last]);
+    const moved = session([squat, instance([done(60, 8, 7)])]);
+    expect(startsRest({ instance: squat, set: last, number: 2, warmup: false }, moved)).toBe(false);
+    const notYet = session([squat, instance([set()])]);
+    expect(startsRest({ instance: squat, set: last, number: 2, warmup: false }, notYet)).toBe(true);
+  });
+
   it('starts from no warm-up, and not from a working set behind one', () => {
     const warm = done(60, 5, null, { is_warmup: true });
     const lifted = done(90, 5, 8);

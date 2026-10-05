@@ -168,7 +168,7 @@
     void app.save(next);
     if (!saved) return;
     const rested =
-      live && startsRest(saved)
+      live && startsRest(saved, next)
         ? restStarted(saved, byId.get(saved.instance.exercise_id), Date.now())
         : null;
     if (rested) startRest(rested);

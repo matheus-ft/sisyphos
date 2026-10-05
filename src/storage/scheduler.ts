@@ -59,6 +59,8 @@ export function sessionInProgress(sessions: Session[], now: Date): boolean {
     (session) =>
       session.started_at !== null &&
       session.ended_at === null &&
+      // One logged after the fact is typed in, not lifted: nothing to hold syncs back for.
+      session.time_precision === 'instant' &&
       // Within, either side of now: a session stamped by another device whose
       // clock runs a little ahead is still being written right now.
       Math.abs(now.getTime() - Date.parse(session.updated_at)) < IN_PROGRESS_MS,

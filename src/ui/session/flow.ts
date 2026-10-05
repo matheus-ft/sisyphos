@@ -129,11 +129,17 @@ export function targetOf(instance: ExerciseInstance, exercise: Exercise | undefi
  * its missing RPE while a later one's rest runs is a correction, not a lift, and
  * leaves that rest running as it was.
  */
-export function startsRest(saved: SavedSet): boolean {
+export function startsRest(saved: SavedSet, session?: Session): boolean {
   if (saved.warmup) return false;
+  const lifted = (s: PerformedSet) => s.state === 'done' && !s.is_warmup;
   const sets = saved.instance.performed;
   const at = sets.findIndex((s) => s.id === saved.set.id);
-  return !sets.slice(at + 1).some((s) => s.state === 'done' && !s.is_warmup);
+  if (sets.slice(at + 1).some(lifted)) return false;
+  // Filling in the last exercise's RPE once the next one is under way: the lifter
+  // has moved on, and the rest that runs is the later exercise's.
+  const exercises = session?.exercises ?? [];
+  const here = exercises.findIndex((e) => e.id === saved.instance.id);
+  return here === -1 || !exercises.slice(here + 1).some((e) => e.performed.some(lifted));
 }
 
 export function restStarted(

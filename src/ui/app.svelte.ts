@@ -141,8 +141,9 @@ class App {
           this.#resolve();
         }
         const settings = await s.store.settings();
-        // The greeting would cover the session just reopened; it comes at a later launch.
-        this.showSetup = settings.owner === null && !skipped() && !reopened;
+        // The greeting would cover a session under way, whether launch reopened it or the
+        // launch's own link did; it comes at a later launch.
+        this.showSetup = settings.owner === null && !skipped() && running === undefined;
         await s.scheduler.status();
         // Conflicts are announced again at every launch until settled.
         const waiting = (this.status?.conflicts ?? 0) + (this.status?.libraryConflicts ?? 0);
@@ -318,7 +319,10 @@ class App {
       deviceId: s.log.options.deviceId,
       planned: options.planned,
     });
+    // A session logged after the fact is never under way, even on today's date: its
+    // clock time is when it was typed in, not lifted, so no rest, bell or wake lock.
     if (options.date) fresh = setDate(fresh, options.date);
+    if (options.date && !options.planned) fresh = { ...fresh, time_precision: 'date_only' };
     const plan = from && 'started_at' in from ? templateFrom(from, { id: '', name: '', at }) : from;
     if (plan) fresh = fromTemplate(fresh, plan, () => crypto.randomUUID());
     this.session = fresh;

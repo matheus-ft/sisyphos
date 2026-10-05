@@ -284,6 +284,11 @@ describe('sessionInProgress', () => {
     expect(sessionInProgress([session(timers, 0, true)], now)).toBe(false);
   });
 
+  it('is false for a session logged after the fact, which is typed in, not lifted', () => {
+    const typedIn = { ...session(timers, 0), time_precision: 'date_only' as const };
+    expect(sessionInProgress([typedIn], now)).toBe(false);
+  });
+
   it('is false with no sessions, and true if any one of several is in progress', () => {
     expect(sessionInProgress([], now)).toBe(false);
     const stale = session(timers, IN_PROGRESS_MS + MINUTE);
