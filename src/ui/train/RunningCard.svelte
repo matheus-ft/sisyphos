@@ -2,9 +2,9 @@
   import type { Session } from '../../model';
   import { app } from '../app.svelte';
   import { formatMinutes, programLabel, sessionMinutes } from '../format';
-  import { sessionProgress, sessionTally } from '../hill';
   import Boulder from '../kit/Boulder.svelte';
   import Button from '../kit/Button.svelte';
+  import { climb } from '../session/flow';
 
   /**
    * The session being lifted, first on Train whenever there is one: how long,
@@ -23,8 +23,8 @@
   });
 
   const minutes = $derived(sessionMinutes(session, now));
-  const tally = $derived(sessionTally(session, app.current));
-  const progress = $derived(sessionProgress(session, app.current));
+  // The same climb as the session's own header, so the two never disagree.
+  const tally = $derived(climb(session, app.sessions));
   const label = $derived(programLabel(session.label));
 </script>
 
@@ -42,12 +42,12 @@
       <div>
         <dt class="caps">Sets</dt>
         <dd class="figure-num">
-          {tally.done}<span class="of">of {tally.total}</span>
+          {tally.done}<span class="of">of {tally.of}</span>
         </dd>
       </div>
     </dl>
     <div class="hill">
-      <Boulder {progress} size="header" label={null} />
+      <Boulder progress={tally.fraction} size="header" label={null} />
     </div>
   </div>
   <Button variant="primary" bench full onclick={() => app.openSession(session)}
