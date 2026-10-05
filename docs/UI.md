@@ -5,8 +5,9 @@ What the lifter sees, in three stages:
 - **v0** replaced a notes app: type in the session being trained, saved at once,
   synced when it ends.
 - **v0.5** is the bridge to v1: every screen the lifter asked for, in the look
-  they chose. This document states what they want from each screen. Most of it
-  is built; where it is not yet, the section says so.
+  they chose. This document states what they want from each screen. v0.5
+  builds all of it; where it falls short of the intent, For the designer says
+  so.
 - **v1** is shaped by a designer. This document is their brief: v0.5 shows one
   answer to it, not the only one.
 
@@ -186,3 +187,9 @@ Open questions v0.5 answered provisionally:
   than offering a choice.
 - The bell and screen awake depend on the iPhone: screen awake needs iOS 18.4 or
   later in a home-screen app, and the bell sounds only while the app is open.
+  It rings from the session screen, so not while the lifter looks at another
+  tab mid-rest; the intent is any screen.
+- A unit picked on a set not yet filled in is remembered by that tab only, until
+  a number in it reaches the log.
+- A session can be finished with sets still pending; they stay pending, marked
+  in History.
