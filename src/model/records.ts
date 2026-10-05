@@ -240,7 +240,8 @@ export interface SessionRecord {
   reps: number;
   weight_kg: number;
   date: IsoDate;
-  rpe: number;
+  /** Null only for a warm-up, when `definitions.json` counts warm-ups toward records. */
+  rpe: number | null;
   session_id: Id;
   exercise_instance_id: Id;
   set_id: Id;
