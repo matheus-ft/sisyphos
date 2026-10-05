@@ -1,29 +1,39 @@
 <script lang="ts">
   import type { LibraryConflict } from '../../../library/assemble';
   import { submissionUrl } from '../../../library/submission';
-  import type { ConflictRecord, Exercise, Session, TableRow, Template } from '../../../model';
+  import type { ConflictRecord, Session, TableRow, Template } from '../../../model';
   import { TABLES } from '../../../storage/formats';
-  import type { ConflictChoice } from '../../../storage/log';
   import { classify } from '../../../storage/paths';
   import { app } from '../../app.svelte';
-  import { describeConflict, exerciseNames, type ConflictView } from '../../conflicts';
+  import {
+    describeConflict,
+    describeLibraryConflict,
+    exerciseNames,
+    whenLabel,
+    type ConflictSide,
+    type ConflictView,
+    type LibraryConflictView,
+    type Span,
+  } from '../../conflicts';
   import Button from '../../kit/Button.svelte';
+  import EmptyState from '../../kit/EmptyState.svelte';
   import ScreenHeader from '../../kit/ScreenHeader.svelte';
+  import { showToast } from '../../overlays.svelte';
   import { routeHash } from '../../route';
 
   /**
-   * Two devices changed the same thing: each conflict with both versions side
-   * by side, to keep one. Nothing was lost. Shown as Agora's Conflicts page,
-   * and as the full-screen notice at launch (`notice`), with "Later".
+   * Agora › Conflicts: two devices changed the same thing, so each conflict
+   * sets both versions out, with only what differs marked, to keep one.
+   * Nothing is lost until then.
    */
-  interface Props {
-    notice?: boolean;
-    onlater?: () => void;
-  }
-  let { notice = false, onlater }: Props = $props();
 
-  let conflicts = $state<(ConflictView & { device: string })[]>([]);
-  let libraryConflicts = $state<LibraryConflict[]>([]);
+  let conflicts = $state<ConflictView[]>([]);
+  let libraryConflicts = $state<{ view: LibraryConflictView; conflict: LibraryConflict }[]>([]);
+  let loaded = $state(false);
+  /** A resolution in flight: a second tap must not resolve it twice. */
+  let busy = $state(false);
+
+  const total = $derived(conflicts.length + libraryConflicts.length);
 
   $effect(() => {
     // Reread when a sync changes the count, or a resolution lands.
@@ -35,14 +45,18 @@
     const storage = app.storage;
     if (!storage) return;
     const names = exerciseNames(app.library);
+    const device = { id: storage.log.options.deviceId, name: app.prefs.deviceName };
     const records = await storage.log.getConflicts();
     conflicts = await Promise.all(
-      records.map(async (record) => ({
-        ...describeConflict(record, await currentOf(record), names),
-        device: record.device_id === storage.log.options.deviceId ? 'this phone' : 'another device',
-      })),
+      records.map(async (record) =>
+        describeConflict(record, await currentOf(record), names, device),
+      ),
     );
-    libraryConflicts = (await storage.log.library()).conflicts;
+    libraryConflicts = (await storage.log.library()).conflicts.map((conflict) => ({
+      conflict,
+      view: describeLibraryConflict(conflict),
+    }));
+    loaded = true;
   }
 
   /** What the data holds now for the record a conflict is about. */
@@ -62,132 +76,166 @@
     return null;
   }
 
-  async function resolve(id: string, choice: ConflictChoice): Promise<void> {
-    const storage = app.storage;
-    if (!storage) return;
-    await storage.log.resolveConflict(id, choice);
-    await storage.scheduler.status();
+  async function settled(message: string): Promise<void> {
+    await app.storage!.scheduler.status();
     await app.load();
     await load();
+    showToast({ message });
+  }
+
+  async function resolve(id: string, side: ConflictSide): Promise<void> {
+    const storage = app.storage;
+    if (!storage || busy) return;
+    busy = true;
+    try {
+      await storage.log.resolveConflict(id, side.choice);
+      await settled(`Kept the version from ${side.device}`);
+    } finally {
+      busy = false;
+    }
   }
 
   async function resolveLibrary(conflict: LibraryConflict, keepMine: boolean): Promise<void> {
     const storage = app.storage;
-    if (!storage) return;
+    if (!storage || busy) return;
+    busy = true;
     // Opened within the tap, as Safari requires, and pointed at the submission after.
     const tab = keepMine ? window.open('', '_blank') : null;
-    const kind = await storage.log.resolveLibraryConflict(
-      conflict.id,
-      keepMine ? 'keep_mine' : 'use_shipped',
-    );
-    if (tab && kind) tab.location.href = submissionUrl(conflict.addition, kind);
-    else tab?.close();
-    await storage.scheduler.status();
-    await app.load();
-    await load();
+    try {
+      const kind = await storage.log.resolveLibraryConflict(
+        conflict.id,
+        keepMine ? 'keep_mine' : 'use_shipped',
+      );
+      if (tab && kind) tab.location.href = submissionUrl(conflict.addition, kind);
+      else tab?.close();
+      await settled(keepMine ? 'Kept your exercise' : "Kept the app's exercise");
+    } finally {
+      busy = false;
+    }
   }
-
-  const muscles = (e: Exercise) =>
-    `${e.tier}, ${e.base_lift ?? 'no lift'}; ${e.muscles.primary.join('/')}${e.muscles.aux.length ? ` + ${e.muscles.aux.join('/')}` : ''}`;
 </script>
 
+{#snippet lines(rows: Span[][])}
+  {#each rows as row, i (i)}
+    <p class="l">
+      {#each row as span, k (k)}{#if span.changed}<mark>{span.text}</mark
+          >{:else}{span.text}{/if}{/each}
+    </p>
+  {/each}
+{/snippet}
+
 <ScreenHeader
-  title={notice ? 'Conflicts to settle' : 'Conflicts'}
-  back={notice ? undefined : { href: routeHash({ name: 'more', page: null }) }}
+  title="Conflicts"
+  meta={total > 0 ? 'Nothing was lost. Pick the version to keep.' : undefined}
+  back={{ href: routeHash({ name: 'more', page: null }) }}
 />
 
-<p class="intro">
-  Two devices changed the same thing. Nothing was lost: pick which version to keep.
-</p>
-
-{#if conflicts.length === 0 && libraryConflicts.length === 0}
-  <p class="meta none">No conflicts are waiting.</p>
+{#if loaded && total === 0}
+  <EmptyState
+    title="No conflicts"
+    line="Your devices agree. Nothing is waiting."
+    action={{ label: 'Back to More', href: routeHash({ name: 'more', page: null }) }}
+  />
 {/if}
 
 {#each conflicts as conflict (conflict.id)}
-  <section class="card">
-    <h3>{conflict.what}</h3>
-    <div class="versions">
-      <div>
-        <p class="caps">In the log</p>
-        {#each conflict.current as l, i (i)}<p class="l">{l}</p>{/each}
+  <section class="conflict" aria-labelledby="c-{conflict.id}">
+    <h2 id="c-{conflict.id}">{conflict.title}</h2>
+    <p class="line">{conflict.line}</p>
+    {#each conflict.sides as side (side.choice)}
+      <div class="side card">
+        <p class="who">
+          <span class="caps">{side.device}</span>
+          {#if side.when}<span class="meta">{whenLabel(side.when)}</span>{/if}
+        </p>
+        {@render lines(side.lines)}
+        <Button
+          full
+          disabled={busy}
+          aria-label="Keep the version from {side.device}"
+          onclick={() => resolve(conflict.id, side)}>Keep this one</Button
+        >
       </div>
-      <div>
-        <p class="caps">Saved from {conflict.device}</p>
-        {#each conflict.saved as l, i (i)}<p class="l">{l}</p>{/each}
-      </div>
-    </div>
-    <div class="acts">
-      <Button full onclick={() => resolve(conflict.id, 'keep_log')}>Keep the log's</Button>
-      <Button full onclick={() => resolve(conflict.id, 'use_saved')}>Use the saved</Button>
-    </div>
+    {/each}
   </section>
 {/each}
 
-{#each libraryConflicts as conflict (conflict.id)}
-  <section class="card">
-    <h3>Exercise: {conflict.shipped.name}</h3>
-    <div class="versions">
-      <div>
-        <p class="caps">In the app</p>
-        <p class="l">{conflict.shipped.name}</p>
-        <p class="l">{muscles(conflict.shipped)}</p>
+{#each libraryConflicts as { view, conflict } (view.id)}
+  <section class="conflict" aria-labelledby="c-{view.id}">
+    <h2 id="c-{view.id}">{view.title}</h2>
+    <p class="line">{view.line}</p>
+    {#each view.sides as side (side.label)}
+      <div class="side card">
+        <p class="who"><span class="caps">{side.label}</span></p>
+        {@render lines(side.lines)}
+        {#if side.keepMine}
+          <p class="meta note">Opens a proposal for the app's library on GitHub.</p>
+        {/if}
+        <Button
+          full
+          disabled={busy}
+          aria-label={side.keepMine ? 'Keep your version' : "Keep the app's version"}
+          onclick={() => resolveLibrary(conflict, side.keepMine)}>Keep this one</Button
+        >
       </div>
-      <div>
-        <p class="caps">Yours</p>
-        <p class="l">{conflict.addition.name}</p>
-        <p class="l">{muscles(conflict.addition)}</p>
-      </div>
-    </div>
-    <div class="acts">
-      <Button full onclick={() => resolveLibrary(conflict, false)}>Use the app's</Button>
-      <Button full onclick={() => resolveLibrary(conflict, true)}>Keep mine</Button>
-    </div>
+    {/each}
   </section>
 {/each}
-
-{#if notice}
-  <div class="later"><Button variant="link" onclick={onlater}>Later</Button></div>
-{/if}
 
 <style>
-  .intro,
-  .none {
+  .conflict {
+    margin-bottom: var(--space-6);
+  }
+
+  h2 {
+    margin: var(--space-4) var(--gutter) var(--space-2);
+    font: var(--fw-display) 1.125rem / var(--lh-snug) var(--font-display);
+    letter-spacing: var(--ls-caps);
+    text-transform: uppercase;
+  }
+
+  .line {
     margin: 0 var(--gutter) var(--space-3);
     color: var(--ink-2);
+    font-size: var(--fs-lead);
   }
 
-  .card {
+  .side {
     margin: 0 12px var(--space-2);
+    padding: var(--space-3) var(--space-4) var(--space-4);
   }
 
-  .versions {
-    display: grid;
-    grid-template-columns: 1fr 1fr;
-    gap: var(--space-4);
-    margin-top: var(--space-2);
+  .who {
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    gap: var(--space-3);
+    margin-bottom: var(--space-2);
   }
 
-  .caps {
-    margin-bottom: var(--space-1);
+  .who .caps {
     color: var(--ink-2);
   }
 
   .l {
-    font-size: var(--fs-meta);
+    margin-bottom: var(--space-1);
+    font-size: var(--fs-lead);
     overflow-wrap: anywhere;
   }
 
-  .acts {
-    display: grid;
-    grid-template-columns: 1fr 1fr;
-    gap: var(--space-2);
-    margin-top: var(--space-3);
+  /* What differs: a wash and a 2px rule, so it never rests on colour alone. */
+  mark {
+    padding: 0 2px;
+    border-bottom: 2px solid var(--accent);
+    background: var(--accent-wash);
+    color: inherit;
   }
 
-  .later {
-    display: flex;
-    justify-content: center;
+  .note {
     margin-top: var(--space-2);
+  }
+
+  .side :global(button) {
+    margin-top: var(--space-3);
   }
 </style>
