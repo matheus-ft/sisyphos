@@ -24,10 +24,14 @@ const target = (over: Partial<PrescribedSet> = {}): PrescribedSet => ({
   ...over,
 });
 
+/** What format 2 adds to an exercise; spread, so this fixture compiles before and after it. */
+const FORMAT_2 = { rest_s: null };
+
 const instance = (
   performed: PerformedSet[],
   prescribed: PrescribedSet[] = [],
 ): ExerciseInstance => ({
+  ...FORMAT_2,
   id: 'i',
   exercise_id: 'low_bar_squat',
   prescribed,

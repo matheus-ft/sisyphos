@@ -74,6 +74,9 @@ const set = (state: PerformedSet['state'], warmup = false): PerformedSet => ({
   notes: null,
 });
 
+/** What format 2 adds to an exercise; spread, so this fixture compiles before and after it. */
+const FORMAT_2 = { rest_s: null };
+
 let day = 1;
 function session(sets: PerformedSet[], planned: boolean, ended = false): Session {
   const s = newSession({
@@ -87,6 +90,7 @@ function session(sets: PerformedSet[], planned: boolean, ended = false): Session
     ended_at: ended ? s.started_at : null,
     exercises: [
       {
+        ...FORMAT_2,
         id: 'i',
         exercise_id: 'low_bar_squat',
         prescribed: planned

@@ -71,11 +71,21 @@ describe('how long a session ran', () => {
   });
 });
 
+/** What format 2 adds to an exercise; spread, so this fixture compiles before and after it. */
+const FORMAT_2 = { rest_s: null };
+
 describe('what a session holds', () => {
   it('counts done working sets, not warm-ups', () => {
     const s = session();
     const exercises = [
-      { id: 'i', exercise_id: 'x', prescribed: [], notes: null, performed: [done(true), done()] },
+      {
+        ...FORMAT_2,
+        id: 'i',
+        exercise_id: 'x',
+        prescribed: [],
+        notes: null,
+        performed: [done(true), done()],
+      },
     ];
     expect(workingSets({ ...s, exercises })).toBe(1);
   });
