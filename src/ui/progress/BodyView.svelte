@@ -235,7 +235,7 @@
 
   .bars button {
     display: grid;
-    grid-template-columns: minmax(0, 7.5rem) 1fr 3rem;
+    grid-template-columns: minmax(0, 9.5rem) 1fr 3rem;
     align-items: center;
     gap: var(--space-3);
     width: 100%;
@@ -243,10 +243,10 @@
     text-align: left;
   }
 
+  /* Wraps rather than cutting "Front and side delts" short: the name is the label. */
   .name {
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
+    padding: var(--space-2) 0;
+    line-height: var(--lh-tight);
   }
 
   .track {

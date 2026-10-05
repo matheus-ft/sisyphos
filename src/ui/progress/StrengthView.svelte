@@ -69,7 +69,7 @@
   {#if headline}
     <p class="headline">
       <span class="figure-num stat">{headline.value}</span>
-      <span class="caps unit">kg e1RM</span>
+      <span class="unit">kg e1RM</span>
       {#if headline.change}<span class="meta">{headline.change}</span>{/if}
     </p>
   {/if}
@@ -102,7 +102,11 @@
             {lift.exercise.name}, best e1RM on each day it was trained, newest first
           </caption>
           <thead>
-            <tr><th scope="col">Date</th><th scope="col">e1RM</th><th scope="col">Best set</th></tr>
+            <tr
+              ><th scope="col">Date</th><th scope="col">Estimated max</th><th scope="col"
+                >Best set</th
+              ></tr
+            >
           </thead>
           <tbody>
             {#each [...points].reverse() as p, i (p.date)}
@@ -149,8 +153,10 @@
     font-size: var(--fs-stat);
   }
 
+  /* Garamond, not the caps face: Cinzel capitals set the 1 of e1RM as an I. */
   .unit {
     color: var(--ink-2);
+    font-size: var(--fs-body);
   }
 
   .chart-card {
