@@ -1,5 +1,3 @@
-import type { Session } from '../model';
-
 /**
  * The hill and the boulder: where the stone sits for a session's progress, and
  * how far up that progress is. The drawing is `kit/Boulder.svelte`; the
@@ -151,48 +149,6 @@ export function poseAt(p: number, radius = BOULDER_RADIUS): Pose {
     angle: (Math.atan2(at.ty, at.tx) * 180) / Math.PI,
     roll: ((s / radius) * 180) / Math.PI,
   };
-}
-
-/**
- * A session's sets, as the header's readout counts them ("9 of 15"): done
- * working sets over the working sets planned and not skipped. Warm-ups never
- * count. A session with nothing prescribed has no plan to measure against, so
- * it borrows the median working-set count of the last four finished sessions,
- * and always one more than is done, so the stone reaches the top only at
- * Finish.
- */
-export function sessionTally(session: Session, recent: Session[]): { done: number; total: number } {
-  const working = session.exercises.flatMap((e) => e.performed.filter((s) => !s.is_warmup));
-  const done = working.filter((s) => s.state === 'done').length;
-  if (session.exercises.some((e) => e.prescribed.length > 0)) {
-    return { done, total: working.filter((s) => s.state !== 'skipped').length };
-  }
-  const counts = [...recent]
-    .filter((s) => s.id !== session.id && s.ended_at !== null)
-    .sort(
-      (a, b) =>
-        b.date.localeCompare(a.date) || (b.started_at ?? '').localeCompare(a.started_at ?? ''),
-    )
-    .slice(0, 4)
-    .map(
-      (s) =>
-        s.exercises.flatMap((e) => e.performed.filter((p) => !p.is_warmup && p.state === 'done'))
-          .length,
-    );
-  return { done, total: Math.max(Math.ceil(median(counts)), done + 1) };
-}
-
-/** How far up the hill a session is, 0 to 1: its tally as a fraction. */
-export function sessionProgress(session: Session, recent: Session[]): number {
-  const { done, total } = sessionTally(session, recent);
-  return total > 0 ? Math.min(done / total, 1) : 0;
-}
-
-function median(values: number[]): number {
-  if (values.length === 0) return 0;
-  const sorted = [...values].sort((a, b) => a - b);
-  const mid = sorted.length >> 1;
-  return sorted.length % 2 ? sorted[mid] : (sorted[mid - 1] + sorted[mid]) / 2;
 }
 
 function cubic(c: [number, number][], t: number): [number, number] {

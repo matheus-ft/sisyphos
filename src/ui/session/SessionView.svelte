@@ -1,32 +1,51 @@
 <script lang="ts">
-  import type { Exercise, PerformedSet, Session } from '../../model';
+  import type { Exercise, Id, PerformedSet, Session } from '../../model';
   import AddExercise from '../AddExercise.svelte';
   import { app } from '../app.svelte';
-  import { entryPrefill, plateStep } from '../entry';
+  import { entryContext, entryPrefill } from '../entry';
+  import { screenAwake, restBell } from '../device';
   import { formatMinutes, longDate, programLabel, sessionMinutes } from '../format';
-  import { sessionTally } from '../hill';
   import Boulder from '../kit/Boulder.svelte';
   import Button from '../kit/Button.svelte';
   import Icon from '../kit/Icon.svelte';
   import Meander from '../kit/Meander.svelte';
-  import { promptDialog } from '../overlays.svelte';
+  import Switch from '../kit/Switch.svelte';
+  import { dismissToast, promptDialog, showToast } from '../overlays.svelte';
+  import { adjustRest, parseRest, serializeRest } from '../rest';
   import {
     addExercise,
-    doneCount,
     editSet,
-    formatSet,
-    lastTime,
+    lastInstance,
     lastUnit,
     measureOf,
     parseNumber,
     setDate,
+    setRest,
     skipSet,
-    targetsOf,
     type SetEdit,
   } from '../session';
+  import { cardMode, firstPending, recordSetIds } from './cards';
   import EntryPanel from './EntryPanel.svelte';
   import ExerciseCard from './ExerciseCard.svelte';
+  import {
+    climb,
+    restContext,
+    restFresh,
+    restKey,
+    restNext,
+    restNextSet,
+    restReadout,
+    restStarted,
+    restoreSet,
+    savedSet,
+    sessionsBefore,
+    savedToast,
+    targetOf,
+    weighInOffer,
+  } from './flow';
+  import { activeSetId, ringedRpe, setLabel, targetText } from './panel';
   import RestTakeover from './RestTakeover.svelte';
+  import { hiddenKey, parseHidden, serializeHidden } from './warmups';
 
   /**
    * A session on screen: running, planned ahead, or past. A focused mode, with
@@ -39,11 +58,6 @@
   }
   let { session }: Props = $props();
 
-  const change = (next: Session) => {
-    noteRest(next);
-    void app.save(next);
-  };
-
   const byId = $derived(new Map(app.library.map((e) => [e.id, e])));
   const open = $derived(session.ended_at === null);
   const planned = $derived(session.started_at === null);
@@ -55,17 +69,12 @@
   const recentIds = $derived([
     ...new Set([...app.sessions].reverse().flatMap((s) => s.exercises.map((e) => e.exercise_id))),
   ]);
-  const tally = $derived(sessionTally(session, app.sessions));
+  /** What came before this session's date: "last time" and suggestions for a past session look back from it, not from today. */
+  const earlier = $derived(sessionsBefore(app.sessions, session.date));
+  const progress = $derived(climb(session, app.sessions));
   const label = $derived(programLabel(session.label));
-  /** The set being entered: the first one still pending, in order. */
-  const active = $derived.by(() => {
-    if (!open) return null;
-    for (const e of session.exercises) {
-      const set = e.performed.find((s) => s.state === 'pending');
-      if (set) return { instance: e, set };
-    }
-    return null;
-  });
+  const records = $derived(recordSetIds(session, app.sessions, app.library, app.manualRecords));
+  const weighIn = $derived(weighInOffer(session, app.bodyweights));
 
   let now = $state(Date.now());
   $effect(() => {
@@ -74,96 +83,90 @@
   });
   const minutes = $derived(sessionMinutes(session, now));
 
-  // --- rest -------------------------------------------------------------------------
+  /** Scrolled past the top, the header gives back room to the list. */
+  let collapsed = $state(false);
+  function scrolled(): void {
+    // Two thresholds, so a header that has just shrunk does not shrink the scroll back under itself.
+    const y = window.scrollY;
+    collapsed = collapsed ? y > 8 : y > 24;
+  }
 
-  /**
-   * When the last set was finished. Kept for the tab, so a reload between sets
-   * keeps counting; never saved, since rest is not analysed.
-   */
-  const restKey = $derived(`sisyphos.rest.${session.id}`);
-  let restFrom = $state<number | null>(null);
-  let restOpen = $state(false);
-  let chime = $state(false);
-  let awake = $state(false);
+  // Awake while the session runs and the lifter asked for it.
   $effect(() => {
-    try {
-      const kept = Number(sessionStorage.getItem(restKey));
-      restFrom = kept > 0 ? kept : null;
-    } catch {
-      restFrom = null;
-    }
-  });
-  const restClock = $derived.by(() => {
-    if (!running || restFrom === null) return null;
-    const s = Math.max(0, Math.floor((now - restFrom) / 1000));
-    return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`;
-  });
-
-  /** A set newly done starts the rest; a working set also opens the takeover. */
-  function noteRest(next: Session): void {
-    if (!running || doneCount(next) <= doneCount(session)) return;
-    restFrom = Date.now();
-    try {
-      sessionStorage.setItem(restKey, String(restFrom));
-    } catch {
-      // The timer still runs; it only forgets on reload.
-    }
-    const working = (s: Session) =>
-      s.exercises.reduce(
-        (n, e) => n + e.performed.filter((p) => p.state === 'done' && !p.is_warmup).length,
-        0,
-      );
-    if (working(next) > working(session)) restOpen = true;
-  }
-
-  function skipRest(): void {
-    restFrom = null;
-    restOpen = false;
-    try {
-      sessionStorage.removeItem(restKey);
-    } catch {
-      // Nothing kept, nothing to forget.
-    }
-  }
-
-  const restContext = $derived.by(() => {
-    const last = [...session.exercises]
-      .reverse()
-      .find((e) => e.performed.some((s) => s.state === 'done'));
-    if (!last) return '';
-    const working = last.performed.filter((s) => !s.is_warmup);
-    const done = working.filter((s) => s.state === 'done').length;
-    return `${byId.get(last.exercise_id)?.name ?? last.exercise_id} · set ${done} of ${working.length} done`;
-  });
-
-  const restNext = $derived.by(() => {
-    if (!active) return null;
-    const exercise = byId.get(active.instance.exercise_id);
-    const index = active.instance.performed.indexOf(active.set);
-    const t = targetsOf(active.instance, active.set);
-    const figures =
-      formatSet(active.set, exercise) ||
-      [t.amount, t.reps && `× ${t.reps}`, t.rpe && `@ ${t.rpe}`].filter(Boolean).join(' ') ||
-      '—';
-    return {
-      label: `Set ${index + 1}`,
-      figures,
-      exercise: exercise?.name ?? active.instance.exercise_id,
-    };
+    const wake = screenAwake();
+    wake.set(running && app.prefs.keepAwake);
+    return () => wake.dispose();
   });
 
   // --- the entry panel --------------------------------------------------------------
 
-  let entry = $state<{ instanceId: string; setId: string } | null>(null);
+  let entry = $state<{ instanceId: Id; setId: Id } | null>(null);
   const entering = $derived.by(() => {
     if (!entry) return null;
     const instance = session.exercises.find((e) => e.id === entry?.instanceId);
     const set = instance?.performed.find((s) => s.id === entry?.setId);
     return instance && set ? { instance, set } : null;
   });
+  const enteringContext = $derived.by(() => {
+    if (!entering) return null;
+    return entryContext({
+      session,
+      instance: entering.instance,
+      set: entering.set,
+      exercise: byId.get(entering.instance.exercise_id),
+      sessions: earlier,
+      oneRms: app.oneRms,
+      prefs: app.prefs,
+    });
+  });
 
-  function openEntry(instanceId: string, set: PerformedSet): void {
+  /** The set the lifter is on: the open panel's, else the first still pending. */
+  const active = $derived(
+    activeSetId(open, entering?.set.id ?? null, firstPending(session)?.set.id ?? null),
+  );
+
+  function openEntry(instanceId: Id, set: PerformedSet): void {
+    // A toast sits over the panel's foot, where the chips are.
+    dismissToast();
     entry = { instanceId, setId: set.id };
+  }
+
+  // --- saving -----------------------------------------------------------------------
+
+  /**
+   * Every edit goes through here: a set that just became done gets its undo
+   * toast and, if it was a working set, starts the rest. The bell is primed
+   * inside the tap, since iOS lets sound start only from one.
+   */
+  function change(next: Session, options: { toast?: boolean } = {}): void {
+    if (app.prefs.chime) restBell().prime();
+    const saved = open ? savedSet(session, next) : null;
+    // The set as it was, taken before the save: `session` shows the new one the moment it is saved.
+    const before = saved
+      ? session.exercises
+          .find((e) => e.id === saved.instance.id)
+          ?.performed.find((s) => s.id === saved.set.id)
+      : undefined;
+    void app.save(next);
+    if (!saved) return;
+    if (running && !saved.warmup) {
+      startRest(restStarted(saved, byId.get(saved.instance.exercise_id), Date.now()));
+    }
+    if (options.toast === false) return;
+
+    const exercise = byId.get(saved.instance.exercise_id);
+    showToast({
+      ...savedToast(saved, exercise),
+      action: before
+        ? {
+            label: 'Undo',
+            run: () => {
+              void app.save(restoreSet(session, saved.instance.id, before));
+              if (rest?.setId === saved.set.id) endRest();
+            },
+          }
+        : undefined,
+    });
   }
 
   // `entering` derives from `entry`: read it before closing the panel clears it.
@@ -172,9 +175,20 @@
     if (!at) return;
     const exercise = byId.get(at.instance.exercise_id);
     const measure = exercise ? measureOf(exercise) : 'weight';
-    const unit = exercise ? lastUnit(exercise, app.sessions, session.id) : 'kg';
+    const unit = enteringContext?.unit ?? 'kg';
+    const next = editSet(session, at.instance.id, at.set.id, edit, measure, unit);
     entry = null;
-    change(editSet(session, at.instance.id, at.set.id, edit, measure, unit));
+    // A warm-up is followed by the next warm-up of the ladder, with no tap to reopen the panel between,
+    // and no toast either: it would cover that panel's Done.
+    const after = at.set.is_warmup
+      ? next.exercises
+          .find((e) => e.id === at.instance.id)
+          ?.performed.slice(at.instance.performed.findIndex((s) => s.id === at.set.id) + 1)
+          .find((s) => s.state === 'pending')
+      : undefined;
+    const chain = after?.is_warmup ? after : null;
+    change(next, { toast: chain === null });
+    if (chain) openEntry(at.instance.id, chain);
   }
 
   function skipEntry(): void {
@@ -182,6 +196,94 @@
     if (!at) return;
     entry = null;
     change(skipSet(session, at.instance.id, at.set.id, true));
+  }
+
+  // --- rest -------------------------------------------------------------------------
+
+  /** The rest in progress, kept for the tab so a reload between sets keeps counting; never saved to the log. */
+  let rest = $state.raw<ReturnType<typeof parseRest>>(null);
+  let restOpen = $state(false);
+  $effect(() => {
+    try {
+      const kept = parseRest(sessionStorage.getItem(restKey(session.id)));
+      rest = kept && restFresh(kept, Date.now()) ? kept : null;
+    } catch {
+      rest = null;
+    }
+  });
+
+  function startRest(state: NonNullable<typeof rest>): void {
+    rest = state;
+    restOpen = true;
+    try {
+      sessionStorage.setItem(restKey(session.id), serializeRest(state));
+    } catch {
+      // The timer still runs; it only forgets on reload.
+    }
+  }
+
+  function endRest(): void {
+    rest = null;
+    restOpen = false;
+    try {
+      sessionStorage.removeItem(restKey(session.id));
+    } catch {
+      // Nothing kept, nothing to forget.
+    }
+  }
+
+  const restInstance = $derived(
+    rest ? (session.exercises.find((e) => e.id === rest?.instanceId) ?? null) : null,
+  );
+  /** The target is the exercise's now, so −15 s / +15 s (saved into the session) reaches the clock at once. */
+  const restTarget = $derived(
+    restInstance ? targetOf(restInstance, byId.get(restInstance.exercise_id)) : null,
+  );
+  const restReading = $derived(
+    running && rest && restTarget !== null ? restReadout(rest.startedAt, restTarget, now) : null,
+  );
+  const restUp = $derived(restOpen && running && rest !== null && restInstance !== null);
+
+  const restFollowing = $derived.by(() => {
+    if (!rest) return null;
+    const next = restNextSet(session, rest);
+    if (!next) return null;
+    const exercise = byId.get(next.instance.exercise_id);
+    const ctx = entryContext({
+      session,
+      instance: next.instance,
+      set: next.set,
+      exercise,
+      sessions: earlier,
+      oneRms: app.oneRms,
+      prefs: app.prefs,
+    });
+    return { next, view: restNext(next, exercise, ctx) };
+  });
+
+  function adjustTarget(delta: number): void {
+    if (!restInstance || restTarget === null) return;
+    void app.save(setRest(session, restInstance.id, adjustRest(restTarget, delta)));
+  }
+
+  // --- warm-ups the lifter hid, for this session only ---------------------------------
+
+  let hidden = $state.raw<Set<Id>>(new Set());
+  $effect(() => {
+    try {
+      hidden = parseHidden(sessionStorage.getItem(hiddenKey(session.id)));
+    } catch {
+      hidden = new Set();
+    }
+  });
+
+  function hideWarmups(instanceId: Id): void {
+    hidden = new Set([...hidden, instanceId]);
+    try {
+      sessionStorage.setItem(hiddenKey(session.id), serializeHidden(hidden));
+    } catch {
+      // Hidden until the card is next drawn; nothing worse.
+    }
   }
 
   // --- the session's own fields -----------------------------------------------------
@@ -199,6 +301,14 @@
     if (kg !== undefined) change({ ...session, bodyweight_kg: kg });
   }
 
+  async function saveWeighIn(): Promise<void> {
+    const offer = weighIn;
+    if (!offer) return;
+    if (await app.saveRow('bodyweight', offer)) {
+      showToast({ message: 'Weigh-in saved', strong: `${offer.weight_kg} kg` });
+    }
+  }
+
   function setNotes(text: string): void {
     change({ ...session, notes: text.trim() === '' ? null : text });
   }
@@ -213,8 +323,10 @@
   }
 </script>
 
+<svelte:window onscroll={scrolled} />
+
 <article>
-  <header class="head">
+  <header class="head" class:collapsed>
     <div class="top">
       <button
         class="icon-btn"
@@ -224,24 +336,38 @@
       >
       <h1 class="date">{longDate(session.date)}</h1>
       {#if planned}
-        <span class="pill">planned</span>
+        <span class="pill">Planned</span>
       {:else if minutes !== null}
-        <span class="pill figure-num">{formatMinutes(minutes)}</span>
+        <span class="pill figure-num" aria-label="Running {formatMinutes(minutes)}"
+          >{formatMinutes(minutes)}</span
+        >
       {/if}
     </div>
     {#if label}<p class="meta label">{label}</p>{/if}
     <div class="stage">
-      <Boulder progress={tally.total ? tally.done / tally.total : 0} arrived={!open} />
-      {#if restClock && !restOpen}
-        <button class="readout" onclick={() => (restOpen = true)} aria-label="Rest, {restClock}">
-          <span class="caps rest">Rest</span>
-          <b class="figure-num">{restClock}</b>
+      <div class="hill"><Boulder progress={progress.fraction} arrived={!open} label={null} /></div>
+      {#if restReading && !restOpen}
+        <button
+          class="readout resting"
+          class:over={restReading.over}
+          onclick={() => (restOpen = true)}
+          aria-label="Rest, {restReading.text} of {restReading.of}. Open the rest timer"
+        >
+          <span class="cap-line"
+            ><span class="caps rest">Rest</span><span class="meta of">of {restReading.of}</span
+            ></span
+          >
+          <b class="figure-num">{restReading.text}</b>
+          <span class="rule" aria-hidden="true"
+            ><span style:width="{Math.round(restReading.fraction * 100)}%"></span></span
+          >
         </button>
       {:else}
-        <div class="readout">
+        <div class="readout" aria-label="{progress.done} of {progress.of} sets done" role="group">
           <span class="caps">Sets</span>
-          <span
-            ><b class="figure-num">{tally.done}</b> <span class="meta">of {tally.total}</span></span
+          <span class="count"
+            ><b class="figure-num">{progress.done}</b>
+            <span class="meta">of {progress.of}</span></span
           >
         </div>
       {/if}
@@ -262,10 +388,14 @@
         {session}
         {instance}
         {exercise}
-        last={exercise ? lastTime(exercise, app.sessions, session.id) : null}
-        unit={exercise ? lastUnit(exercise, app.sessions, session.id) : 'kg'}
-        active={active?.set.id ?? null}
+        mode={cardMode(instance, active)}
+        last={exercise ? lastInstance(exercise.id, earlier, session.id) : null}
+        unit={exercise ? lastUnit(exercise, earlier, session.id) : 'kg'}
+        {active}
+        {records}
+        warmupsHidden={hidden.has(instance.id)}
         onchange={change}
+        onhidewarmups={() => hideWarmups(instance.id)}
         onhistory={app.openExercise}
         onentry={(set) => openEntry(instance.id, set)}
       />
@@ -276,7 +406,6 @@
     <AddExercise library={app.library} {recentIds} onpick={pick} oncreate={app.startCreating} />
   </div>
 
-  <p class="sec caps">Session</p>
   <div class="details">
     <div class="field">
       <label for="session-date">Date</label>
@@ -297,6 +426,9 @@
           value={session.bodyweight_kg ?? ''}
           onchange={(e) => setBodyweight(e.currentTarget.value)}
         />
+        {#if weighIn}
+          <Button variant="link" onclick={saveWeighIn}>Save as this day's weigh-in</Button>
+        {/if}
       </div>
     {/if}
     <div class="field">
@@ -308,6 +440,16 @@
         value={session.notes ?? ''}
         onchange={(e) => setNotes(e.currentTarget.value)}></textarea>
     </div>
+    {#if running}
+      <div class="switch-row">
+        <span id="awake-label">Keep screen on</span>
+        <Switch
+          labelledby="awake-label"
+          checked={app.prefs.keepAwake}
+          onchange={(on) => app.setPrefs({ keepAwake: on })}
+        />
+      </div>
+    {/if}
   </div>
 
   <div class="end">
@@ -323,50 +465,51 @@
   </div>
 </article>
 
-{#if entering}
+{#if entering && enteringContext}
   {@const exercise = byId.get(entering.instance.exercise_id)}
-  {@const t = targetsOf(entering.instance, entering.set)}
-  {@const unit = exercise ? lastUnit(exercise, app.sessions, session.id) : 'kg'}
   <EntryPanel
     open
     exerciseName={exercise?.name ?? entering.instance.exercise_id}
-    setLabel={entering.set.is_warmup
-      ? 'Warm-up'
-      : `Set ${entering.instance.performed.indexOf(entering.set) + 1}`}
+    setLabel={setLabel(entering.instance, entering.set)}
     set={entering.set}
-    prefill={entryPrefill(entering.instance, entering.set)}
-    target={[t.reps, t.rpe && `@ ${t.rpe}`].filter(Boolean).join(' ') || null}
-    targetRpe={entering.instance.prescribed.find((p) => p.id === entering.set.prescribed_id)
-      ?.rpe?.[0] ?? null}
-    suggestion={null}
+    prefill={entryPrefill(entering.instance, entering.set, enteringContext)}
+    target={targetText(entering.instance, entering.set)}
+    targetRpe={ringedRpe(entering.instance, entering.set)}
+    suggestion={entering.set.state === 'pending'
+      ? (enteringContext.suggestion?.reason ?? null)
+      : null}
     measure={exercise ? measureOf(exercise) : 'weight'}
-    {unit}
-    plateStep={plateStep(unit)}
+    unit={enteringContext.unit}
+    plateStep={enteringContext.step}
     onsave={saveEntry}
     onskip={skipEntry}
     onclose={() => (entry = null)}
   />
 {/if}
 
-{#if restOpen && restFrom !== null && running}
+{#if restUp && rest && restInstance}
   <RestTakeover
-    startedAt={restFrom}
-    targetS={null}
-    context={restContext}
-    next={restNext}
-    {chime}
-    {awake}
-    onadjust={() => {}}
-    onskip={skipRest}
+    startedAt={rest.startedAt}
+    targetS={restTarget}
+    context={restContext(
+      restInstance,
+      byId.get(restInstance.exercise_id)?.name ?? restInstance.exercise_id,
+    )}
+    next={restFollowing?.view ?? null}
+    chime={app.prefs.chime}
+    awake={app.prefs.keepAwake}
+    onadjust={adjustTarget}
+    onskip={endRest}
     onclose={() => (restOpen = false)}
-    onlognext={active
+    onlognext={restFollowing
       ? () => {
+          const at = restFollowing.next;
           restOpen = false;
-          if (active) openEntry(active.instance.id, active.set);
+          openEntry(at.instance.id, at.set);
         }
       : undefined}
-    onchime={(on) => (chime = on)}
-    onawake={(on) => (awake = on)}
+    onchime={(on) => app.setPrefs({ chime: on })}
+    onawake={(on) => app.setPrefs({ keepAwake: on })}
   />
 {/if}
 
@@ -377,8 +520,20 @@
     z-index: var(--z-sticky);
     padding-top: calc(var(--safe-top) + var(--space-1));
     margin-top: calc(-1 * var(--safe-top));
-    background: linear-gradient(180deg, var(--ground) 85%, transparent);
+    background: var(--ground);
     color: var(--figure);
+  }
+
+  /* The list slides under the header and fades out beneath its meander, not behind it. */
+  .head::after {
+    content: '';
+    position: absolute;
+    right: 0;
+    bottom: -10px;
+    left: 0;
+    height: 10px;
+    background: linear-gradient(180deg, var(--ground), transparent);
+    pointer-events: none;
   }
 
   .top {
@@ -396,6 +551,7 @@
     overflow: hidden;
     font-size: var(--fs-name);
     font-weight: var(--fw-strong);
+    letter-spacing: var(--ls-display);
     text-transform: uppercase;
     white-space: nowrap;
     text-overflow: ellipsis;
@@ -408,12 +564,18 @@
     padding: 0 var(--space-3);
     border: var(--hairline) solid var(--line-strong);
     border-radius: var(--radius-pill);
-    font-size: var(--fs-body);
+    font: var(--fw-num) 1.0625rem / 1 var(--font-num);
     white-space: nowrap;
   }
 
   .label {
+    margin: 0;
     padding: 0 var(--gutter) 0 52px;
+    max-height: 24px;
+    overflow: hidden;
+    transition:
+      max-height var(--dur-base) var(--ease-out),
+      opacity var(--dur-base) var(--ease-out);
   }
 
   .stage {
@@ -423,6 +585,13 @@
     gap: var(--space-4);
     height: 92px;
     padding: var(--space-2) var(--gutter);
+    transition: height var(--dur-base) var(--ease-out);
+  }
+
+  .hill {
+    width: 100%;
+    max-width: 200px;
+    transition: max-width var(--dur-base) var(--ease-out);
   }
 
   .readout {
@@ -438,13 +607,82 @@
     color: var(--muted);
   }
 
-  .readout .rest {
-    color: var(--accent);
-  }
-
   .readout b {
     font-size: var(--fs-readout);
     line-height: var(--lh-num);
+  }
+
+  .count {
+    display: flex;
+    align-items: baseline;
+    gap: var(--space-2);
+  }
+
+  .resting {
+    min-height: var(--tap);
+    padding: 0;
+  }
+
+  .resting .cap-line {
+    display: flex;
+    align-items: baseline;
+    gap: var(--space-2);
+  }
+
+  .resting .rest {
+    color: var(--accent);
+  }
+
+  .resting .rule {
+    width: 100%;
+    height: 3px;
+    background: var(--line);
+  }
+
+  .resting .rule span {
+    display: block;
+    height: 100%;
+    background: var(--accent);
+  }
+
+  .resting.over b {
+    color: var(--accent);
+  }
+
+  /* Scrolled: the header keeps the hill and the readout, in one thin band. */
+  .collapsed .label {
+    max-height: 0;
+    opacity: 0;
+  }
+
+  .collapsed .stage {
+    height: 48px;
+    align-items: center;
+    padding-block: 0;
+  }
+
+  .collapsed .hill {
+    max-width: 120px;
+  }
+
+  .collapsed .readout {
+    flex-direction: row;
+    align-items: baseline;
+    gap: var(--space-2);
+    min-width: 0;
+  }
+
+  .collapsed .readout b {
+    font-size: 1.75rem;
+  }
+
+  .collapsed .resting {
+    align-items: center;
+  }
+
+  .collapsed .resting .cap-line .of,
+  .collapsed .resting .rule {
+    display: none;
   }
 
   .start {
@@ -462,7 +700,18 @@
   .details {
     display: grid;
     gap: var(--space-3);
-    margin: 0 var(--gutter);
+    margin: var(--space-6) var(--gutter) 0;
+  }
+
+  .switch-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    min-height: var(--tap);
+  }
+
+  .field :global(.button-link) {
+    justify-self: start;
   }
 
   textarea {
