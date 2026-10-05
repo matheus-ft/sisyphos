@@ -24,6 +24,11 @@ export const LIFTS: readonly CompetitionLift[] = ['squat', 'bench', 'deadlift'];
 /** A weight that is plausibly a person's or a bar's; anything else is a slip of a finger. */
 export const BODYWEIGHT_RANGE = { min: 20, max: 400 } as const;
 export const MAX_RANGE = { min: 20, max: 700 } as const;
+/**
+ * A record can be any exercise's, and for a bodyweight-plus lift it is the load
+ * added, so a +5 kg pull-up or a 12.5 kg dumbbell press is a fair record.
+ */
+export const RECORD_RANGE = { min: 0.5, max: 700 } as const;
 
 /** Kilograms as written: no trailing zeros, no float tail. */
 export function kgText(kg: number): string {
@@ -196,15 +201,15 @@ export function recordProblem(form: RecordForm, today: IsoDate): string | null {
   const reps = Number(form.reps);
   if (!Number.isInteger(reps) || reps < 1 || reps > RECORD_MAX_REPS)
     return `Reps are 1 to ${RECORD_MAX_REPS}.`;
-  if (parseKg(form.kg, MAX_RANGE) === null)
-    return `Enter the weight in kilograms, between ${MAX_RANGE.min} and ${MAX_RANGE.max}.`;
+  if (parseKg(form.kg, RECORD_RANGE) === null)
+    return `Enter the weight in kilograms, between ${RECORD_RANGE.min} and ${RECORD_RANGE.max}.`;
   if (!validDate(form.date, today)) return 'Pick a date that is not in the future.';
   return null;
 }
 
 /** The record the form describes. Call only once `recordProblem` is null. */
 export function recordFrom(form: RecordForm): ManualRecord {
-  const kg = parseKg(form.kg, MAX_RANGE);
+  const kg = parseKg(form.kg, RECORD_RANGE);
   if (!form.exerciseId || kg === null) throw new Error('recordFrom needs a valid form');
   return {
     source: 'manual',

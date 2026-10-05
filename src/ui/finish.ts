@@ -1,5 +1,6 @@
 import { setTonnageKg, toKg } from '../metrics/load';
 import type { Exercise, ExerciseInstance, PerformedSet, Session } from '../model';
+import { sessionMinutes } from './format';
 import { formatSet } from './session';
 
 /**
@@ -145,12 +146,8 @@ export function finishStats(
     isRecord: RecordPredicate;
   },
 ): FinishStats {
-  let durationMin: number | null = null;
-  if (session.started_at !== null && session.time_precision === 'instant') {
-    const end = session.ended_at ?? input.now.toISOString();
-    const ms = Date.parse(end) - Date.parse(session.started_at);
-    if (Number.isFinite(ms)) durationMin = Math.max(0, Math.round(ms / 60_000));
-  }
+  // The one rule for a session's minutes, so the finish, History and Train agree.
+  const durationMin = sessionMinutes(session, input.now.getTime());
 
   let sets = 0;
   let tonnage = 0;

@@ -206,11 +206,11 @@ describe('sessions.csv', () => {
 describe('duration', () => {
   const base = sessionOf({ date: '2026-10-04', lastedMin: 90, work: [] });
 
-  it('is whole minutes from start to end', () => {
+  it('is whole minutes from start to end, counted as the screens count them', () => {
     const at = { ...base, started_at: '2026-10-04T18:00:00.000Z' };
     expect(durationMin({ ...at, ended_at: '2026-10-04T19:30:00.000Z' })).toBe(90);
     expect(durationMin({ ...at, ended_at: '2026-10-04T19:30:20.000Z' })).toBe(90);
-    expect(durationMin({ ...at, ended_at: '2026-10-04T19:30:40.000Z' })).toBe(91);
+    expect(durationMin({ ...at, ended_at: '2026-10-04T19:30:40.000Z' })).toBe(90);
   });
 
   it('is nothing while open, or when planned', () => {

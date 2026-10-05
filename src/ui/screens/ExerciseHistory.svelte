@@ -1,6 +1,7 @@
 <script lang="ts">
   import type { Exercise } from '../../model';
   import { app } from '../app.svelte';
+  import { bodyweightAtFrom } from '../athloi';
   import { dayOfMonth, shortDate } from '../format';
   import { e1rmText, exerciseHistory, plural } from '../history-view';
   import Icon from '../kit/Icon.svelte';
@@ -19,7 +20,9 @@
   }
   let { exercise }: Props = $props();
 
-  const view = $derived(exerciseHistory(exercise, app.current, app.records));
+  const view = $derived(
+    exerciseHistory(exercise, app.current, app.records, bodyweightAtFrom(app.bodyweights)),
+  );
   const monthCaps = (date: string) =>
     shortDate(date)
       .replace(/^\d+\s*/, '')

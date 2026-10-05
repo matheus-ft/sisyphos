@@ -374,11 +374,15 @@ export interface RecordRow {
   spoken: string;
 }
 
-/** One row for each of 1 to 10 reps, record or not. */
+/**
+ * One row for each of 1 to 10 reps, record or not. For a bodyweight-plus lift
+ * (`added`) a record is the load added, so it reads "+30" as its sets do.
+ */
 export function recordRows(
   book: readonly PersonalRecord[],
   exerciseId: string,
   today: IsoDate,
+  options: { added?: boolean } = {},
 ): RecordRow[] {
   return Array.from({ length: RECORD_MAX_REPS }, (_, i) => {
     const reps = i + 1;
@@ -396,7 +400,7 @@ export function recordRows(
         spoken: `${reps} ${unit}, no record yet`,
       };
     }
-    const weight = formatKg(record.weight_kg);
+    const weight = `${options.added ? '+' : ''}${formatKg(record.weight_kg)}`;
     const date = dateInYear(record.date, today);
     const manual = record.source === 'manual';
     const source = manual ? 'by hand' : record.rpe !== null ? `@ ${record.rpe}` : '';
@@ -409,7 +413,7 @@ export function recordRows(
       recent,
       sessionId: record.source === 'session' ? record.session_id : null,
       manual,
-      spoken: `${reps} ${unit}, ${weight} kilograms, ${date}${source ? `, ${manual ? source : `at RPE ${record.rpe}`}` : ''}${recent ? ', a recent record' : ''}`,
+      spoken: `${reps} ${unit}, ${options.added ? `${formatKg(record.weight_kg)} kilograms added` : `${weight} kilograms`}, ${date}${source ? `, ${manual ? source : `at RPE ${record.rpe}`}` : ''}${recent ? ', a recent record' : ''}`,
     };
   });
 }

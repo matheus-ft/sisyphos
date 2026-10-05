@@ -209,6 +209,12 @@ describe('records by hand', () => {
     expect(recordProblem(form({ date: '2027-01-01' }), today)).toMatch(/future/);
   });
 
+  it('takes a light record, since a bodyweight-plus record is the load added', () => {
+    expect(recordProblem(form({ kg: '5' }), today)).toBeNull();
+    expect(recordFrom(form({ kg: '12.5' })).weight_kg).toBe(12.5);
+    expect(recordProblem(form({ kg: '0' }), today)).toMatch(/kilograms/);
+  });
+
   it('lists newest first, then the heavier', () => {
     const rows = recordsNewestFirst([
       hand({ date: '2026-03-14', weight_kg: 150 }),

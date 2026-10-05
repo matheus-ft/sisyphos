@@ -173,8 +173,9 @@ function stats(s: Session, over: Partial<Parameters<typeof finishStats>[1]> = {}
 
 describe('the finish stats', () => {
   it('measures the duration in minutes from the start to the end', () => {
+    // Whole minutes as History and Train count them, so 77:40 is 77 everywhere.
     const s = finish(ofSets(4, 1), new Date(2026, 9, 4, 19, 17, 40));
-    expect(stats(s).durationMin).toBe(78);
+    expect(stats(s).durationMin).toBe(77);
   });
 
   it('measures to now while the session is still open', () => {

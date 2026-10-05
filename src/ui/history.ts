@@ -67,7 +67,13 @@ function doneWorking(session: Session, exerciseId?: string): PerformedSet[] {
  * set with an e1RM outranks one without, since a set the estimate can price is
  * a measured effort and the other is not.
  */
-export function bestSetOf(session: Session, exercise: Exercise): BestSet | null {
+export function bestSetOf(
+  session: Session,
+  exercise: Exercise,
+  bodyweightAt?: (date: IsoDate) => number | null,
+): BestSet | null {
+  // A bodyweight-plus set needs the lifter's weight: the session's, else the weigh-in then.
+  const bodyweight = session.bodyweight_kg ?? bodyweightAt?.(session.date) ?? null;
   let best: { set: PerformedSet; e1rm: number | null } | null = null;
   const amount = (s: PerformedSet) => weightKg(s.load) ?? amountOf(s) ?? 0;
   const beats = (a: PerformedSet, ae: number | null, b: PerformedSet, be: number | null) => {
@@ -76,7 +82,7 @@ export function bestSetOf(session: Session, exercise: Exercise): BestSet | null 
     return amount(a) > amount(b) || (amount(a) === amount(b) && (a.reps ?? 0) > (b.reps ?? 0));
   };
   for (const set of doneWorking(session, exercise.id)) {
-    const e1rm = setE1rm(set, exercise, session.bodyweight_kg);
+    const e1rm = setE1rm(set, exercise, bodyweight);
     if (!best || beats(set, e1rm, best.set, best.e1rm)) best = { set, e1rm };
   }
   return best && { ...best, text: formatSet(best.set, exercise) };
@@ -96,7 +102,7 @@ const pendingOf = (session: Session): number =>
 export function historyWeeks(
   sessions: readonly Session[],
   library: readonly Exercise[],
-  filter: { exerciseId?: string } = {},
+  filter: { exerciseId?: string; bodyweightAt?: (date: IsoDate) => number | null } = {},
 ): HistoryWeek[] {
   const exercise = filter.exerciseId
     ? (library.find((e) => e.id === filter.exerciseId) ?? null)
@@ -110,7 +116,7 @@ export function historyWeeks(
       session,
       planned: session.started_at === null && session.ended_at === null,
       pendingSets: pendingOf(session),
-      best: exercise ? bestSetOf(session, exercise) : null,
+      best: exercise ? bestSetOf(session, exercise, filter.bodyweightAt) : null,
     };
     const start = weekStart(session.date);
     weeks.set(start, [...(weeks.get(start) ?? []), row]);

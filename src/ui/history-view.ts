@@ -174,6 +174,7 @@ export function exerciseHistory(
   exercise: Exercise,
   sessions: readonly Session[],
   book: readonly PersonalRecord[],
+  bodyweightAt?: (date: IsoDate) => number | null,
 ): ExerciseHistoryView {
   const visits: ExerciseVisit[] = [];
   for (const session of [...sessions].sort(compareSessions).reverse()) {
@@ -186,7 +187,7 @@ export function exerciseHistory(
       session,
       sets: fold(working, exercise),
       warmups: performed.length - working.length,
-      best: bestSetOf(session, exercise),
+      best: bestSetOf(session, exercise, bodyweightAt),
     });
   }
 

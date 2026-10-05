@@ -18,7 +18,13 @@
 
   const choices = $derived(recordedExercises(app.records, app.library));
   const chosen = $derived(resolvePick(choices, picked));
-  const rows = $derived(chosen ? recordRows(app.records, chosen.exercise.id, today) : []);
+  const rows = $derived(
+    chosen
+      ? recordRows(app.records, chosen.exercise.id, today, {
+          added: chosen.exercise.load_type === 'bw_plus',
+        })
+      : [],
+  );
 
   /** A session record opens its session; a hand-entered one is edited under Agora's Lifter. */
   function open(sessionId: string | null, manual: boolean): void {

@@ -1,6 +1,7 @@
 <script lang="ts">
   import { recordEvents } from '../../metrics/records';
   import { app } from '../app.svelte';
+  import { bodyweightAtFrom } from '../athloi';
   import { historyWeeks } from '../history';
   import { exercisesInLog, recordMarks, weekSummary } from '../history-view';
   import CalendarView from '../history/CalendarView.svelte';
@@ -56,7 +57,10 @@
   const exerciseId = $derived(selected?.id ?? null);
 
   const weeks = $derived(
-    historyWeeks(app.current, app.library, { exerciseId: exerciseId ?? undefined }),
+    historyWeeks(app.current, app.library, {
+      exerciseId: exerciseId ?? undefined,
+      bodyweightAt: bodyweightAtFrom(app.bodyweights),
+    }),
   );
   const shown = $derived(
     exerciseId

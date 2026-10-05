@@ -2,6 +2,7 @@ import { csvLine } from '../csv';
 import { toKg } from '../metrics/load';
 import { compareSessions } from '../metrics/flatten';
 import type { PerformedSet, Session } from '../model';
+import { sessionMinutes } from './format';
 
 /**
  * sets.csv and sessions.csv, the export DATA.md, Exports describes. Generated
@@ -105,10 +106,12 @@ export function setsCsv(sessions: readonly Session[]): string {
  * times are not when it happened.
  */
 export function durationMin(session: Session): number | null {
-  if (session.time_precision !== 'instant') return null;
-  if (session.started_at === null || session.ended_at === null) return null;
-  const ms = Date.parse(session.ended_at) - Date.parse(session.started_at);
-  return Number.isFinite(ms) && ms >= 0 ? Math.round(ms / 60_000) : null;
+  // The app's one rule for a session's minutes (sessionMinutes), so the export
+  // says what the screens say.
+  if (session.ended_at === null || session.started_at === null) return null;
+  // An end before the start is a broken record, not a zero-minute session.
+  if (Date.parse(session.ended_at) < Date.parse(session.started_at)) return null;
+  return sessionMinutes(session);
 }
 
 export function sessionsCsv(sessions: readonly Session[]): string {

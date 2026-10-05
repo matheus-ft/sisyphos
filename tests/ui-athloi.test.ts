@@ -271,6 +271,12 @@ describe('the record book rows', () => {
     expect(rows.map((r) => r.reps)).toEqual([1, 2, 3, 4, 5, 6, 7, 8, 9, 10]);
   });
 
+  it('reads a bodyweight-plus record as the load added, as its sets do', () => {
+    const added = recordRows(book, 'low_bar_squat', today, { added: true })[0];
+    expect(added.weight).toBe('+155');
+    expect(added.spoken).toContain('155 kilograms added');
+  });
+
   it('shows a hand-entered record as by hand, with nothing to open', () => {
     expect(rows[0]).toMatchObject({
       weight: '155',

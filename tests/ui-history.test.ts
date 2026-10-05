@@ -171,6 +171,15 @@ describe('the best set of a session', () => {
     expect(bestSetOf(s, squat)!.text).toBe('60 × 5 @ 8');
   });
 
+  it('prices a bodyweight-plus set with the weigh-in when the session holds no bodyweight', () => {
+    const dips = byId('dips');
+    const s = sessionOf({ date: '2026-09-29', work: [[dips, [{ load: 10, reps: 8, rpe: 8 }]]] });
+    expect(bestSetOf(s, dips)!.e1rm).toBeNull();
+    const priced = bestSetOf(s, dips, () => 84)!.e1rm;
+    expect(priced).toBeGreaterThan(94);
+    expect(bestSetOf({ ...s, bodyweight_kg: 80 }, dips, () => 84)!.e1rm).toBeLessThan(priced!);
+  });
+
   it('falls back to the heaviest, then the most reps, where nothing has an e1RM', () => {
     const pins = byId('adductor_machine');
     const s = sessionOf({
