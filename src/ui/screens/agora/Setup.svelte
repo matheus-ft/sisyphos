@@ -2,6 +2,7 @@
   import { parseRepo } from '../../../storage/app';
   import { app } from '../../app.svelte';
   import Button from '../../kit/Button.svelte';
+  import Meander from '../../kit/Meander.svelte';
   import ScreenHeader from '../../kit/ScreenHeader.svelte';
 
   /**
@@ -48,20 +49,36 @@
   }
 </script>
 
-<ScreenHeader title="Sync with your log" {back} />
+<ScreenHeader
+  title="Sync with your log"
+  meta={greeting ? 'Optional: you can set it up later in Agora' : undefined}
+  {back}
+/>
 
 <div class="body">
-  <p>
-    Your training is saved on this phone as you type it, and copied to a private GitHub repository
-    of yours when a session ends. Losing the phone then loses nothing.
+  {#if greeting}<div class="band"><Meander color="var(--figure)" /></div>{/if}
+
+  <p class="lead">
+    Your training is saved on this phone as you type it. Syncing copies it to a private GitHub
+    repository of yours when a session ends, so losing the phone loses nothing.
   </p>
-  <p>
-    On github.com, create a private repository with a README, and a fine-grained token for that
-    repository only, with Contents: read and write. The steps are in
-    <a href="https://github.com/matheus-ft/sisyphos/blob/master/docs/DATA.md" target="_blank"
-      >DATA.md</a
-    >.
-  </p>
+
+  <ol class="steps">
+    <li>
+      <span class="n" aria-hidden="true">I</span>
+      <span>Create a private repository on github.com, with a README.</span>
+    </li>
+    <li>
+      <span class="n" aria-hidden="true">II</span>
+      <span>
+        Create a fine-grained token for that repository only, with Contents: read and write. The
+        steps are in
+        <a href="https://github.com/matheus-ft/sisyphos/blob/master/docs/DATA.md" target="_blank"
+          >DATA.md</a
+        >.
+      </span>
+    </li>
+  </ol>
 
   <form onsubmit={submit}>
     <div class="field">
@@ -72,6 +89,7 @@
         placeholder="you/sisyphos-log"
         autocapitalize="off"
         autocomplete="off"
+        spellcheck="false"
       />
     </div>
     <div class="field">
@@ -82,6 +100,7 @@
         type="password"
         placeholder="github_pat_…"
         autocomplete="off"
+        spellcheck="false"
       />
     </div>
     {#if problem}<p class="problem" role="alert">{problem}</p>{/if}
@@ -92,7 +111,7 @@
 
   {#if greeting}
     <div class="later">
-      <Button variant="quiet" bench onclick={app.skipSetup}>Use without sync</Button>
+      <Button variant="quiet" bench full onclick={app.skipSetup}>Use without sync</Button>
       <Button variant="link" onclick={onclose}>Not now</Button>
     </div>
   {/if}
@@ -101,24 +120,50 @@
 <style>
   .body {
     display: grid;
-    gap: var(--space-3);
-    padding: 0 var(--gutter);
+    gap: var(--space-4);
+    padding: 0 var(--gutter) var(--space-6);
   }
 
-  p {
+  .band {
+    margin-top: var(--space-1);
+  }
+
+  .lead {
+    font-size: var(--fs-body);
     color: var(--ink-2);
+  }
+
+  .steps {
+    display: grid;
+    gap: var(--space-3);
+    margin: 0;
+    padding: 0;
+    list-style: none;
+  }
+
+  .steps li {
+    display: grid;
+    grid-template-columns: 2.25rem 1fr;
+    align-items: baseline;
+    color: var(--ink-2);
+  }
+
+  /* Roman numerals, as an inscription would number them. */
+  .n {
+    font: var(--fw-display) var(--fs-label) / 1 var(--font-display);
+    letter-spacing: var(--ls-caps);
+    color: var(--accent);
   }
 
   form {
     display: grid;
     gap: var(--space-4);
-    margin: var(--space-3) 0 var(--space-2);
+    margin: var(--space-2) 0;
   }
 
   .later {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    gap: var(--space-3);
+    display: grid;
+    justify-items: center;
+    gap: var(--space-2);
   }
 </style>

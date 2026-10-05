@@ -31,7 +31,7 @@
   const route = $derived(app.route);
   /** A session is a focused mode, with its own back: the tab bar steps aside. */
   const focused = $derived(route.name === 'session' || route.name === 'finish');
-  const takeover = $derived(app.showSetup || app.creating !== null);
+  const takeover = $derived(app.showSetup || app.creating !== null || app.editing !== null);
   const docked = $derived(!focused && !takeover && app.storage !== null);
   const banner = $derived(app.status ? bannerOf(app.status, app.inSession) : null);
   const conflicts = $derived((app.status?.conflicts ?? 0) + (app.status?.libraryConflicts ?? 0));
@@ -81,6 +81,13 @@
         library={app.library}
         onsave={app.createExercise}
         onclose={() => (app.creating = null)}
+      />
+    {:else if app.editing !== null}
+      <NewExercise
+        exercise={app.editing}
+        library={app.library}
+        onsave={app.changeExercise}
+        onclose={() => (app.editing = null)}
       />
     {:else if route.name === 'session' && app.session}
       <SessionView session={app.session} />
