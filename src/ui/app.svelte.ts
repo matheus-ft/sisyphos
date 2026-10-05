@@ -1,6 +1,19 @@
-import type { Exercise, Id, IsoDate, Session, Template } from '../model';
+import type {
+  BodyweightEntry,
+  Exercise,
+  Id,
+  IsoDate,
+  ManualRecord,
+  OneRmEntry,
+  Session,
+  Template,
+} from '../model';
 import { submissionUrl } from '../library/submission';
+import { recordBook } from '../metrics/records';
 import { startStorage, type AppStorage } from '../storage/app';
+import type { RecordOf } from '../storage/formats';
+import type { TableKind } from '../storage/paths';
+import { DEFAULT_PREFS, readPrefs, type Prefs } from './prefs';
 import type { SetupInput, SetupResult } from '../storage/setup';
 import type { StatusSnapshot } from '../storage/status';
 import { confirmDialog, promptDialog, showToast } from './overlays.svelte';
@@ -146,6 +159,7 @@ class App {
     this.sessions = all;
     this.templates = saved;
     this.library = assembled.exercises;
+    await this.#loadLifter(s);
   };
 
   // --- where the lifter is ------------------------------------------------------------
@@ -452,6 +466,79 @@ class App {
   #announceConflicts(): void {
     if (!this.inSession) this.conflictNotice = true;
   }
+
+  // --- the lifter and this device -----------------------------------------------------
+
+  /** Weigh-ins, reference maxes and records entered by hand: the log's lifter tables. */
+  bodyweights = $state.raw<BodyweightEntry[]>([]);
+  oneRms = $state.raw<OneRmEntry[]>([]);
+  manualRecords = $state.raw<ManualRecord[]>([]);
+  /** This device's preferences; they stay on the device and never sync. */
+  prefs = $state.raw<Prefs>(DEFAULT_PREFS);
+
+  /**
+   * The best weight at each rep count per exercise, from sessions and by hand
+   * together, as it stands with the session on screen. Derived, never saved.
+   */
+  records = $derived(recordBook(this.current, this.library, this.manualRecords));
+
+  async #loadLifter(s: AppStorage): Promise<void> {
+    const [bodyweights, oneRms, manualRecords, settings] = await Promise.all([
+      s.log.getRows('bodyweight'),
+      s.log.getRows('oneRm'),
+      s.log.getRows('manualRecords'),
+      s.store.settings(),
+    ]);
+    this.bodyweights = bodyweights;
+    this.oneRms = oneRms;
+    this.manualRecords = manualRecords;
+    this.prefs = readPrefs(settings);
+  }
+
+  /** Adds or replaces a lifter row (same key), then rereads the tables. */
+  saveRow = async <K extends Exclude<TableKind, 'additions'>>(
+    kind: K,
+    record: RecordOf<K>,
+  ): Promise<boolean> => {
+    const s = this.storage;
+    if (!s) return false;
+    try {
+      await s.log.putRow(kind, record);
+      this.failure = null;
+    } catch (error) {
+      this.failure = `Not saved: ${messageOf(error)}`;
+      return false;
+    }
+    await this.#loadLifter(s);
+    return true;
+  };
+
+  removeRow = async <K extends Exclude<TableKind, 'additions'>>(
+    kind: K,
+    record: RecordOf<K>,
+  ): Promise<boolean> => {
+    const s = this.storage;
+    if (!s) return false;
+    try {
+      await s.log.deleteRow(kind, record);
+      this.failure = null;
+    } catch (error) {
+      this.failure = `Not deleted: ${messageOf(error)}`;
+      return false;
+    }
+    await this.#loadLifter(s);
+    return true;
+  };
+
+  /** Changes this device's preferences; shown at once, kept once the write resolves. */
+  setPrefs = async (patch: Partial<Prefs>): Promise<void> => {
+    this.prefs = readPrefs({ ...this.prefs, ...patch });
+    try {
+      await this.storage?.store.saveSettings(patch);
+    } catch (error) {
+      this.failure = `This phone's settings were not saved: ${messageOf(error)}`;
+    }
+  };
 }
 
 export const app = new App();
