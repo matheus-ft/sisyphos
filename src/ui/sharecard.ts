@@ -31,8 +31,8 @@ export interface TopRow {
 }
 
 export interface Stat {
-  /** What the figure is under: MIN, SETS, KG, RECORD. */
-  label: 'MIN' | 'SETS' | 'KG' | 'RECORD';
+  /** What the figure is under, said to agree with it: "1 SET", "2 RECORDS". */
+  label: 'MIN' | 'SET' | 'SETS' | 'KG' | 'RECORD' | 'RECORDS';
   value: string;
   /** The record column carries the laurel. */
   laurel: boolean;
@@ -71,12 +71,20 @@ export function summarise(
   const columns: Stat[] = [];
   if (stats.durationMin !== null)
     columns.push({ label: 'MIN', value: String(stats.durationMin), laurel: false });
-  columns.push({ label: 'SETS', value: String(stats.sets), laurel: false });
+  columns.push({
+    label: stats.sets === 1 ? 'SET' : 'SETS',
+    value: String(stats.sets),
+    laurel: false,
+  });
   // A session of pins and holds moves no kilograms, and a zero would be a claim.
   if (stats.tonnageKg > 0)
     columns.push({ label: 'KG', value: groupThousands(stats.tonnageKg), laurel: false });
   if (stats.records > 0)
-    columns.push({ label: 'RECORD', value: String(stats.records), laurel: true });
+    columns.push({
+      label: stats.records === 1 ? 'RECORD' : 'RECORDS',
+      value: String(stats.records),
+      laurel: true,
+    });
   return {
     stats: columns,
     rows: stats.topSets.map((t: TopSet) => ({
@@ -178,33 +186,51 @@ export interface CardMetrics {
 const CINZEL_CAP = 0.7;
 const GARAMOND_FIG = 0.66;
 
-export function cardMetrics(hasLabel: boolean): CardMetrics {
+/** The space between the top band and the date: the least a body stands off either band. */
+const BODY_GAP = 44;
+
+/**
+ * Where everything goes. A card of fewer than the four top sets it has room
+ * for sits its body midway between the two bands, rather than leaving the
+ * whole of the spare room as a hole above the foot.
+ */
+export function cardMetrics(hasLabel: boolean, rows: number = CARD_TOP_SETS): CardMetrics {
   const bandTop = PAD_TOP;
-  const dateBase = bandTop + BAND_H + 44 + Math.round(40 * CINZEL_CAP);
+  const top = bandTop + BAND_H + BODY_GAP;
+  const placed = bodyMetrics(top, hasLabel);
+  const footerBase = CARD_H - PAD_BOTTOM;
+  const footBandTop = footerBase - Math.round(28 * CINZEL_CAP) - 22 - BAND_H;
+  const bodyBottom = rows > 0 ? placed.rowsTop + rows * ROW_H - 6 : placed.statLabelBase;
+  const shift = Math.max(0, Math.round((footBandTop - bodyBottom - BODY_GAP) / 2));
+  return {
+    bandTop,
+    ...(shift > 0 ? bodyMetrics(top + shift, hasLabel) : placed),
+    sceneScale: SCENE_SCALE,
+    rowHeight: ROW_H,
+    footBandTop,
+    footerBase,
+  };
+}
+
+/** The body's baselines from the top of its first line, the date. */
+function bodyMetrics(top: number, hasLabel: boolean) {
+  const dateBase = top + Math.round(40 * CINZEL_CAP);
   const labelBase = hasLabel ? dateBase + 10 + 36 : null;
-  const sceneScale = SCENE_SCALE;
   const sceneTop = (labelBase ?? dateBase) + 26;
-  const sceneBottom = sceneTop + Math.round(72 * sceneScale);
+  const sceneBottom = sceneTop + Math.round(72 * SCENE_SCALE);
   const title1 = sceneBottom + 40 + Math.round(58 * CINZEL_CAP);
   const title2 = title1 + 70;
   const statFigureBase = title2 + 52 + Math.round(104 * GARAMOND_FIG);
   const statLabelBase = statFigureBase + 14 + Math.round(26 * CINZEL_CAP);
   const rowsTop = statLabelBase + 46;
-  const footerBase = CARD_H - PAD_BOTTOM;
-  const footBandTop = footerBase - Math.round(28 * CINZEL_CAP) - 22 - BAND_H;
   return {
-    bandTop,
     dateBase,
     labelBase,
     sceneTop,
-    sceneScale,
-    titleBase: [title1, title2],
+    titleBase: [title1, title2] as [number, number],
     statFigureBase,
     statLabelBase,
     rowsTop,
-    rowHeight: ROW_H,
-    footBandTop,
-    footerBase,
   };
 }
 
@@ -484,7 +510,7 @@ export function drawShareCard(canvas: HTMLCanvasElement, content: CardContent, t
   canvas.height = CARD_H;
   const ctx = canvas.getContext('2d');
   if (!ctx) throw new Error('No canvas to draw the card on');
-  const m = cardMetrics(content.label !== null);
+  const m = cardMetrics(content.label !== null, content.rows.length);
   const innerW = CARD_W - PAD_X * 2;
   const centre = CARD_W / 2;
 

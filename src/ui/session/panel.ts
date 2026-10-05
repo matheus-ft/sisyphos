@@ -1,5 +1,6 @@
 import { formatInterval, type ExerciseInstance, type Id, type PerformedSet } from '../../model';
-import { targetRpeOf } from '../suggest';
+import { formatSeconds } from '../session';
+import { targetRpeOf, type Suggestion } from '../suggest';
 
 /**
  * What the entry panel and a set row say about a set, apart from its numbers:
@@ -52,4 +53,28 @@ export const RPE_COURSES: readonly (readonly number[])[] = [
 /** "± 2.5 kg", or "± 5 s" for time: the size of one tap of − or +, said under the chips. */
 export function stepText(measure: 'weight' | 'time', step: number, unit: string): string {
   return measure === 'time' ? '± 5 or 15 s' : `± ${step} ${unit}`;
+}
+
+/**
+ * The panel's figure as the rows write it: a load as a number, a time past a
+ * minute as "1:30" (the steppers would otherwise climb in bare seconds, 75, 90),
+ * and the unit beside it to match.
+ */
+export function panelFigure(
+  measure: 'weight' | 'time',
+  n: number,
+  unit: string,
+): { text: string; unit: string } {
+  if (measure === 'weight') return { text: String(Math.round(n * 100) / 100), unit };
+  return { text: formatSeconds(n).replace(' s', ''), unit: n >= 60 ? 'min' : 's' };
+}
+
+/**
+ * "92.5 kg · +2.5: last @7.5 for a target of 8": the panel's suggestion with
+ * the weight said, since the steppers may hold the set's target instead.
+ */
+export function suggestionLine(
+  s: Pick<Suggestion, 'load' | 'unit' | 'reason'> | null,
+): string | null {
+  return s ? `${s.load} ${s.unit} · ${s.reason}` : null;
 }

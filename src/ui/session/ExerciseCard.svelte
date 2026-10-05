@@ -42,6 +42,7 @@
     type CardMode,
   } from './cards';
   import { applySuggestion, sessionsBefore, suggestionShows } from './flow';
+  import { setLabel } from './panel';
   import { addWarmups, warmupPlan } from './warmups';
 
   /**
@@ -117,7 +118,7 @@
   const contexts = $derived(
     new Map(
       instance.performed
-        .filter((s) => s.state === 'pending')
+        .filter((s) => s.state !== 'done')
         .map((s) => [
           s.id,
           entryContext({
@@ -185,7 +186,8 @@
     apply: (value: number) => SetEdit,
     set: PerformedSet,
   ): void {
-    if (input.value !== '' || target === '') return;
+    // A skipped set shows its target struck through; typing into it is not lifting it.
+    if (set.state !== 'pending' || input.value !== '' || target === '') return;
     const value = parse(target);
     if (value === null || value === undefined) return;
     edit(set, apply(value));
@@ -277,10 +279,10 @@
       <span class="tools">
         {#if mode !== 'current'}
           <button
-            class="icon-btn"
+            class="icon-btn flip"
             aria-label="Collapse {name}"
             aria-expanded="true"
-            onclick={() => (tapped = false)}><Icon name="up" size="sm" /></button
+            onclick={() => (tapped = false)}><Icon name="down" size="sm" /></button
           >
         {/if}
         <button class="icon-btn" aria-label="More for {name}" onclick={() => (menu = true)}
@@ -354,7 +356,7 @@
         {@const skipped = set.state === 'skipped'}
         {@const isActive = set.id === active && set.state === 'pending'}
         {@const isRecord = records.has(set.id) && set.state === 'done' && !set.is_warmup}
-        {@const label = `${set.is_warmup ? 'Warm-up' : 'Set'} ${numbers.get(set.id)}`}
+        {@const label = setLabel(instance, set)}
         <div
           class="row"
           class:timed
@@ -417,12 +419,13 @@
                 )}
             />
           {/if}
-          {#if !set.is_warmup}
+          <!-- A set skipped before it had an RPE has none to strike through. -->
+          {#if !set.is_warmup && !(skipped && set.rpe === null)}
             <span class="x">@</span>
             <input
               inputmode="decimal"
               aria-label="RPE"
-              placeholder={isActive ? '—' : target.rpe}
+              placeholder={isActive ? '—' : target.rpe || '—'}
               value={set.rpe ?? ''}
               onchange={(e) =>
                 field(e.currentTarget, parseRpe, (rpe) => ({ rpe }), set, String(set.rpe ?? ''))}
@@ -499,7 +502,8 @@
     </li>
     <li class="row-link">
       <button disabled={position === session.exercises.length - 1} onclick={() => move(1)}
-        ><span class="grow t">Move down</span><Icon name="down" size="sm" /></button
+        ><span class="grow t">Move down</span><span class="flip"><Icon name="up" size="sm" /></span
+        ></button
       >
     </li>
     <li class="row-link">
@@ -688,9 +692,11 @@
     min-height: var(--tap);
   }
 
+  /* Link buttons pad their words; the end ones lean out so the words meet the card's edges. */
   .ladder-actions {
     display: flex;
     gap: var(--space-1);
+    margin-right: calc(-1 * var(--space-2));
   }
 
   .rows {
@@ -699,11 +705,16 @@
     margin-top: var(--space-2);
   }
 
+  /*
+   * Every row has the same columns, the status one fixed, so a stack of rows
+   * reads as a table: a "record" or "warm-up" at the end never pushes its own
+   * row's figures out of line with the rows around it.
+   */
   .row {
     display: grid;
     grid-template-columns:
       26px minmax(0, 1fr) 30px 12px minmax(0, 0.7fr) 14px minmax(0, 0.7fr)
-      auto;
+      60px;
     align-items: center;
     gap: 2px;
     min-height: var(--tap);
@@ -712,7 +723,7 @@
   }
 
   .row.timed {
-    grid-template-columns: 26px minmax(0, 1fr) 14px minmax(0, 0.7fr) auto;
+    grid-template-columns: 26px minmax(0, 1fr) 14px minmax(0, 0.7fr) 60px;
   }
 
   .row input {
@@ -753,8 +764,10 @@
     color: var(--muted);
   }
 
+  /* Always the last column, even in a row that has no RPE cells before it. */
   .st {
     display: flex;
+    grid-column: -2;
     align-items: center;
     justify-content: flex-end;
   }
@@ -794,13 +807,13 @@
     color: var(--muted);
   }
 
-  /* No RPE cells in a warm-up row: the figures take the room. */
-  .row.warm:not(.timed) {
-    grid-template-columns: 26px minmax(0, 1fr) 30px 12px minmax(0, 0.7fr) auto;
+  /* No RPE cells in a warm-up row: its status takes their place, and its figures stay in line. */
+  .row.warm:not(.timed) .st {
+    grid-column: 6 / -1;
   }
 
-  .row.warm.timed {
-    grid-template-columns: 26px minmax(0, 1fr) auto;
+  .row.warm.timed .st {
+    grid-column: 3 / -1;
   }
 
   .row.pending {
@@ -818,14 +831,21 @@
 
   /* A skipped set was planned and deliberately not done: it stays, struck through. */
   .skipped input,
+  .skipped input::placeholder,
   .skipped .n,
-  .skipped .x:not(:last-of-type) {
+  .skipped .x {
     text-decoration: line-through;
     color: var(--muted);
   }
 
-  /* A record set: the gilded wash, and its load and reps underlined in gilt. */
+  /*
+   * A record set: the gilded wash, and its load and reps underlined in gilt. The
+   * wash reaches past the row's edges and the padding takes it back, so the
+   * figures stay in their columns and the word at the end has room inside it.
+   */
   .record {
+    margin-inline: -6px;
+    padding-inline: 8px 6px;
     background: var(--laurel-wash);
   }
 
@@ -846,7 +866,7 @@
   .active {
     min-height: 54px;
     margin: 2px -6px;
-    padding-left: 8px;
+    padding-inline: 8px 6px;
     outline: none;
     background: var(--figure);
     color: var(--on-figure);
@@ -921,6 +941,7 @@
     align-items: center;
     gap: 2px;
     min-height: var(--tap);
+    margin-right: calc(-1 * var(--space-2));
     padding: 0 var(--space-2);
     color: var(--accent);
     font: var(--fw-display) var(--fs-label) / 1 var(--font-display);
@@ -929,15 +950,34 @@
     text-transform: uppercase;
   }
 
+  /* Under the set's figures, the words starting where its load does; a narrow phone wraps them whole. */
   .actions {
     display: flex;
-    gap: var(--space-2);
-    padding-left: 26px;
+    flex-wrap: wrap;
+    gap: 0 var(--space-1);
+    padding-left: calc(26px - var(--space-2));
+  }
+
+  .actions :global(.button-link) {
+    white-space: nowrap;
   }
 
   .foot {
     display: flex;
     gap: var(--space-3);
+    margin-left: calc(-1 * var(--space-2));
+  }
+
+  /*
+   * The glyphs turned over: the fold's chevron closes a card it opened, and the
+   * arrow that moves up moves down, so neither reads as the other.
+   */
+  .flip :global(svg) {
+    transform: rotate(180deg);
+  }
+
+  span.flip {
+    display: inline-flex;
   }
 
   .menu-title {

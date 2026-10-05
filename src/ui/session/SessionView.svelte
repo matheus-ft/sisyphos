@@ -43,7 +43,7 @@
     targetOf,
     weighInOffer,
   } from './flow';
-  import { activeSetId, ringedRpe, setLabel, targetText } from './panel';
+  import { activeSetId, ringedRpe, setLabel, suggestionLine, targetText } from './panel';
   import RestTakeover from './RestTakeover.svelte';
   import { hiddenKey, parseHidden, serializeHidden } from './warmups';
 
@@ -476,7 +476,7 @@
     target={targetText(entering.instance, entering.set)}
     targetRpe={ringedRpe(entering.instance, entering.set)}
     suggestion={entering.set.state === 'pending'
-      ? (enteringContext.suggestion?.reason ?? null)
+      ? suggestionLine(enteringContext.suggestion)
       : null}
     measure={exercise ? measureOf(exercise) : 'weight'}
     unit={enteringContext.unit}
@@ -685,8 +685,9 @@
     display: none;
   }
 
+  /* Clear of the header's fade, which would otherwise wash over the button's ring. */
   .start {
-    margin: var(--space-3) 12px 0;
+    margin: var(--space-5) 12px 0;
   }
 
   .list {
@@ -710,18 +711,21 @@
     min-height: var(--tap);
   }
 
+  /* The link's words, not its padding, line up with the field above. */
   .field :global(.button-link) {
     justify-self: start;
+    margin-left: calc(-1 * var(--space-2));
   }
 
   textarea {
     resize: vertical;
   }
 
+  /* Room below for the undo toast each set leaves for 5 s, so Finish can scroll clear of it. */
   .end {
     display: grid;
     gap: var(--space-2);
-    margin: var(--space-6) 12px var(--space-8);
+    margin: var(--space-6) 12px calc(var(--space-8) + 64px);
   }
 
   .end :global(.danger) {

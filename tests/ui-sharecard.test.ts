@@ -51,6 +51,17 @@ describe('summarise', () => {
     expect(withRecord.stats.at(-1)).toEqual({ label: 'RECORD', value: '1', laurel: true });
   });
 
+  it('says each label in agreement with its figure', () => {
+    const s = lifted();
+    const squat2 = s.exercises[0].performed.map((x) => x.id);
+    const two = summarise(s, library, new Set(squat2));
+    expect(two.stats.at(-1)?.label).toBe('RECORDS');
+    const one = withSets(sessionOn(4, 'today'), squat, [{ amount: 100, reps: 5, rpe: 7 }]);
+    expect(summarise(one, library, new Set()).stats.find((x) => x.value === '1')?.label).toBe(
+      'SET',
+    );
+  });
+
   it('puts each exercise on one row with its top set, RPE apart, and the laurel on a record', () => {
     const s = lifted();
     const squatSet = s.exercises[0].performed[1].id;
@@ -134,6 +145,18 @@ describe('the card', () => {
     expect(m.footerBase).toBeLessThan(CARD_H);
     expect(m.sceneTop).toBeGreaterThan(m.labelBase!);
     expect(cardMetrics(false).labelBase).toBeNull();
+  });
+
+  it('sits a short card midway between its bands, and leaves a full one where it is', () => {
+    expect(cardMetrics(true, CARD_TOP_SETS)).toEqual(cardMetrics(true));
+    const one = cardMetrics(true, 1);
+    const full = cardMetrics(true);
+    expect(one.dateBase).toBeGreaterThan(full.dateBase);
+    expect(one.rowsTop - one.dateBase).toBe(full.rowsTop - full.dateBase);
+    const above = one.dateBase - one.bandTop;
+    const below = one.footBandTop - (one.rowsTop + one.rowHeight);
+    expect(Math.abs(above - below)).toBeLessThan(80);
+    expect(cardMetrics(true, 0).statLabelBase).toBeLessThan(one.footBandTop);
   });
 });
 

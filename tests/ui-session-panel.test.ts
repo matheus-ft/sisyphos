@@ -4,8 +4,10 @@ import {
   activeSetId,
   ringedRpe,
   RPE_COURSES,
+  panelFigure,
   setLabel,
   stepText,
+  suggestionLine,
   targetText,
 } from '../src/ui/session/panel';
 
@@ -106,5 +108,29 @@ describe('the chips', () => {
   it('say the size of a step', () => {
     expect(stepText('weight', 2.5, 'kg')).toBe('± 2.5 kg');
     expect(stepText('time', 5, 's')).toBe('± 5 or 15 s');
+  });
+});
+
+describe('the suggestion line', () => {
+  it('says the weight before its reason, since the steppers may hold a target', () => {
+    expect(
+      suggestionLine({ load: 142.5, unit: 'kg', reason: 'same: last @9 for a target of 8' }),
+    ).toBe('142.5 kg · same: last @9 for a target of 8');
+  });
+
+  it('is nothing without a suggestion', () => {
+    expect(suggestionLine(null)).toBeNull();
+  });
+});
+
+describe('the panel figure', () => {
+  it('writes a load as a number in its unit', () => {
+    expect(panelFigure('weight', 92.5, 'kg')).toEqual({ text: '92.5', unit: 'kg' });
+    expect(panelFigure('weight', 0.1 + 0.2, 'kg')).toEqual({ text: '0.3', unit: 'kg' });
+  });
+
+  it('writes a time as the rows do: seconds under a minute, minutes and seconds past it', () => {
+    expect(panelFigure('time', 45, 's')).toEqual({ text: '45', unit: 's' });
+    expect(panelFigure('time', 90, 's')).toEqual({ text: '1:30', unit: 'min' });
   });
 });

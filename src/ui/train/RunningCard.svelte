@@ -26,10 +26,15 @@
   // The same climb as the session's own header, so the two never disagree.
   const tally = $derived(climb(session, app.sessions));
   const label = $derived(programLabel(session.label));
+  /** The dot between a label's parts holds to the part before it, so a line ends on it. */
+  const DOT = '\u00a0· ';
 </script>
 
 <article class="card card-current" aria-label="Session in progress">
-  {#if label}<p class="label caps">{label}</p>{/if}
+  {#if label}<p class="label caps">
+      {#each label.split(' · ') as part, i (i)}{#if i > 0}{DOT}{/if}<span class="part">{part}</span
+        >{/each}
+    </p>{/if}
   <div class="body">
     <dl class="stats">
       <div>
@@ -62,8 +67,14 @@
     gap: var(--space-3);
   }
 
+  /* A label too long for one line breaks after a dot, never inside "week 6", and evenly. */
   .label {
     color: var(--accent);
+    text-wrap: balance;
+  }
+
+  .part {
+    white-space: nowrap;
   }
 
   .body {

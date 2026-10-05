@@ -13,6 +13,7 @@
   import Button from '../kit/Button.svelte';
   import Icon from '../kit/Icon.svelte';
   import Meander from '../kit/Meander.svelte';
+  import { overlays } from '../overlays.svelte';
   import { bellStep, figureParts, restFace, type BellState } from '../restview';
 
   interface Props {
@@ -130,6 +131,7 @@
 <div
   class="rest"
   class:over={face.over}
+  class:toasting={overlays.toast !== null}
   role="dialog"
   aria-modal="true"
   aria-label="Rest"
@@ -192,7 +194,7 @@
         </p>
       {/if}
       <p>
-        <span class="meta">{next.label}</span>
+        <span class="meta next-label">{next.label}</span>
         <b class="figure-num"
           >{#each figureParts(next.figures) as part, i (i)}<span class:dim={part.muted}
               >{part.text}</span
@@ -221,12 +223,15 @@
     background: var(--rest-field);
     color: var(--rest-ink);
     outline: none;
-    transition: background-color var(--dur-base) var(--ease-in-out);
+    transition:
+      background-color var(--dur-base) var(--ease-in-out),
+      padding-bottom var(--dur-fast) var(--ease-out);
     animation: arrive var(--dur-enter) var(--ease-out) both;
   }
 
-  .rest > :not(.pulse) {
-    position: relative;
+  /* The undo toast sits at the foot over the takeover for its 5 s: the next set and its Log lift clear of it. */
+  .toasting {
+    padding-bottom: calc(var(--safe-bottom) + 76px);
   }
 
   .over {
@@ -234,10 +239,15 @@
     color: var(--rest-over-ink);
   }
 
-  /* Breathes in opacity only, so the text above it is never repainted. */
+  /*
+   * Breathes in opacity only, so the text above it is never repainted. Under
+   * everything the takeover holds: the Log button is another component's, which
+   * this one's scoped styles cannot lift above it.
+   */
   .pulse {
     position: absolute;
     inset: 0;
+    z-index: -1;
     background: var(--rest-over-2);
     opacity: 0;
     pointer-events: none;
@@ -402,6 +412,10 @@
 
   .next b {
     font-size: 1.875rem;
+  }
+
+  .next-label {
+    margin-right: var(--space-2);
   }
 
   .dim {
