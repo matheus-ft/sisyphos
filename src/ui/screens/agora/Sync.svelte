@@ -1,7 +1,10 @@
 <script lang="ts">
   import { maskToken } from '../../../storage/app';
+  import ExportRow from '../../agora/ExportRow.svelte';
+  import StoneSpinner from '../../agora/StoneSpinner.svelte';
   import { app } from '../../app.svelte';
   import Button from '../../kit/Button.svelte';
+  import Icon from '../../kit/Icon.svelte';
   import ScreenHeader from '../../kit/ScreenHeader.svelte';
   import { routeHash } from '../../route';
   import { statusLine } from '../../status';
@@ -19,6 +22,7 @@
 
   const line = $derived(app.status ? statusLine(app.status, false) : null);
   const notSetUp = $derived(app.status?.status === 'not_set_up');
+  const busy = $derived(syncing || app.status?.status === 'syncing');
 
   $effect(() => {
     // Reread when the status changes: a setup just finished changes both.
@@ -57,8 +61,24 @@
 {:else}
   <ScreenHeader title="Sync" back={{ href: routeHash({ name: 'more', page: null }) }} />
 
-  {#if line}<p class="line" class:alarm={line.alarm}>{line.text}</p>{/if}
-  {#if app.status}<p class="meta exposure">{app.status.exposure.message}</p>{/if}
+  {#if line}
+    <div class="card status" class:alarm={line.alarm} role="status">
+      <div class="now">
+        {#if busy}
+          <StoneSpinner />
+        {:else if line.alarm}
+          <span class="warn"><Icon name="warn" /></span>
+        {:else}
+          <span class="ok"><Icon name="check" /></span>
+        {/if}
+        <p>{line.text}</p>
+      </div>
+      {#if app.status}<p class="meta">{app.status.exposure.message}</p>{/if}
+      <Button variant="primary" bench full disabled={busy || !repo} onclick={syncNow}
+        >{busy ? 'Syncing…' : 'Sync now'}</Button
+      >
+    </div>
+  {/if}
 
   <p class="sec caps">Log repo</p>
   <ul class="group">
@@ -70,14 +90,25 @@
       <span class="grow t">Token</span>
       <span class="v tabular">{token}</span>
     </li>
+    <li class="row-link">
+      <button onclick={() => (changing = true)}>
+        <span class="grow t change">Change repo or token</span>
+        <Icon name="chev" size="sm" />
+      </button>
+    </li>
   </ul>
+  <p class="group-foot">
+    The token is kept on this phone only, and shown here with its middle hidden.
+  </p>
 
-  <div class="actions">
-    <Button variant="quiet" disabled={syncing || !repo} onclick={syncNow}
-      >{syncing ? 'Syncing…' : 'Sync now'}</Button
-    >
-    <Button variant="link" onclick={() => (changing = true)}>Change repo or token</Button>
-  </div>
+  <p class="sec caps">Export</p>
+  <ul class="group">
+    <ExportRow />
+  </ul>
+  <p class="group-foot">
+    Every set and every session as a spreadsheet, for a notebook or a coach. Nothing is sent
+    anywhere.
+  </p>
 
   {#if app.status?.unreadable.length}
     <p class="sec caps">Left alone</p>
@@ -92,31 +123,51 @@
 {/if}
 
 <style>
-  .line,
-  .exposure {
-    margin: 0 var(--gutter);
+  .status {
+    display: grid;
+    gap: var(--space-3);
+    margin: var(--space-2) 12px 0;
+    padding: var(--space-4);
   }
 
   .alarm {
-    color: var(--accent);
+    border-color: var(--warning);
+    background: var(--warning-wash);
   }
 
-  .exposure {
-    margin-top: var(--space-1);
-  }
-
-  .actions {
+  .now {
     display: flex;
-    flex-wrap: wrap;
     align-items: center;
     gap: var(--space-3);
-    margin: var(--space-4) 12px 0;
   }
 
-  .v {
+  .now p {
+    font-size: var(--fs-lead);
+    font-weight: var(--fw-strong);
+    line-height: var(--lh-snug);
+  }
+
+  .warn,
+  .ok {
+    display: inline-flex;
+  }
+
+  .warn {
+    color: var(--warning);
+  }
+
+  .ok {
+    color: var(--success);
+  }
+
+  .group .v {
     overflow-wrap: anywhere;
     white-space: normal;
     text-align: right;
+  }
+
+  .change {
+    color: var(--accent);
   }
 
   .top {

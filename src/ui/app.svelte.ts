@@ -539,6 +539,36 @@ class App {
       this.failure = `This phone's settings were not saved: ${messageOf(error)}`;
     }
   };
+
+  // --- agora ----------------------------------------------------------------------------
+
+  /** An exercise of the library being changed, shown over the screen in the new-exercise form. */
+  editing = $state.raw<Exercise | null>(null);
+
+  /**
+   * Saves a changed exercise (its id stays) and opens its proposal to the shared
+   * library, as `createExercise` does for a new one, but touches no session or
+   * template: the lifter is in the library, not building a session.
+   */
+  changeExercise = async (exercise: Exercise): Promise<void> => {
+    const s = this.storage;
+    if (!s) return;
+    // Opened within the tap, as Safari requires, and pointed at the proposal after.
+    const tab = window.open('', '_blank');
+    try {
+      const kind = await s.log.saveExercise(exercise);
+      if (tab && kind) tab.location.href = submissionUrl(exercise, kind);
+      else tab?.close();
+      this.failure = null;
+    } catch (error) {
+      tab?.close();
+      this.failure = `Not saved: ${messageOf(error)}`;
+      return;
+    }
+    this.editing = null;
+    await this.load();
+    showToast({ message: 'Saved on this phone', strong: exercise.name });
+  };
 }
 
 export const app = new App();
