@@ -34,14 +34,17 @@ test('body shades the statue by working sets and opens a muscle', async ({ page 
   await expect(page.getByRole('figure', { name: 'Front' })).toBeVisible();
   await expect(page.getByRole('figure', { name: 'Back' })).toBeVisible();
 
-  // Nothing lifted this week: every muscle is the untrained shade.
-  await expect(page.getByText('No working sets this week yet.')).toBeVisible();
-  expect(new Set(await shades(page)).size).toBe(1);
-
-  // The last four weeks have work, so muscles take different shades.
-  await page.getByRole('button', { name: 'Last 4 weeks' }).click();
+  // Nothing lifted this week yet, so Body opens on the last four weeks, whose
+  // work gives the muscles different shades.
   await expect(page.getByText('No working sets this week yet.')).toBeHidden();
   await expect.poll(async () => new Set(await shades(page)).size).toBeGreaterThan(1);
+
+  // This week alone is bare: every muscle is the untrained shade.
+  await page.getByRole('button', { name: 'This week' }).click();
+  await expect(page.getByText('No working sets this week yet.')).toBeVisible();
+  // The fills ease between shades, so wait for them to settle.
+  await expect.poll(async () => new Set(await shades(page)).size).toBe(1);
+  await page.getByRole('button', { name: 'Last 4 weeks' }).click();
 
   // The list beneath names the most worked; one opens the sets behind it.
   const muscle = page.getByRole('button', { name: /sets in the last 4 weeks\. Show the sets$/ });
