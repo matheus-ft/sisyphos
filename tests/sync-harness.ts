@@ -2,6 +2,7 @@ import { expect } from 'vitest';
 import type { ConflictRecord, IsoDate, Session, Template } from '../src/model';
 import type { Mode } from '../src/storage/decide';
 import { SyncError } from '../src/storage/errors';
+import { blobSha } from '../src/storage/hash';
 import {
   parseConflict,
   serializeFormatMarker,
@@ -11,11 +12,20 @@ import {
   tableRows,
   tableText,
 } from '../src/storage/formats';
-import { classify, FORMAT_PATH, isOurs, sessionPath, templatePath } from '../src/storage/paths';
+import {
+  classify,
+  FORMAT_PATH,
+  FORMAT_VERSION,
+  isOurs,
+  sessionPath,
+  templatePath,
+} from '../src/storage/paths';
 import { MemoryRemote } from '../src/storage/remote/memory';
 import type { Exclusive, LocalStore, StoreOp } from '../src/storage/store/store';
 import { MemoryStore } from '../src/storage/store/memory';
+import type { Format1Records } from '../src/storage/store/upgrade';
 import { runSync, type SyncDeps, type SyncResult } from '../src/storage/sync';
+import { MARKER_V1 } from './format1';
 
 /**
  * Devices and a log repo for the sync tests: in-memory store and remote, a
@@ -25,7 +35,7 @@ import { runSync, type SyncDeps, type SyncResult } from '../src/storage/sync';
 export const T0 = '2026-09-27T10:00:00.000Z';
 export const TODAY = T0.slice(0, 10);
 
-export const MARKER = serializeFormatMarker({ format: 1 });
+export const MARKER = serializeFormatMarker({ format: FORMAT_VERSION });
 export const README = '# sisyphos-log\n';
 
 /** Mulberry32: a small seeded PRNG. */
@@ -71,8 +81,47 @@ export function session(id: string, notes: string | null = null): Session {
   };
 }
 
+/**
+ * A session with an exercise in it, which is where format 2 differs from
+ * format 1: a session without one is written the same in both.
+ */
+export function lifted(id: string, notes: string): Session {
+  return {
+    ...session(id, notes),
+    exercises: [
+      {
+        id: 'e1',
+        exercise_id: 'low_bar_squat',
+        rest_s: null,
+        prescribed: [],
+        performed: [
+          {
+            id: 's1',
+            prescribed_id: null,
+            state: 'done',
+            reps: 5,
+            rpe: 8,
+            load: { kind: 'weight', value: 140, unit: 'kg' },
+            is_warmup: false,
+            notes: null,
+          },
+        ],
+        notes: null,
+      },
+    ],
+  };
+}
+
 export function template(id: string, intention: string | null = null): Template {
-  return { id, name: 'Squat day A', intention, exercises: [], created_at: T0, updated_at: T0 };
+  return {
+    id,
+    name: 'Squat day A',
+    intention,
+    label: { name: null, block: null, week: null, day: null, weekday: null },
+    exercises: [],
+    created_at: T0,
+    updated_at: T0,
+  };
 }
 
 export const sessionFile = (s: Session): [string, string] => [
@@ -334,4 +383,66 @@ export async function failure(promise: Promise<unknown>): Promise<string> {
   const error = await rejection(promise);
   expect(error).toBeInstanceOf(SyncError);
   return (error as SyncError).kind;
+}
+
+// --- a log a format-1 build kept ---------------------------------------------------------
+
+/** A log as a format-1 build left it: format 1's marker, and these files as it wrote them. */
+export function format1Log(files: Array<[string, string]>): MemoryRemote {
+  const remote = new MemoryRemote();
+  remote.externalCommit(
+    [{ path: FORMAT_PATH, content: MARKER_V1 }, ...files.map(change)],
+    'Start the training log',
+  );
+  return remote;
+}
+
+/**
+ * What a format-1 build left on a device that last synced at the log's head as
+ * it is now, and then changed: `changes` maps a path to the text that build
+ * wrote, null for a deletion.
+ */
+export async function format1Records(
+  remote: MemoryRemote,
+  changes: Array<[string, string | null]> = [],
+): Promise<Format1Records> {
+  const head = (await remote.head())!;
+  const tree = await remote.tree(head);
+  const content = remoteFiles(remote);
+  const entries = new Map<string, Format1Records['entries'][number]>();
+  for (const [path, text] of content) {
+    const sha = blobSha(text);
+    const base_body = classify(path).kind === 'table' ? text : null;
+    entries.set(path, { path, base_sha: sha, local_sha: sha, unsynced_since: null, base_body });
+  }
+  for (const [path, text] of changes) {
+    if (text === null) content.delete(path);
+    else content.set(path, text);
+    const before = entries.get(path);
+    entries.set(path, {
+      path,
+      base_sha: before?.base_sha ?? null,
+      local_sha: text === null ? null : blobSha(text),
+      unsynced_since: T0,
+      base_body: before?.base_body ?? null,
+    });
+  }
+  return {
+    content: [...content].map(([path, text]) => ({ path, text })),
+    entries: [...entries.values()],
+    meta: { last_synced_head: head, last_synced_tree: tree.sha },
+    inflight: null,
+  };
+}
+
+/** A device this build opened over what a format-1 build left on it (`MemoryStore.upgraded`). */
+export function upgradedDevice(
+  remote: MemoryRemote,
+  id: string,
+  records: Format1Records,
+  options: DeviceOptions = {},
+): Device {
+  const device = new Device(remote, id, options);
+  device.disk = MemoryStore.upgraded(records, { now: device.now, deviceId: id });
+  return device;
 }

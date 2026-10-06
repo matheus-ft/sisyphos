@@ -11,7 +11,7 @@ import type { Id } from '../model';
 export const FORMAT_PATH = 'sisyphos.json';
 
 /** The highest log-repo format this build reads and writes (DATA.md, The files). */
-export const FORMAT_VERSION = 1;
+export const FORMAT_VERSION = 2;
 
 export const TABLE_PATHS = {
   bodyweight: 'lifter/bodyweight.csv',

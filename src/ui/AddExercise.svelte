@@ -1,13 +1,17 @@
 <script lang="ts">
   import type { Exercise } from '../model';
+  import Icon from './kit/Icon.svelte';
 
+  /** A search over the library to add an exercise, or to create one it lacks. */
   interface Props {
     library: Exercise[];
     /** Shown before anything is typed, most recent first. */
     recentIds: string[];
     onpick: (exercise: Exercise) => void;
+    /** Creates an exercise the library lacks, named from what was typed. */
+    oncreate: (name: string) => void;
   }
-  let { library, recentIds, onpick }: Props = $props();
+  let { library, recentIds, onpick, oncreate }: Props = $props();
 
   let query = $state('');
   let focused = $state(false);
@@ -38,48 +42,65 @@
 </script>
 
 <div class="add">
-  <input
-    bind:value={query}
-    placeholder="+ exercise"
-    autocapitalize="off"
-    autocomplete="off"
-    onfocus={() => (focused = true)}
-    onblur={() => setTimeout(() => (focused = false), 200)}
-  />
-  {#if results.length}
-    <ul>
+  <label class="search">
+    <Icon name="plus" size="sm" />
+    <input
+      bind:value={query}
+      placeholder="Add an exercise"
+      aria-label="Add an exercise"
+      autocapitalize="off"
+      autocomplete="off"
+      onfocus={() => (focused = true)}
+      onblur={() => setTimeout(() => (focused = false), 200)}
+    />
+  </label>
+  {#if results.length || query.trim()}
+    <ul class="group">
       {#each results as exercise (exercise.id)}
-        <li><button onclick={() => pick(exercise)}>{exercise.name}</button></li>
+        <li class="row-link"><button onclick={() => pick(exercise)}>{exercise.name}</button></li>
       {/each}
+      {#if query.trim()}
+        <li class="row-link">
+          <button class="create" onclick={() => oncreate(query.trim())}
+            >New exercise “{query.trim()}”…</button
+          >
+        </li>
+      {/if}
     </ul>
   {/if}
 </div>
 
 <style>
-  .add {
-    margin: 0.75rem 0;
+  .search {
+    display: flex;
+    align-items: center;
+    gap: var(--space-2);
+    border-bottom: var(--hairline) dashed var(--line-strong);
+    color: var(--accent);
+  }
+
+  .search:focus-within {
+    border-bottom: var(--stroke-strong) solid var(--accent);
   }
 
   input {
-    width: 100%;
-    border-bottom-style: dashed;
+    flex: 1;
+    border: 0;
+  }
+
+  input:focus {
+    border: 0;
   }
 
   input::placeholder {
     color: var(--accent);
-    opacity: 1;
   }
 
-  ul {
-    margin: 0;
-    padding: 0;
-    list-style: none;
+  .group {
+    margin: var(--space-2) 0 0;
   }
 
-  button {
-    width: 100%;
-    padding-left: 1rem;
-    border-bottom: 1px solid var(--line);
-    text-align: left;
+  .create {
+    color: var(--accent);
   }
 </style>

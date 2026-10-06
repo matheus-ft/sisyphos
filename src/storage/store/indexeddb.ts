@@ -10,6 +10,7 @@ import {
   type SyncEntry,
   type SyncMeta,
 } from './store';
+import { upgradeToFormat2, type Format1Records } from './upgrade';
 
 /**
  * The store on the device, in IndexedDB. Must
@@ -47,12 +48,17 @@ const STORES: StoreName[] = ['content', 'sync', 'sync_meta', 'inflight', 'settin
 type Upgrade = (
   db: IDBPDatabase<Schema>,
   tx: IDBPTransaction<Schema, StoreName[], 'versionchange'>,
+  now: () => Date,
 ) => void;
 
 /**
  * `MIGRATIONS[n]` takes the database from version n to n + 1, inside the
  * upgrade transaction. A later version appends a step: it may add stores and
  * rewrite records, and must carry every record forward.
+ *
+ * Bumping the version also stops an older build still open in another tab
+ * (`blocking`), which would otherwise go on writing files this build cannot
+ * read.
  */
 const MIGRATIONS: Upgrade[] = [
   (db, tx) => {
@@ -72,6 +78,32 @@ const MIGRATIONS: Upgrade[] = [
       device_id: crypto.randomUUID(),
     };
     unwrap(tx).objectStore('settings').put(settings, ONLY);
+  },
+  // Log format 2: what format 1 left, read and written back in one go
+  // (`upgrade.ts`). The requests run in the order they are made, so once the
+  // last has its result, so has every one; and nothing is awaited, so the
+  // transaction cannot commit between the reads and the writes. It commits
+  // whole or not at all: an app killed during it finds version 1 at the next
+  // launch, and upgrades then.
+  (_db, tx, now) => {
+    const raw = unwrap(tx);
+    const content = raw.objectStore('content').getAll();
+    const entries = raw.objectStore('sync').getAll();
+    const meta = raw.objectStore('sync_meta').get(ONLY);
+    const inflight = raw.objectStore('inflight').get(ONLY);
+    inflight.onsuccess = () => {
+      const old: Format1Records = {
+        content: content.result,
+        entries: entries.result,
+        meta: meta.result ?? null,
+        inflight: inflight.result ?? null,
+      };
+      const next = upgradeToFormat2(old, now().toISOString());
+      for (const record of next.content) raw.objectStore('content').put(record);
+      for (const entry of next.entries) raw.objectStore('sync').put(entry);
+      if (next.meta) raw.objectStore('sync_meta').put(next.meta, ONLY);
+      if (next.inflight) raw.objectStore('inflight').put(next.inflight, ONLY);
+    };
   },
 ];
 
@@ -130,10 +162,11 @@ export class IndexedDbStore implements LocalStore {
   private connection(): Promise<IDBPDatabase<Schema>> {
     if (this.superseded) return Promise.reject(new SupersededError());
     if (this.db) return Promise.resolve(this.db);
+    const now = this.now;
     this.opening ??= openDB<Schema>(this.name, VERSION, {
       upgrade(database, oldVersion, _newVersion, tx) {
         for (let version = oldVersion; version < VERSION; version++) {
-          MIGRATIONS[version](database, tx);
+          MIGRATIONS[version](database, tx, now);
         }
       },
       // A newer build, opened in another tab, is waiting to upgrade. This
@@ -257,6 +290,7 @@ export class IndexedDbStore implements LocalStore {
           local_sha,
           unsynced_since: nextUnsyncedSince(null, { local_sha, base_sha: null }, now),
           base_body: null,
+          base_format: null,
         };
       });
       await this.write((tx) => {
@@ -318,6 +352,7 @@ export class IndexedDbStore implements LocalStore {
               local_sha,
               unsynced_since: nextUnsyncedSince(previous, { local_sha, base_sha }, now),
               base_body: previous?.base_body ?? null,
+              base_format: previous?.base_format ?? null,
             }),
           );
           break;
@@ -333,6 +368,7 @@ export class IndexedDbStore implements LocalStore {
               local_sha,
               unsynced_since: nextUnsyncedSince(previous, { local_sha, base_sha: op.sha }, now),
               base_body: op.body ?? null,
+              base_format: op.format ?? null,
             }),
           );
           break;

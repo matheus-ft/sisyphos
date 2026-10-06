@@ -119,6 +119,13 @@ export function isComplete(set: PerformedSet): boolean {
 export interface ExerciseInstance {
   id: Id;
   exercise_id: string;
+  /**
+   * Target rest between sets, in whole seconds; null is the default for the
+   * exercise's tier, which the screen decides. Saved rather than kept on the
+   * screen: nudging the rest timer changes it for the rest of the session, and
+   * another device showing the session shows the same rest.
+   */
+  rest_s: number | null;
   prescribed: PrescribedSet[];
   performed: PerformedSet[];
   notes: string | null;
@@ -150,7 +157,11 @@ export interface Session {
    * stored explicitly, so moving a session to another date is one edit.
    */
   date: IsoDate;
-  started_at: Instant;
+  /**
+   * Null while the session is planned: filled in ahead (at lunch, for tonight)
+   * and not started yet. Starting it sets this, and its date to that day.
+   */
+  started_at: Instant | null;
   /** IANA zone, e.g. "Europe/Lisbon". Never a fixed offset — offsets break across DST. */
   tz: string;
   /**
@@ -177,8 +188,12 @@ export interface Template {
   id: Id;
   name: string;
   intention: string | null;
+  /** Where the template sits in a program; a session started from it copies this. */
+  label: ProgramLabel;
   exercises: Array<{
     exercise_id: string;
+    /** Copied into a session started from the template (`ExerciseInstance.rest_s`). */
+    rest_s: number | null;
     prescribed: Omit<PrescribedSet, 'id'>[];
   }>;
   created_at: Instant;
@@ -225,7 +240,8 @@ export interface SessionRecord {
   reps: number;
   weight_kg: number;
   date: IsoDate;
-  rpe: number;
+  /** Null only for a warm-up, when `definitions.json` counts warm-ups toward records. */
+  rpe: number | null;
   session_id: Id;
   exercise_instance_id: Id;
   set_id: Id;

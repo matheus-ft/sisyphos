@@ -2,127 +2,194 @@
 
 What the lifter sees, in three stages:
 
-- **v0** replaces a notes app: type in the session being trained, saved at once,
-  synced when it ends. It is what ships now.
-- **v0.5** is the bridge to v1: every screen the app needs, specified here, built
-  after v0.
-- **v1** is shaped by a designer, starting from v0.5.
+- **v0** replaced a notes app: type in the session being trained, saved at once,
+  synced when it ends.
+- **v0.5** is the bridge to v1: every screen the lifter asked for, in the look
+  they chose. This document states what they want from each screen. v0.5
+  builds all of it; where it falls short of the intent, For the designer says
+  so.
+- **v1** is shaped by a designer. This document is their brief: v0.5 shows one
+  answer to it, not the only one.
 
-This is a spec for screens not built yet. Each section is pruned as its screen
-ships, down to what the code cannot say.
+The intent is written here once. How each rule is computed lives in the code
+the sections point at.
 
-The screens sit on the storage layer: `startStorage()` in `src/storage/app.ts`
-gives `log` (records), `scheduler` (syncing and its status) and `connect()`
-(setup).
+## The lifter
+
+- A powerlifter rebuilding after time off, with a competition far away. They
+  train from a loose plan now; RPE targets and percentages of a reference max
+  come back nearer a competition.
+- They log each set right after racking it, with an RPE on every working set.
+- Between sets the phone lies on the bench or the floor, read from one or two
+  metres away.
+- Outside the gym they plan the next session ahead (at lunch, filling in
+  tonight's weights), check last time's numbers on the way to the gym, review
+  progress about weekly, and show the app to friends and coaches.
+- They build the next session by copying the last one and adjusting it, from a
+  template, or from the weights the app suggests.
+- Someone shown the app should notice three things equally: it looks like no
+  other gym app, logging is fast, and the progress views are striking.
 
 ## Principles
 
-**Built for the gym.** One hand, a phone in portrait, a glance between sets. Tap
-targets are at least 44 points, and the numbers being entered are the largest
-thing on screen.
+**Built for the gym.** One hand, a phone in portrait, a glance from the bench.
+Tap targets are at least 44 points, 56 mid-session; the numbers being entered,
+and the rest timer, are the largest things on screen.
 
 **Nothing waits for the network.** A change is written to the device when it is
-complete (a set's field left, a set marked done), not per keystroke, and is
-shown as saved only once its write resolves. Only setup waits on GitHub.
+complete (a field left, a set saved), and shown as saved only once that write
+resolves. Only setup waits on GitHub.
 
 **Derived numbers are computed where they are shown,** never saved
-(`DESIGN.md`).
+(`DECISIONS.md`): e1RM, records, volume, tonnage, suggestions.
 
-## v0: logging a session
+## Identity
 
-Built, in `src/App.svelte` and `src/ui/`: the session screen, setup, the status
-line, and templates with exact targets.
+**Red-figure, with the polish of a museum.** Attic vase painting: in light mode
+the unglazed clay with black-glaze ink and a fired terracotta accent; in dark
+mode the black glaze, with type and figures reserved in clay. The phone's
+setting decides. Titles, exercise names, labels and buttons are inscription
+capitals (Cinzel); text and every number are a book serif (EB Garamond) with
+tabular figures. Greek-key bands are the rules. The fonts ship with the app, so
+it works offline.
 
-## v0.5: the bridge
+The design system is code: the tokens in `src/app.css` and the shared
+components in `src/ui/kit/`.
 
-### Shell
+**The myth, dry and rare.** A session's progress is a boulder climbing a hill,
+one notch per set; at the finish it reaches the top: "The boulder is at the
+top." and, small, "One must imagine Sisyphos happy." (Camus). With no session,
+Train says "The boulder is at the bottom again." Nothing else jokes.
 
-Four tabs: **Train** (the v0 screen), **History**, **Analysis**, **More** (lifter
-data, library, templates, conflicts, settings). Routes live in the URL hash,
-since GitHub Pages cannot serve a deep link with a real path.
+**Tabs:** a Greek word large, the English small beneath it: Askēsis (Train),
+Historia (History), Athloi (Progress), Agora (More). Everything else is plain
+English.
 
-A new app version takes over only outside a session, or at the next launch: a
-reload mid-session would lose the open set and the rest timer.
+## In the gym
 
-### Entering a set
+**Saving a set.** Both ways, as the lifter prefers at the moment: typing into
+the set's row, as in v0; or a panel from the bottom with − and + for load (by
+the plate increment) and reps, and one-tap RPE buttons from 6 to 10 in halves.
+Tapping an RPE saves the set. The panel starts from the set itself, else its
+target (a percentage resolved against the reference max in force on the
+session's date, rounded to the plates), else the suggested weight, else the
+previous set. RPE is never pre-filled. A warm-up takes Done instead of an RPE.
 
-Both ways, as the lifter prefers at the moment: typing into the row, as in v0;
-or a button at the row's end, which opens a panel from the bottom with large −
-and + buttons for load and reps and one-tap RPE buttons from 6 to 10 in halves.
+**The rest takes over.** Saving a working set turns the screen into the rest: a
+countdown to the exercise's target rest, readable from the bench, with the next
+set's numbers, −15 s and +15 s (which change that exercise's target rest in
+the session, and so sync), skip, and the way back to the list. At zero it turns
+terracotta, pulses slowly and counts up. An optional bell rings at zero while
+the app is open; an iPhone web app cannot ring in the background, so the app
+never claims to. The rest is timed from the wall clock, so a locked phone shows
+the right time on return. When the rest started is not saved to the log (see
+Decided against).
 
-The − and + buttons step by the plate increment, set per unit in settings (for
-example 2.5 kg, or 1.25 kg where the gym has the plates), which also rounds
-percentage prescriptions.
+**Target rest** is set per exercise in a template and carried into each
+session; unset, it follows the exercise's tier (`REST_BY_TIER` in
+`src/ui/rest.ts`).
 
-The panel is pre-filled from the set itself, then the prescription (a
-percentage resolved against the reference max in force on the session's date),
-then the previous set. RPE is never pre-filled.
+**Warm-ups** are optional and quiet: smaller and muted, never counted for RPE,
+volume or records. The app suggests a ladder toward the first working weight,
+which the lifter adds whole, adds one rung of, or hides (`src/ui/warmup.ts`).
 
-### Rest timer
+**Suggested weights** come from last time's RPE on that exercise against the
+target RPE: a bigger jump when it was well under, a small one when on target,
+the same weight when over. The suggestion says why ("+2.5: last @7.5 for a
+target of 8"). Never for pins or timed sets (`src/ui/suggest.ts`).
 
-Once a set is complete, a timer shows on screen, large enough to read from a
-bench. It counts up by default; an exercise can have a target rest, counted
-down instead and turning red at zero. It is not saved. An iPhone web app cannot
-ring or vibrate, so it never claims to.
+**Screen awake** is a switch: the screen stays on for the session where the
+phone allows it (`src/ui/device.ts`).
 
-### Templates
+**Records in the moment.** A set that beats the best weight at its rep count
+gets the laurel.
 
-v0 builds them with exact targets. v0.5 adds a program label (program name,
-block, week, day, weekday), which a session started from it copies:
-"Block 2, week 3" is a property of the plan, not something typed per session.
-This adds `label` to `Template`, a change to the log format.
+**The finish.** The boulder arrives. Duration, sets, tonnage and records set
+today, then each exercise's top set. Save as template, share, done. Share draws
+the session as a red-figure image for the phone's share sheet.
 
-Targets become intervals (`3-5 reps`, `≥5`), with loads absolute, as a
-percentage of a reference max, RPE-driven or bodyweight plus.
+## Outside the gym
 
-### History and past sessions
+**Askēsis (Train).** A session in progress comes first. Otherwise today's plan
+with the screen's one primary button, plans for later in the week, start an
+empty session, plan one ahead, log a past session, and the templates.
 
-Sessions by week, newest first, with a marker on any still holding pending
-sets. **Log a past session** picks a date and saves it with
-`time_precision: 'date_only'`, ended on saving, so it never counts as a session
-in progress.
+**Planning ahead.** A planned session is filled in without starting the clock;
+Start sets the time. "Do this again" copies a past session as a plan; a
+template starts or plans one.
 
-### Lifter data
+**Templates** carry a program label (name, block, week, day, weekday), which a
+session started from them copies, since "block 2, week 3" belongs to the plan,
+not to each session. Targets take rep ranges (3–5, 5+), loads absolute, as a
+percentage of a reference max, RPE-driven or bodyweight plus, a target RPE or
+range, and a target rest per exercise.
 
-- **Bodyweight:** a weigh-in per date. A session's bodyweight, when entered for
-  a bodyweight-plus set, is offered as that day's weigh-in, one tap.
-- **Reference maxes:** set by hand, dated. The best recent e1RM is shown beside
-  each as a suggestion, never written.
-- **Records:** per exercise, the best weight at 1 to 10 reps, from sessions and
-  entered by hand together.
+**Historia (History).** Every session by week, newest first, marking any still
+holding pending sets; filtered by exercise, each row shows that exercise's best
+set and e1RM. A calendar shows the month: a disc per session, a ring for a plan,
+a dot for a record day, today ringed.
 
-### Library
+**Athloi (Progress).**
 
-Search and filter by base lift, tier and muscle. Creating or changing an
-exercise saves it at once and opens its prefilled submission on github.com.
-Safari opens a window only within the tap, so the tap opens it empty and the
-save then points it at the submission.
+- **Body:** a kouros, front and back, painted red-figure, its muscles shaded by
+  working sets this week or over the last four, auxiliary muscles counting half
+  (the active counting preset). Each muscle opens the sets behind it. The
+  figure's regions are in `src/ui/statue.ts`.
+- **Strength:** each lift's best e1RM over time, drawn as the hill the boulder
+  climbs, record days gilded. e1RM comes from the RPE chart when a set has an
+  RPE, and from Epley otherwise (`src/metrics/e1rm.ts`).
+- **Labours:** per exercise, the best weight at 1 to 10 reps, from sessions and
+  entered by hand together (`src/metrics/records.ts`); a record from the last
+  30 days carries the laurel.
 
-### Analysis
+**Agora (More).** The lifter's data: weigh-ins; reference maxes, set by hand and
+dated, with the best recent e1RM beside each as a suggestion that is never
+written by itself; records entered by hand. The templates. The library: search
+filtered by base lift, tier and muscle; create an exercise; change one, which
+saves it and opens its proposal on github.com. Settings: the device's name,
+screen awake, the bell, plate increments per unit (`PLATE_CHOICES` in
+`src/ui/prefs.ts`), persistent storage, sync, and export of `sets.csv` and
+`sessions.csv`. Preferences stay on the device and never sync.
 
-One date range, from presets, a custom range or a template's label. Per lift:
-best e1RM over time, sets by tier, tonnage. Per muscle: volume, with the
-counting preset switchable in place. Stress per week and per muscle. Sets keep
-the unit they were logged in; analysis shows kilograms.
+**Conflicts.** When a sync finds or brings one, a full-screen notice says so,
+again at every launch, with a banner on every screen until none is left; during
+a session only the banner. Resolving sets the two versions side by side with
+the differences marked. This device is named; the other version is "another
+device", since device names never leave their device.
 
-### Conflicts
+**Updates** take over only outside a session, or at the next launch: a reload
+mid-session would lose the open set and the rest.
 
-When a sync finds or brings conflicts, a full-screen notice lists them, again at
-every launch, with a banner on every screen until none is left. During a
-session only the banner shows. The resolution screen sets the log's version
-beside the saved one, differences highlighted, set by set for a session and
-field by field for a row, with each version's device by name: every device can
-be named in settings, a name kept on that device.
+## Where the screens live
 
-### Settings and sync
+- `src/App.svelte` is the shell: tab bar, banner, notices, the screen for the
+  route.
+- `src/ui/route.ts`: every screen's address. Routes live in the URL hash, since
+  GitHub Pages cannot serve a deep link with a real path.
+- `src/ui/app.svelte.ts`: the app's state and every action a screen can take.
+- `src/ui/screens/`: one file per tab and page; `src/ui/session/`: the session,
+  the entry panel, the rest and the finish; `src/ui/kit/`: shared components.
+- Every rule and number is a tested pure module beside them (`src/ui/*.ts`,
+  `src/metrics/`).
 
-Sync status and exposure in full, **Sync now**, the files left alone because
-they do not parse, the repo and the masked token, replacing the token, moving
-to another repo (confirmed: the device forgets what it shared with the old
-one), the device's name, plate increments, persistent storage, and export of
-`sets.csv` and `sessions.csv`.
+## Decided against
 
-### Decided against
-
-**Recording when each set was done.** Nothing needs it: the rest timer runs on
+**Recording when each set was done.** Nothing needs it: the rest is timed on
 screen only, and rest analysis was never asked for.
+
+## For the designer
+
+Open questions v0.5 answered provisionally:
+
+- The statue is a first drawing; an illustrator's pass would refine its
+  proportions and face.
+- The share card follows the phone's mode (clay by day, glaze by night) rather
+  than offering a choice.
+- The bell and screen awake depend on the iPhone: screen awake needs iOS 18.4 or
+  later in a home-screen app, and the bell sounds only while the app is open.
+  It rings from the session screen, so not while the lifter looks at another
+  tab mid-rest; the intent is any screen.
+- A unit picked on a set not yet filled in is remembered by that tab only, until
+  a number in it reaches the log.
+- A session can be finished with sets still pending; they stay pending, marked
+  in History.

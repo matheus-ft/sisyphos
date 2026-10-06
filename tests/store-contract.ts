@@ -1,6 +1,16 @@
 import { describe, it, expect } from 'vitest';
+import type { Session, Template } from '../src/model';
+import {
+  serializeConflict,
+  serializeSession,
+  serializeTemplate,
+  TABLES,
+} from '../src/storage/formats';
 import { blobSha } from '../src/storage/hash';
+import { conflictPath, FORMAT_PATH, sessionPath, templatePath } from '../src/storage/paths';
 import type { Inflight, LocalStore } from '../src/storage/store/store';
+import type { Format1Records } from '../src/storage/store/upgrade';
+import { conflictV1, MARKER_V1, sessionV1, templateV1 } from './format1';
 
 /**
  * The store contract (`src/storage/store/store.ts`), written once and run
@@ -10,6 +20,12 @@ import type { Inflight, LocalStore } from '../src/storage/store/store';
  */
 
 export type StoreFactory = (options: { now?: () => Date }) => Promise<LocalStore>;
+
+/** A store over what a format-1 build left on the device, opened by this build. */
+export type UpgradeFactory = (
+  records: Format1Records,
+  options: { now?: () => Date },
+) => Promise<LocalStore>;
 
 export function clock(start = '2026-09-27T10:00:00.000Z') {
   let t = Date.parse(start);
@@ -27,10 +43,30 @@ const inflight: Inflight = {
     { path: 'a.json', sha: blobSha('x\n'), body: null },
     { path: 'lifter/bodyweight.csv', sha: null, body: 'date\n' },
   ],
+  format: null,
 };
 
-export function storeContract(name: string, make: StoreFactory): void {
+export function storeContract(name: string, make: StoreFactory, upgrade: UpgradeFactory): void {
   describe(`${name}: the store contract`, () => {
+    it('keeps the format a base is in until the base moves, and forgets it with the base', async () => {
+      const store = await make({});
+      await store.exclusive((s) =>
+        s.apply([
+          { op: 'base', path: 'a.json', sha: 'old', format: 1 },
+          { op: 'content', path: 'a.json', text: 'mine\n' },
+        ]),
+      );
+      expect(await store.entry('a.json')).toMatchObject({ base_sha: 'old', base_format: 1 });
+      await store.exclusive((s) => s.apply([{ op: 'base', path: 'a.json', sha: 'new' }]));
+      expect(await store.entry('a.json')).toMatchObject({ base_sha: 'new', base_format: null });
+
+      await store.exclusive((s) =>
+        s.apply([{ op: 'base', path: 'a.json', sha: 'old', format: 1 }]),
+      );
+      await store.resetSync();
+      expect(await store.entry('a.json')).toMatchObject({ base_sha: null, base_format: null });
+    });
+
     it('tracks local content against its base by hash', async () => {
       const c = clock();
       const store = await make({ now: c.now });
@@ -43,6 +79,7 @@ export function storeContract(name: string, make: StoreFactory): void {
         base_sha: null,
         unsynced_since: T0,
         base_body: null,
+        base_format: null,
       });
       expect(await store.content('a.json')).toBe('one\n');
 
@@ -135,6 +172,7 @@ export function storeContract(name: string, make: StoreFactory): void {
         local_sha: null,
         unsynced_since: T1,
         base_body: null,
+        base_format: null,
       });
       expect(await store.paths()).toEqual(['a.json']);
     });
@@ -153,6 +191,7 @@ export function storeContract(name: string, make: StoreFactory): void {
         local_sha: null,
         unsynced_since: expect.any(String),
         base_body: 'date\n',
+        base_format: null,
       });
       expect((await store.entry('b.json'))?.base_body).toBeNull();
 
@@ -373,6 +412,25 @@ export function storeContract(name: string, make: StoreFactory): void {
       });
     });
 
+    it('keeps device preferences beside the repo settings, merged and never required', async () => {
+      const store = await make({});
+      const before = await store.settings();
+      expect(before).not.toHaveProperty('plateKg');
+
+      await store.saveSettings({ deviceName: 'Phone', plateKg: 1.25, chime: true });
+      await store.saveSettings({ owner: 'lifter', keepAwake: true, plateLb: 10 });
+      await store.saveSettings({ chime: false });
+      expect(await store.settings()).toEqual({
+        ...before,
+        owner: 'lifter',
+        deviceName: 'Phone',
+        plateKg: 1.25,
+        plateLb: 10,
+        keepAwake: true,
+        chime: false,
+      });
+    });
+
     it('forgets every base on resetSync, keeping content', async () => {
       const c = clock();
       const store = await make({ now: c.now });
@@ -395,6 +453,7 @@ export function storeContract(name: string, make: StoreFactory): void {
         local_sha: blobSha('x\n'),
         unsynced_since: T1,
         base_body: null,
+        base_format: null,
       });
       expect(await store.entry('t.csv')).toMatchObject({ base_sha: null, base_body: null });
       expect(await store.entry('gone.json')).toBeNull();
@@ -404,4 +463,212 @@ export function storeContract(name: string, make: StoreFactory): void {
       expect(await store.inflight()).toBeNull();
     });
   });
+
+  describe(`${name}: opening what a format-1 build left`, () => {
+    it('migrates every file, and every base it holds the text of, keeping changes unsynced', async () => {
+      const c = clock(T1);
+      const store = await upgrade(format1Device(), { now: c.now });
+
+      // Synced: content and base move together, still in agreement.
+      for (const [path, text] of [
+        [sessionPath(SYNCED.id), serializeSession(SYNCED)],
+        [templatePath(PLAN.id), serializeTemplate(PLAN)],
+        [conflictPath(SAVED.id), serializeConflict(SAVED)],
+      ]) {
+        expect(await store.content(path), path).toBe(text);
+        expect(await store.entry(path), path).toEqual({
+          path,
+          base_sha: blobSha(text),
+          local_sha: blobSha(text),
+          unsynced_since: null,
+          base_body: null,
+          base_format: null,
+        });
+      }
+
+      // Changed here since: the change is migrated and still unsynced, its base
+      // still format 1's, marked so the sync can migrate it from the log.
+      const edited = sessionPath(EDITED.id);
+      expect(await store.content(edited)).toBe(serializeSession(EDITED));
+      expect(await store.entry(edited)).toEqual({
+        path: edited,
+        base_sha: blobSha(sessionV1(SYNCED_BEFORE_EDIT)),
+        local_sha: blobSha(serializeSession(EDITED)),
+        unsynced_since: T0,
+        base_body: null,
+        base_format: 1,
+      });
+      const deleted = sessionPath(DELETED.id);
+      expect(await store.content(deleted)).toBeNull();
+      expect(await store.entry(deleted)).toEqual({
+        path: deleted,
+        base_sha: blobSha(sessionV1(DELETED)),
+        local_sha: null,
+        unsynced_since: T0,
+        base_body: null,
+        base_format: 1,
+      });
+
+      // Never synced: nothing to agree with, still to be pushed.
+      const fresh = sessionPath(UNSYNCED.id);
+      expect(await store.entry(fresh)).toEqual({
+        path: fresh,
+        base_sha: null,
+        local_sha: blobSha(serializeSession(UNSYNCED)),
+        unsynced_since: T0,
+        base_body: null,
+        base_format: null,
+      });
+
+      // Tables, the marker and a file that never parsed are left as they were.
+      expect(await store.content(BODYWEIGHT)).toBe(WEIGH_INS);
+      expect(await store.entry(BODYWEIGHT)).toMatchObject({
+        base_body: WEIGH_INS,
+        base_format: null,
+      });
+      expect(await store.content(FORMAT_PATH)).toBe(MARKER_V1);
+      expect(await store.content(BROKEN)).toBe('not json\n');
+      expect(await store.entry(BROKEN)).toMatchObject({ base_format: null, unsynced_since: null });
+
+      expect(await store.paths()).toEqual(
+        format1Device()
+          .entries.map((e) => e.path)
+          .sort(),
+      );
+      for (const e of await store.entries()) {
+        const text = await store.content(e.path);
+        expect(e.local_sha, e.path).toBe(text === null ? null : blobSha(text));
+      }
+
+      // The head stays; the tree, whose blobs the bases no longer are, goes.
+      expect(await store.meta()).toEqual({ last_synced_head: 'c1', last_synced_tree: null });
+      expect(await store.inflight()).toEqual({ ...OLD_INFLIGHT, format: 1 });
+    });
+
+    it('then works as any store does', async () => {
+      const store = await upgrade(format1Device(), {});
+      const path = sessionPath(EDITED.id);
+      await store.exclusive((s) => s.apply([{ op: 'content', path, text: 'again\n' }]));
+      expect(await store.entry(path)).toMatchObject({ unsynced_since: T0, base_format: 1 });
+      await store.exclusive((s) => s.apply([{ op: 'base', path, sha: blobSha('again\n') }]));
+      expect(await store.entry(path)).toMatchObject({ unsynced_since: null, base_format: null });
+    });
+
+    it('opens an empty one as empty', async () => {
+      const store = await upgrade({ content: [], entries: [], meta: null, inflight: null }, {});
+      expect(await store.paths()).toEqual([]);
+      expect(await store.meta()).toEqual({ last_synced_head: null, last_synced_tree: null });
+      expect(await store.inflight()).toBeNull();
+    });
+  });
+}
+
+// --- what a format-1 build left ------------------------------------------------------
+
+const NO_LABEL = { name: null, block: null, week: null, day: null, weekday: null };
+
+function oldSession(id: string, notes: string): Session {
+  const date = id.slice(0, 10);
+  return {
+    id,
+    date,
+    started_at: `${date}T07:00:00.000Z`,
+    tz: 'Europe/Lisbon',
+    time_precision: 'instant',
+    ended_at: `${date}T08:30:00.000Z`,
+    label: NO_LABEL,
+    bodyweight_kg: null,
+    notes,
+    exercises: [
+      {
+        id: 'e1',
+        exercise_id: 'low_bar_squat',
+        rest_s: null,
+        prescribed: [],
+        performed: [],
+        notes: null,
+      },
+    ],
+    created_at: `${date}T07:00:00.000Z`,
+    updated_at: `${date}T08:30:00.000Z`,
+    device_id: 'old-phone',
+  };
+}
+
+const SYNCED = oldSession('2026-09-14-aaaa', 'synced');
+const SYNCED_BEFORE_EDIT = oldSession('2026-09-15-bbbb', 'as the log has it');
+const EDITED = oldSession('2026-09-15-bbbb', 'changed on this phone');
+const DELETED = oldSession('2026-09-16-cccc', 'deleted on this phone');
+const UNSYNCED = oldSession('2026-09-17-dddd', 'never synced');
+const PLAN: Template = {
+  id: 'squat-day-k3f9',
+  name: 'Squat day',
+  intention: null,
+  label: NO_LABEL,
+  exercises: [{ exercise_id: 'low_bar_squat', rest_s: null, prescribed: [] }],
+  created_at: T0,
+  updated_at: T0,
+};
+const SAVED = {
+  id: '2026-09-20-7xq2',
+  path: templatePath(PLAN.id),
+  key: null,
+  found_at: T0,
+  device_id: 'old-phone',
+  version: { ...PLAN, name: 'Squat day, mine' },
+};
+const BODYWEIGHT = TABLES.bodyweight.path;
+const WEIGH_INS = 'date,weight_kg,source\n2026-09-14,82,manual\n';
+const BROKEN = 'sessions/2026/2026-09-18-eeee.json';
+const OLD_INFLIGHT = {
+  commit: 'c2',
+  tree: 't2',
+  parent: 'c1',
+  pushed: [{ path: sessionPath(EDITED.id), sha: blobSha(sessionV1(EDITED)), body: null }],
+};
+
+/** A device a format-1 build synced, then changed: what IndexedDB held at version 1. */
+function format1Device(): Format1Records {
+  const content: Array<[string, string]> = [
+    [sessionPath(SYNCED.id), sessionV1(SYNCED)],
+    [sessionPath(EDITED.id), sessionV1(EDITED)],
+    [sessionPath(UNSYNCED.id), sessionV1(UNSYNCED)],
+    [templatePath(PLAN.id), templateV1(PLAN)],
+    [conflictPath(SAVED.id), conflictV1(SAVED)],
+    [BODYWEIGHT, WEIGH_INS],
+    [FORMAT_PATH, MARKER_V1],
+    [BROKEN, 'not json\n'],
+  ];
+  const synced = (path: string, text: string): Format1Records['entries'][number] => ({
+    path,
+    base_sha: blobSha(text),
+    local_sha: blobSha(text),
+    unsynced_since: null,
+    base_body: path === BODYWEIGHT ? text : null,
+  });
+  const entries = content.map(([path, text]) => synced(path, text));
+  const at = (path: string) => entries.findIndex((e) => e.path === path);
+  entries[at(sessionPath(EDITED.id))] = {
+    ...entries[at(sessionPath(EDITED.id))],
+    base_sha: blobSha(sessionV1(SYNCED_BEFORE_EDIT)),
+    unsynced_since: T0,
+  };
+  entries[at(sessionPath(UNSYNCED.id))] = {
+    ...entries[at(sessionPath(UNSYNCED.id))],
+    base_sha: null,
+    unsynced_since: T0,
+  };
+  entries.push({
+    path: sessionPath(DELETED.id),
+    base_sha: blobSha(sessionV1(DELETED)),
+    local_sha: null,
+    unsynced_since: T0,
+    base_body: null,
+  });
+  return {
+    content: content.map(([path, text]) => ({ path, text })),
+    entries,
+    meta: { last_synced_head: 'c1', last_synced_tree: 't1' },
+    inflight: OLD_INFLIGHT,
+  };
 }

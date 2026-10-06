@@ -21,7 +21,7 @@ sisyphos-log/                      ← your own PRIVATE repo. Your training.
 Nothing personal is committed here. Your bodyweight is not a project asset.
 
 How the two are kept in step is the code in `src/storage/`, starting at
-`sync.ts`; why it works that way is in [`DESIGN.md`](DESIGN.md#storage).
+`sync.ts`; why it works that way is in [`DECISIONS.md`](DECISIONS.md#storage).
 
 ## Setup: you create the log repo
 
@@ -118,7 +118,9 @@ their git blob hash.
 - **All files:** UTF-8, no byte-order mark, `\n` line endings, ending in exactly
   one `\n`.
 - **JSON:** two-space indentation, keys in a fixed order per type, absent values
-  as `null`, never omitted.
+  as `null`, never omitted. A file missing a key its format has does not parse:
+  a key a newer format adds reaches the files written before it only by
+  migrating them (The files).
 - **CSV:** a header row, then one row per record, sorted by the table's key
   (numbers numerically, everything else by code point). A cell containing a
   comma, a double quote, `\r` or `\n`, starting with `#`, or starting or ending
@@ -134,16 +136,32 @@ app's form by the next sync.
 
 ### The files
 
-`sisyphos.json` — `{ "format": 1 }`. Marks the repo as a log and says which
+`sisyphos.json` — `{ "format": 2 }`. Marks the repo as a log and says which
 format its files are in. An app that finds a newer format stops syncing and asks
 to be updated; logging on the device carries on. An older format is migrated, in
-one commit, before anything else.
+one commit, before anything else: every session, template and conflict record is
+rewritten in the new format, with the marker; a file that does not parse is left
+as it is. Nothing a device still on the old version logs is lost: it stops at the
+migrated log, and once updated, syncs what it logged meanwhile into it like any
+other change.
+
+Format 2 added two keys, which a format-1 file means as null and is migrated
+with:
+
+- to every template, `label`: the program label (`name`, `block`, `week`, `day`,
+  `weekday`, each nullable) that a session started from it copies;
+- to every exercise, in a template and in a session, `rest_s`: the target rest
+  between its sets, in whole seconds above zero, or null for its tier's default.
 
 `sessions/<YYYY>/<id>.json` — one session, with its exercises and sets. The folder
 is the year in the id, so moving a session to another date edits the file and
-moves nothing. Nested, machine-written, never edited by hand.
+moves nothing. Nested, machine-written, never edited by hand. A session planned ahead
+has `started_at` null until it starts; an app older than that rule leaves such a
+file alone rather than misreading it. An exercise's `rest_s` is the session's own:
+it starts as the template's and changes when the rest timer is nudged.
 
-`templates/<id>.json` — one template: the skeleton a session starts from.
+`templates/<id>.json` — one template: the skeleton a session starts from, with
+the program label and target rests it hands on.
 
 `lifter/bodyweight.csv` — `date, weight_kg, source`. Key: `date`, since there is
 at most one weigh-in a day. Needed for `bw_plus` loads.
@@ -191,16 +209,21 @@ Any other file you put in the log repo is yours: the app never touches it.
 
 ## Exports
 
-Not built yet; the screen that will make them is in `UI.md`, Sync and settings.
-Generated on demand, never a source of truth, and they carry no library-derived
+Made on demand from Agora › Settings (`src/ui/export.ts`), never a source of truth, and they carry no library-derived
 data — no muscles, no tier, no base lift. Exports reference `exercise_id` and the
 consumer joins against `exercises.csv`, which is the whole point of having a
 truth table.
 
 ```
 sets.csv       session_id, date, exercise_id, set_n, reps, rpe, load_kg, is_warmup, state
-sessions.csv   session_id, date, tz, duration_min, program labels, bodyweight_kg, notes
+sessions.csv   session_id, date, tz, duration_min, program_name, program_block,
+               program_week, program_day, program_weekday, bodyweight_kg, notes
 ```
+
+Cells follow Serialisation above. `load_kg` is the weight in kilograms (pounds
+converted), the load added for a bodyweight-plus set, and empty for pins, timed
+and distance sets, whose numbers stay in the log. `set_n` counts an exercise's
+sets through its session, so session, exercise and `set_n` identify a set.
 
 In a notebook that's one join:
 
@@ -225,9 +248,16 @@ df = pd.read_csv('sets.csv').merge(pd.read_csv('exercises.csv'), on='exercise_id
 | `metrics/stress.ts`      | The fatigue chart, stress index, central balance                                 |
 | `metrics/load.ts`        | Unit conversion, effective load, tonnage                                         |
 | `metrics/volume.ts`      | Volume by muscle, by tier and by event                                           |
+| `metrics/e1rm.ts`        | e1RM of a set and over time; `records.ts` the best weight at each rep count      |
+| `metrics/weekly.ts`      | Working sets per muscle per week; `dates.ts` calendar arithmetic on local dates  |
+| `ui/app.svelte.ts`       | The app's state and every action a screen takes, over `startStorage()`           |
+| `ui/route.ts`            | Every screen's address, kept in the URL hash                                     |
+| `ui/kit/`                | Shared components; with the tokens in `app.css`, the design system               |
+| `ui/screens/`            | One file per tab and page; `screens/agora/` holds the More pages                 |
+| `ui/session/`            | The session screen, the entry panel, the rest takeover and the finish            |
 | `ui/session.ts`          | Every change the session screen makes, as pure functions over a session          |
 | `ui/template.ts`         | The same for the template screen                                                 |
-| `ui/*.svelte`            | The screens; `App.svelte` at the root of `src/` wires them to the storage layer  |
+| `ui/*.ts`                | Every other rule and number a screen shows, one tested pure module per concern   |
 | `storage/app.ts`         | What the UI calls: `startStorage()` wires everything below                       |
 | `storage/log.ts`         | Sessions, templates, rows and conflicts, read and written as records             |
 | `storage/formats.ts`     | Every log-repo file to and from its record (see Serialisation above)             |

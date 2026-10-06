@@ -28,12 +28,19 @@ export function localDate(at: Date): IsoDate {
   return `${at.getFullYear()}-${pad(at.getMonth() + 1)}-${pad(at.getDate())}`;
 }
 
-export function newSession(input: { id: Id; at: Date; tz: string; deviceId: string }): Session {
+/** A session started now, or with `planned`, one filled in ahead and started later. */
+export function newSession(input: {
+  id: Id;
+  at: Date;
+  tz: string;
+  deviceId: string;
+  planned?: boolean;
+}): Session {
   const now = input.at.toISOString();
   return {
     id: input.id,
     date: localDate(input.at),
-    started_at: now,
+    started_at: input.planned ? null : now,
     tz: input.tz,
     time_precision: 'instant',
     ended_at: null,
@@ -73,11 +80,26 @@ export function addExercise(session: Session, exercise: Exercise, newId: NewId):
   const instance: ExerciseInstance = {
     id: newId(),
     exercise_id: exercise.id,
+    rest_s: null,
     prescribed: [],
     performed: [emptySet(newId())],
     notes: null,
   };
   return { ...session, exercises: [...session.exercises, instance] };
+}
+
+/**
+ * A target rest as the log keeps one: whole seconds, at least one, since the
+ * format refuses anything else (DATA.md, The files). Null, and anything that is
+ * not a number of seconds, is the tier's default.
+ */
+export function restSeconds(seconds: number | null): number | null {
+  return seconds === null || !Number.isFinite(seconds) ? null : Math.max(1, Math.round(seconds));
+}
+
+/** The exercise's target rest for the rest of this session. */
+export function setRest(session: Session, instanceId: Id, seconds: number | null): Session {
+  return updateInstance(session, instanceId, (e) => ({ ...e, rest_s: restSeconds(seconds) }));
 }
 
 function updateInstance(
@@ -165,6 +187,25 @@ export function editSet(
   });
 }
 
+/**
+ * A set filled in ahead, in a session not started yet. Its numbers are what is
+ * to be lifted, not what was, so it stays pending whatever it holds (a warm-up
+ * or a hold would otherwise count as done) and takes no RPE, which is what the
+ * set will feel like once it is lifted.
+ */
+export function planSet(
+  session: Session,
+  instanceId: Id,
+  setId: Id,
+  edit: SetEdit,
+  measure: 'weight' | 'time',
+  defaultUnit: LoadUnit,
+): Session {
+  const { rpe: _felt, ...numbers } = edit;
+  const next = editSet(session, instanceId, setId, numbers, measure, defaultUnit);
+  return updateSet(next, instanceId, setId, (set) => ({ ...set, state: 'pending' }));
+}
+
 /** The number a set's load holds, whatever it measures. */
 export function amountOf(set: PerformedSet): number | null {
   if (!set.load) return null;
@@ -174,6 +215,33 @@ export function amountOf(set: PerformedSet): number | null {
 
 export function unitOf(set: PerformedSet): LoadUnit | null {
   return set.load?.kind === 'weight' ? set.load.unit : null;
+}
+
+/**
+ * Skips a set: planned, deliberately not done. A skipped set holds no numbers;
+ * typing into it again makes it an ordinary set.
+ */
+export function skipSet(session: Session, instanceId: Id, setId: Id, skipped: boolean): Session {
+  return updateSet(session, instanceId, setId, (set) =>
+    skipped
+      ? { ...set, state: 'skipped', load: null, reps: null, rpe: null }
+      : { ...set, state: 'pending' },
+  );
+}
+
+export function setExerciseNotes(session: Session, instanceId: Id, notes: string): Session {
+  return updateInstance(session, instanceId, (e) => ({
+    ...e,
+    notes: notes.trim() === '' ? null : notes,
+  }));
+}
+
+/** How many sets are done: one more than before means a set was just finished. */
+export function doneCount(session: Session): number {
+  return session.exercises.reduce(
+    (n, e) => n + e.performed.filter((s) => s.state === 'done').length,
+    0,
+  );
 }
 
 export function removeSet(session: Session, instanceId: Id, setId: Id): Session {
@@ -208,8 +276,30 @@ export function moveExercise(session: Session, instanceId: Id, by: number): Sess
  * when it happened, and analysis must not read it as if it did.
  */
 export function setDate(session: Session, date: IsoDate): Session {
-  const sameDay = date === localDate(new Date(session.started_at));
+  // A planned session gets its clock time when it starts.
+  const sameDay = session.started_at === null || date === localDate(new Date(session.started_at));
   return { ...session, date, time_precision: sameDay ? 'instant' : 'date_only' };
+}
+
+/** Starts a planned session: it happens now, today, whenever it was planned for. */
+export function start(session: Session, at: Date): Session {
+  return {
+    ...session,
+    started_at: at.toISOString(),
+    date: localDate(at),
+    time_precision: 'instant',
+  };
+}
+
+/**
+ * A session being lifted now: started, not finished, and timed to the instant.
+ * One logged after the fact is open too, but dated by the day only, its clock
+ * says nothing about now: nothing in it rests, rings or keeps the screen on.
+ */
+export function isLive(session: Session): boolean {
+  return (
+    session.started_at !== null && session.ended_at === null && session.time_precision === 'instant'
+  );
 }
 
 export function finish(session: Session, at: Date): Session {
@@ -246,13 +336,14 @@ export function formatSeconds(seconds: number): string {
 }
 
 /** The most recent other session holding this exercise, newest first by date and start. */
-function lastInstance(
+export function lastInstance(
   exerciseId: string,
   sessions: Session[],
   except: Id,
 ): ExerciseInstance | null {
   const ordered = [...sessions].sort(
-    (a, b) => b.date.localeCompare(a.date) || b.started_at.localeCompare(a.started_at),
+    (a, b) =>
+      b.date.localeCompare(a.date) || (b.started_at ?? '').localeCompare(a.started_at ?? ''),
   );
   for (const session of ordered) {
     if (session.id === except) continue;
@@ -274,11 +365,67 @@ export function lastTime(exercise: Exercise, sessions: Session[], except: Id): s
     .join(', ');
 }
 
+export interface HistoryEntry {
+  session: Session;
+  /** The exercise's done sets that day, as `formatSet` writes them. */
+  sets: string[];
+}
+
+/** Every session that did this exercise, newest first, with its done sets. */
+export function historyOf(exercise: Exercise, sessions: Session[]): HistoryEntry[] {
+  return [...sessions]
+    .sort(
+      (a, b) =>
+        b.date.localeCompare(a.date) || (b.started_at ?? '').localeCompare(a.started_at ?? ''),
+    )
+    .flatMap((session) => {
+      const sets = session.exercises
+        .filter((e) => e.exercise_id === exercise.id)
+        .flatMap((e) => e.performed.filter((s) => s.state === 'done'))
+        .map((s) => formatSet(s, exercise));
+      return sets.length ? [{ session, sets }] : [];
+    });
+}
+
 /** The unit this exercise was last logged in; gyms differ, so a habit beats the library's hint. */
 export function lastUnit(exercise: Exercise, sessions: Session[], except: Id): LoadUnit {
   const found = lastInstance(exercise.id, sessions, except);
   const unit = found?.performed.map(unitOf).find((u) => u !== null);
   return unit ?? exercise.default_unit;
+}
+
+/**
+ * The unit a set is entered in: its own, else today's. A lifter who switched
+ * units in this session means it for the sets still to come, so this session
+ * speaks before the past: the unit last picked for the exercise (`chosen`, which
+ * an empty set cannot hold), else the nearest earlier weighted set of the
+ * instance, else the latest weighted set of the exercise anywhere in the
+ * session. Only then the habit of past sessions (`lastUnit`), and last the
+ * library's hint.
+ */
+export function unitFor(input: {
+  session: Session;
+  instance: ExerciseInstance;
+  set: PerformedSet;
+  exercise: Exercise | undefined;
+  sessions: Session[];
+  chosen?: LoadUnit | null;
+}): LoadUnit {
+  const { session, instance, set, exercise } = input;
+  const picked = unitOf(set) ?? input.chosen;
+  if (picked) return picked;
+  const at = instance.performed.findIndex((s) => s.id === set.id);
+  const earlier = instance.performed
+    .slice(0, Math.max(at, 0))
+    .map(unitOf)
+    .findLast((u) => u !== null);
+  if (earlier) return earlier;
+  const today = session.exercises
+    .filter((e) => e.exercise_id === instance.exercise_id)
+    .flatMap((e) => e.performed.map(unitOf))
+    .findLast((u) => u !== null);
+  if (today) return today;
+  return exercise ? lastUnit(exercise, input.sessions, session.id) : 'kg';
 }
 
 // --- templates ----------------------------------------------------------------------
@@ -293,9 +440,11 @@ export function templateFrom(
     id: input.id,
     name: input.name,
     intention: null,
+    label: { ...session.label },
     exercises: session.exercises
       .map((e) => ({
         exercise_id: e.exercise_id,
+        rest_s: e.rest_s,
         prescribed: e.performed.filter((s) => s.state === 'done').map(prescriptionOf),
       }))
       .filter((e) => e.prescribed.length > 0),
@@ -329,19 +478,27 @@ function prescriptionOf(set: PerformedSet): Omit<PrescribedSet, 'id'> {
   };
 }
 
-/** A new session's exercises from a template: its targets prescribed, one pending set for each. */
+/**
+ * A new session's exercises from a template: its targets prescribed, one
+ * pending set for each, its target rests; and the template's program label.
+ */
 export function fromTemplate(session: Session, template: Template, newId: NewId): Session {
   const exercises: ExerciseInstance[] = template.exercises.map((e) => {
     const prescribed = e.prescribed.map((p) => ({ ...p, id: newId() }));
     return {
       id: newId(),
       exercise_id: e.exercise_id,
+      rest_s: e.rest_s,
       prescribed,
       performed: prescribed.map((p) => ({ ...emptySet(newId(), p.id), is_warmup: p.is_warmup })),
       notes: null,
     };
   });
-  return { ...session, exercises: [...session.exercises, ...exercises] };
+  return {
+    ...session,
+    label: { ...template.label },
+    exercises: [...session.exercises, ...exercises],
+  };
 }
 
 /** What a set's prescription asks for, field by field, shown faintly in its empty fields. */
@@ -386,4 +543,28 @@ export function parseRpe(text: string): number | null | undefined {
   const n = parseNumber(text);
   if (n === null || n === undefined) return n;
   return n >= 1 && n <= 10 && Number.isInteger(n * 2) ? n : undefined;
+}
+
+// --- new exercises ------------------------------------------------------------------
+
+/** An exercise's id from its name, as the library spells ids: `low_bar_squat`. */
+export function exerciseIdFrom(name: string): string {
+  return name
+    .normalize('NFD')
+    .replace(/\p{Diacritic}/gu, '')
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, '_')
+    .replace(/^_+|_+$/g, '');
+}
+
+/**
+ * Why a name cannot be an exercise's, or null. The submission workflow refuses
+ * commas and quotes, which would split the library's row, and `#` and `@`,
+ * which GitHub would read as a link or a mention.
+ */
+export function nameProblem(name: string): string | null {
+  if (name.trim() === '') return 'Give it a name.';
+  if (/[,"#@]/.test(name)) return 'No commas, double quotes, # or @ in the name.';
+  if (exerciseIdFrom(name) === '') return 'The name needs a letter or a digit.';
+  return null;
 }

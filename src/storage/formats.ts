@@ -24,7 +24,7 @@ import type {
 } from '../model';
 import { FormatError } from './errors';
 import { sha1Hex } from './hash';
-import { classify, TABLE_PATHS, type TableKind } from './paths';
+import { classify, FORMAT_VERSION, TABLE_PATHS, type TableKind } from './paths';
 
 /**
  * How every log-repo file is written and read (docs/DATA.md, Serialisation and
@@ -573,8 +573,25 @@ function performedJson(set: PerformedSet) {
   };
 }
 
+function labelJson(label: ProgramLabel) {
+  return {
+    name: label.name,
+    block: label.block,
+    week: label.week,
+    day: label.day,
+    weekday: label.weekday,
+  };
+}
+
+/** Refused here as the reader refuses it, so no device ever commits a rest it cannot read back. */
+function restJson(seconds: number | null): number | null {
+  if (seconds !== null && !(Number.isInteger(seconds) && seconds > 0)) {
+    throw new Error(`cannot write a rest of ${seconds} s: whole seconds above zero, or null`);
+  }
+  return seconds;
+}
+
 function sessionJson(session: Session) {
-  const label = session.label;
   return {
     id: session.id,
     date: session.date,
@@ -582,18 +599,13 @@ function sessionJson(session: Session) {
     tz: session.tz,
     time_precision: session.time_precision,
     ended_at: session.ended_at,
-    label: {
-      name: label.name,
-      block: label.block,
-      week: label.week,
-      day: label.day,
-      weekday: label.weekday,
-    },
+    label: labelJson(session.label),
     bodyweight_kg: session.bodyweight_kg,
     notes: session.notes,
     exercises: session.exercises.map((instance) => ({
       id: instance.id,
       exercise_id: instance.exercise_id,
+      rest_s: restJson(instance.rest_s),
       prescribed: instance.prescribed.map((set) => ({ id: set.id, ...prescriptionJson(set) })),
       performed: instance.performed.map(performedJson),
       notes: instance.notes,
@@ -609,8 +621,10 @@ function templateJson(template: Template) {
     id: template.id,
     name: template.name,
     intention: template.intention,
+    label: labelJson(template.label),
     exercises: template.exercises.map((exercise) => ({
       exercise_id: exercise.exercise_id,
+      rest_s: restJson(exercise.rest_s),
       prescribed: exercise.prescribed.map(prescriptionJson),
     })),
     created_at: template.created_at,
@@ -746,6 +760,13 @@ const performedSet: Read<PerformedSet> = (v, path) => {
   };
 };
 
+/** Target rest: whole seconds above zero, or null for the tier's default. */
+const rest: Read<number | null> = nullable((v, path) =>
+  typeof v === 'number' && Number.isInteger(v) && v > 0
+    ? v
+    : fail(path, 'whole seconds above zero'),
+);
+
 const programLabel: Read<ProgramLabel> = (v, path) => {
   const field = fields(v, path);
   return {
@@ -762,7 +783,7 @@ const session: Read<Session> = (v, path) => {
   return {
     id: field('id', str),
     date: field('date', date),
-    started_at: field('started_at', str),
+    started_at: field('started_at', nullable(str)),
     tz: field('tz', str),
     time_precision: field('time_precision', oneOf(TIME_PRECISIONS)),
     ended_at: field('ended_at', nullable(str)),
@@ -776,6 +797,7 @@ const session: Read<Session> = (v, path) => {
         return {
           id: f('id', str),
           exercise_id: f('exercise_id', str),
+          rest_s: f('rest_s', rest),
           prescribed: f('prescribed', array(prescribedSet)),
           performed: f('performed', array(performedSet)),
           notes: f('notes', nullable(str)),
@@ -794,12 +816,14 @@ const template: Read<Template> = (v, path) => {
     id: field('id', str),
     name: field('name', str),
     intention: field('intention', nullable(str)),
+    label: field('label', programLabel),
     exercises: field(
       'exercises',
       array((x, p) => {
         const f = fields(x, p);
         return {
           exercise_id: f('exercise_id', str),
+          rest_s: f('rest_s', rest),
           prescribed: f('prescribed', array(prescription)),
         };
       }),
@@ -899,7 +923,11 @@ export function serializeConflict(conflict: ConflictRecord): string {
   });
 }
 export function parseConflict(text: string): ConflictRecord {
-  const field = fields(parseJson(text), 'conflict');
+  return conflict(parseJson(text));
+}
+
+function conflict(value: unknown): ConflictRecord {
+  const field = fields(value, 'conflict');
   const path = field('path', str);
   const target = classify(path);
 
@@ -949,6 +977,80 @@ export function parseConflict(text: string): ConflictRecord {
     version,
   };
 }
+
+// --- older formats -----------------------------------------------------------------
+
+/** What a step of a format migration rewrites. */
+type MigratedKind = 'session' | 'template' | 'conflict';
+
+/**
+ * `STEPS[n]` takes a file's JSON, as parsed, from format n to n + 1, in place.
+ * It only adds what the newer format added, at the value that means what the
+ * older one meant by leaving it out; the current reader then checks the rest
+ * by the rules both formats share, so no older reader is kept. A field the
+ * file already has is kept, so migrating a file that is already in the newer
+ * format changes nothing: a marker set back by hand costs a commit, not data.
+ */
+const STEPS: Record<number, (value: unknown, kind: MigratedKind) => void> = {
+  // Format 2 added a template's program label and each exercise's target rest.
+  // A format-1 template sat in no program, and every rest was the tier's.
+  1: function toFormat2(value, kind) {
+    if (!isObject(value)) return;
+    if (kind === 'conflict') {
+      const target = typeof value.path === 'string' ? classify(value.path).kind : null;
+      if (target === 'session' || target === 'template') toFormat2(value.version, target);
+      return;
+    }
+    if (kind === 'template' && !Object.hasOwn(value, 'label')) {
+      value.label = { name: null, block: null, week: null, day: null, weekday: null };
+    }
+    if (Array.isArray(value.exercises)) {
+      for (const exercise of value.exercises) {
+        if (isObject(exercise) && !Object.hasOwn(exercise, 'rest_s')) exercise.rest_s = null;
+      }
+    }
+  },
+};
+
+function isObject(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null && !Array.isArray(value);
+}
+
+/**
+ * Whether a format migration rewrites the file at this path. Every step so far
+ * changes sessions, templates and conflict records only; tables, the marker and
+ * files that are not the app's are left as they are.
+ */
+export function isMigrated(path: string): boolean {
+  const kind = classify(path).kind;
+  return kind === 'session' || kind === 'template' || kind === 'conflict';
+}
+
+/**
+ * A file written in log format `from`, as this format writes it (DATA.md, The
+ * files). Throws FormatError for content that is not a valid file of its kind
+ * in that format, which a migration leaves as it is: it did not parse before
+ * either. A file `isMigrated` does not cover is returned unchanged.
+ */
+export function migrateFile(path: string, text: string, from: number): string {
+  if (!Number.isInteger(from) || from < 1 || from > FORMAT_VERSION) {
+    throw new Error(`there is no log format ${from} to migrate from`);
+  }
+  const kind = classify(path).kind;
+  if (kind !== 'session' && kind !== 'template' && kind !== 'conflict') return text;
+  const value = parseJson(text);
+  for (let format = from; format < FORMAT_VERSION; format++) STEPS[format](value, kind);
+  switch (kind) {
+    case 'session':
+      return serializeSession(session(value, 'session'));
+    case 'template':
+      return serializeTemplate(template(value, 'template'));
+    case 'conflict':
+      return serializeConflict(conflict(value));
+  }
+}
+
+// --- the format marker -------------------------------------------------------------
 
 export function serializeFormatMarker(marker: FormatMarker): string {
   return json({ format: marker.format });

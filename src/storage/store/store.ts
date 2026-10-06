@@ -7,7 +7,9 @@ import type { Instant } from '../../model';
  * text, plus the sync bookkeeping for that path. It knows nothing about what the
  * files mean: parsing them into sessions, rows and the rest is `log.ts`, on top.
  * That is what lets the sync treat every file the same way, and lets the
- * in-memory and IndexedDB stores share one contract and one test suite.
+ * in-memory and IndexedDB stores share one contract and one test suite. The one
+ * exception is opening what an older build left in an older log format, which
+ * `upgrade.ts` brings to this one before anything reads it.
  *
  * Two implementations: `MemoryStore` (tests, the simulation) and `IndexedDbStore`
  * (the app). Both must behave identically.
@@ -24,6 +26,14 @@ export interface SyncEntry {
   unsynced_since: Instant | null;
   /** Tables only: the base content itself, which the per-key decision needs. */
   base_body: string | null;
+  /**
+   * The older log format `base_sha` is in, when the store's upgrade could not
+   * bring it to the content's (`upgrade.ts`): the device had changed the file
+   * since, so the base's own text was not on it. The sync reads that version
+   * from the remote by its sha and migrates it before comparing. Null: the
+   * base is in the content's format.
+   */
+  base_format: number | null;
 }
 
 export interface SyncMeta {
@@ -48,6 +58,12 @@ export interface Inflight {
   parent: string;
   /** What each pushed path will hold once the commit lands. `sha` null: deleted. `body`: tables only. */
   pushed: Array<{ path: string; sha: string | null; body: string | null }>;
+  /**
+   * The older log format the pushed files are in, when an older build recorded
+   * the commit: once it is found to have landed, their bases take this as their
+   * `base_format`. Null: the content's format.
+   */
+  format: number | null;
 }
 
 export interface Settings {
@@ -65,6 +81,21 @@ export interface Settings {
   token: string | null;
   /** Random, generated once per install, never copied between devices. */
   device_id: string;
+  /**
+   * Device preferences, all optional: `saveSettings` merges whole objects, so a
+   * record saved before they existed still reads as settings, and `readPrefs`
+   * (src/ui/prefs.ts) fills what is absent. They stay on the device and never
+   * enter the log repo.
+   */
+  /** How this device names itself where a conflict puts two versions side by side. */
+  deviceName?: string;
+  /** Plate increment in kilograms and in pounds, the step of the entry panel's - and +. */
+  plateKg?: number;
+  plateLb?: number;
+  /** Hold a Wake Lock while a session is open. */
+  keepAwake?: boolean;
+  /** Chime when a rest reaches zero. */
+  chime?: boolean;
 }
 
 /**
@@ -78,10 +109,11 @@ export type StoreOp =
    */
   | { op: 'content'; path: string; text: string | null }
   /**
-   * Move a path's base. `body` is for tables and is ignored otherwise. The store
-   * updates `unsynced_since` against the new base.
+   * Move a path's base. `body` is for tables and is ignored otherwise; `format`
+   * is the new base's `base_format`, null when omitted. The store updates
+   * `unsynced_since` against the new base.
    */
-  | { op: 'base'; path: string; sha: string | null; body?: string | null }
+  | { op: 'base'; path: string; sha: string | null; body?: string | null; format?: number | null }
   | { op: 'meta'; meta: SyncMeta }
   | { op: 'inflight'; inflight: Inflight | null };
 

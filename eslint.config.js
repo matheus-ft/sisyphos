@@ -33,7 +33,8 @@ export default defineConfig(
     },
   },
   {
-    files: ['**/*.svelte'],
+    // Runes modules (`*.svelte.ts`) go through the Svelte parser too, with TypeScript inside.
+    files: ['**/*.svelte', '**/*.svelte.ts'],
     languageOptions: { parserOptions: { parser: tseslint.parser } },
   },
 );

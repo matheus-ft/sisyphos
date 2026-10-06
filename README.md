@@ -56,10 +56,15 @@ src/
   library/    muscles.csv, exercises.csv, the parser for them, and how the
               lifter's own exercises combine with them
   metrics/    definitions.json, the two lookup charts, and the code reading them
-  ui/         the screens: logging a session, setup, the status line
+  ui/         the four tabs (Train, History, Progress, More), the session, the
+              design system's components, and the rules behind every screen
   storage/    the device store, sync with the log repo, setup, scheduling,
               durability
+e2e/          the main flows driven in a browser at phone size
 ```
+
+What the lifter wants from each screen, the brief a designer works from, is in
+[`docs/UI.md`](docs/UI.md).
 
 **No training data lives in this repo.** Sessions, bodyweight, reference maxes
 and records go in a separate private log repo you create once. See
@@ -77,7 +82,8 @@ Requires Node 24.5 or newer: the tests need its Web Locks (`navigator.locks`).
 npm install
 npm run dev      # dev server
 npm run build    # production bundle + service worker
-npm run verify   # formatting, lint, typecheck, tests: what CI checks
+npm run verify   # formatting, lint, typecheck, tests: what CI checks first
+npm run e2e      # the main flows in a browser at phone size (e2e/); CI runs these too
 npm run smoke    # the storage layer against real GitHub; see tests/smoke.live.test.ts
 npm run hooks:install   # formatting on commit
 ```
@@ -97,7 +103,7 @@ Set on github.com, not in the repo:
 ## Data model
 
 The schema and its invariants are in [`src/model/`](src/model/); the decisions
-behind it, and what was rejected, are in [`docs/DESIGN.md`](docs/DESIGN.md).
+behind it, and what was rejected, are in [`docs/DECISIONS.md`](docs/DECISIONS.md).
 
 Four things worth knowing up front.
 

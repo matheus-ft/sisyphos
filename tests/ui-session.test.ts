@@ -7,10 +7,18 @@ import type { StatusSnapshot } from '../src/storage/status';
 import {
   addExercise,
   addSet,
+  doneCount,
+  exerciseIdFrom,
+  historyOf,
+  nameProblem,
+  setExerciseNotes,
+  skipSet,
+  start,
   editSet,
   finish,
   formatSet,
   fromTemplate,
+  isLive,
   lastTime,
   lastUnit,
   localDate,
@@ -21,13 +29,19 @@ import {
   parseNumber,
   parseRpe,
   parseSeconds,
+  planSet,
   removeExercise,
   removeSet,
+  restSeconds,
   setDate,
+  setRest,
   targetsOf,
   templateFrom,
+  unitFor,
 } from '../src/ui/session';
 import { statusLine } from '../src/ui/status';
+import { parseSession, serializeSession } from '../src/storage/formats';
+import { sessionInProgress } from '../src/storage/scheduler';
 
 const muscles = parseMuscles(musclesCsv);
 const library = parseExercises(exercisesCsv, new Set(muscles.map((m) => m.id)));
@@ -67,6 +81,7 @@ describe('a session being logged', () => {
     const s = addExercise(started(), squat, ids());
     expect(s.exercises).toHaveLength(1);
     expect(s.exercises[0].exercise_id).toBe('low_bar_squat');
+    expect(s.exercises[0].rest_s).toBeNull();
     expect(s.exercises[0].performed).toEqual([
       expect.objectContaining({ state: 'pending', load: null, reps: null, rpe: null }),
     ]);
@@ -193,6 +208,92 @@ describe('what came before', () => {
     expect(lastUnit(squat, [inLb], started().id)).toBe('lb');
     expect(lastUnit(squat, [], started().id)).toBe(squat.default_unit);
   });
+
+  describe('the unit a set is entered in', () => {
+    const inLb: Session = {
+      ...earlier,
+      exercises: earlier.exercises.map((e) => ({
+        ...e,
+        performed: e.performed.map((s) => ({
+          ...s,
+          load: { kind: 'weight', value: 315, unit: 'lb' },
+        })),
+      })),
+    };
+    /** Today's session: squat 100 kg × 5 @ 8, then an empty set. */
+    const today = () => {
+      const newId = ids();
+      let s = addExercise(started(), squat, newId);
+      const e = s.exercises[0];
+      s = editSet(s, e.id, e.performed[0].id, { amount: 100, reps: 5, rpe: 8 }, 'weight', 'kg');
+      return addSet(s, e.id, newId);
+    };
+    const unitOfSet = (session: Session, instance = 0, set = -1) => {
+      const e = session.exercises[instance];
+      const at = e.performed.at(set)!;
+      const blank = { ...at, load: null };
+      const s = {
+        ...session,
+        exercises: session.exercises.map((x) =>
+          x.id === e.id
+            ? { ...x, performed: x.performed.map((p) => (p.id === at.id ? blank : p)) }
+            : x,
+        ),
+      };
+      const inst = s.exercises[instance];
+      return unitFor({ session: s, instance: inst, set: blank, exercise: squat, sessions: [inLb] });
+    };
+
+    it("is today's, not last time's: a lifter who switched to kg today gets kg", () => {
+      expect(unitOfSet(today())).toBe('kg');
+    });
+
+    it('is the nearest earlier weighted set of the exercise', () => {
+      let s = today();
+      const e = s.exercises[0];
+      s = addSet(s, e.id, () => 'third');
+      const second = s.exercises[0].performed[1].id;
+      s = editSet(s, e.id, second, { amount: 225, unit: 'lb' }, 'weight', 'kg');
+      expect(unitOfSet(s)).toBe('lb');
+    });
+
+    it('is found in another visit to the exercise in the session', () => {
+      const s = addExercise(today(), squat, () => 'again');
+      expect(unitOfSet(s, 1, 0)).toBe('kg');
+    });
+
+    it('is the one the lifter picked for the exercise today, though the set is empty', () => {
+      const s = today();
+      const [e] = s.exercises;
+      const blank = addSet(s, e.id, () => 'blank').exercises[0].performed.at(-1)!;
+      const set = { ...blank, load: null };
+      const input = { session: s, instance: e, set, exercise: squat, sessions: [inLb] };
+      expect(unitFor({ ...input, chosen: 'lb' })).toBe('lb');
+      const lifted = e.performed[0];
+      expect(unitFor({ ...input, set: lifted, chosen: 'lb' })).toBe('kg');
+    });
+
+    it("is last time's when today has no weight yet, else the library's hint", () => {
+      const s = addExercise(started(), squat, ids());
+      const [e] = s.exercises;
+      const set = e.performed[0];
+      const input = { session: s, instance: e, set, exercise: squat };
+      expect(unitFor({ ...input, sessions: [inLb] })).toBe('lb');
+      expect(unitFor({ ...input, sessions: [] })).toBe(squat.default_unit);
+    });
+
+    it('is the set its own when it has a load', () => {
+      const s = today();
+      const [e] = s.exercises;
+      const set = {
+        ...e.performed[0],
+        load: { kind: 'weight' as const, value: 7, unit: 'pins' as const },
+      };
+      expect(unitFor({ session: s, instance: e, set, exercise: squat, sessions: [inLb] })).toBe(
+        'pins',
+      );
+    });
+  });
 });
 
 describe('templates', () => {
@@ -205,6 +306,7 @@ describe('templates', () => {
     expect(template.exercises).toEqual([
       {
         exercise_id: 'low_bar_squat',
+        rest_s: null,
         prescribed: [
           {
             reps: [5, 5],
@@ -223,6 +325,53 @@ describe('templates', () => {
       expect.objectContaining({ state: 'pending', prescribed_id: e.prescribed[0].id }),
     ]);
     expect(targetsOf(e, e.performed[0])).toEqual({ amount: '140', reps: '5', rpe: '8' });
+  });
+
+  it('carry the program label and each target rest from session to template and back', () => {
+    const label = { name: 'Off-season', block: 2, week: 3, day: 1, weekday: 'monday' };
+    const logged = withSquat();
+    const session: Session = {
+      ...setRest(logged, logged.exercises[0].id, 210),
+      label,
+    };
+    const template = templateFrom(session, {
+      id: 'squat-day-k3f9',
+      name: 'Squat day',
+      at: new Date(),
+    });
+    expect(template.label).toEqual(label);
+    expect(template.exercises[0].rest_s).toBe(210);
+
+    const next = fromTemplate(started(), template, ids());
+    expect(next.label).toEqual(label);
+    expect(next.exercises[0].rest_s).toBe(210);
+    // Copies, not shared: relabelling one leaves the other as it was.
+    next.label.week = 4;
+    expect(template.label.week).toBe(3);
+  });
+});
+
+describe('the target rest', () => {
+  it('changes for one exercise of the session only, and back to the tier default', () => {
+    const newId = ids();
+    const s = addExercise(withSquat(newId), plank, newId);
+    const [squatId, plankId] = s.exercises.map((e) => e.id);
+    const longer = setRest(s, squatId, 195);
+    expect(longer.exercises.map((e) => e.rest_s)).toEqual([195, null]);
+    expect(setRest(longer, squatId, null).exercises[0].rest_s).toBeNull();
+    expect(setRest(longer, plankId, 60).exercises.map((e) => e.rest_s)).toEqual([195, 60]);
+  });
+
+  it('is kept as whole seconds of at least one, which the log can hold', () => {
+    expect(restSeconds(null)).toBeNull();
+    expect(restSeconds(90.4)).toBe(90);
+    expect(restSeconds(0)).toBe(1);
+    expect(restSeconds(-15)).toBe(1);
+    expect(restSeconds(NaN)).toBeNull();
+    expect(restSeconds(Infinity)).toBeNull();
+    const s = withSquat();
+    const saved = setRest(s, s.exercises[0].id, 89.6);
+    expect(parseSession(serializeSession(saved))).toEqual(saved);
   });
 });
 
@@ -303,5 +452,141 @@ describe('the order of exercises', () => {
     const moved = moveExercise(s, plankId, -1);
     expect(moved.exercises.map((e) => e.exercise_id)).toEqual(['plank', 'low_bar_squat']);
     expect(moveExercise(moved, plankId, -1)).toEqual(moved);
+  });
+});
+
+describe('a planned session', () => {
+  const at = new Date(2026, 9, 4, 12, 30);
+  const planned = () =>
+    newSession({
+      id: '2026-10-04-p1an',
+      at,
+      tz: 'Europe/Lisbon',
+      deviceId: 'phone',
+      planned: true,
+    });
+
+  it('has no start until it is started, and holds no sync back meanwhile', () => {
+    expect(planned().started_at).toBeNull();
+    expect(sessionInProgress([planned()], at)).toBe(false);
+  });
+
+  it('starts now and today, whenever it was planned for', () => {
+    const tonight = new Date(2026, 9, 5, 19, 0);
+    const s = start({ ...planned(), date: '2026-10-01', time_precision: 'date_only' }, tonight);
+    expect(s).toMatchObject({
+      started_at: tonight.toISOString(),
+      date: '2026-10-05',
+      time_precision: 'instant',
+    });
+    // Starting it is a write, which stamps updated_at.
+    expect(sessionInProgress([{ ...s, updated_at: tonight.toISOString() }], tonight)).toBe(true);
+  });
+
+  it('fills a set in ahead without lifting it: numbers kept, still pending, no RPE', () => {
+    const s = addExercise(planned(), squat, ids());
+    const [e] = s.exercises;
+    const set = e.performed[0].id;
+    const edit = { amount: 140, reps: 5, rpe: 8 };
+    const next = planSet(s, e.id, set, edit, 'weight', 'kg').exercises[0].performed[0];
+    expect(next).toMatchObject({
+      state: 'pending',
+      load: { kind: 'weight', value: 140, unit: 'kg' },
+      reps: 5,
+      rpe: null,
+    });
+  });
+
+  it('keeps a planned warm-up and a planned hold pending too, though their numbers would finish them', () => {
+    const newId = ids();
+    let s = addExercise(addExercise(planned(), squat, newId), plank, newId);
+    const [lift, hold] = s.exercises;
+    const warm = { amount: 60, reps: 5, is_warmup: true };
+    s = planSet(s, lift.id, lift.performed[0].id, warm, 'weight', 'kg');
+    s = planSet(s, hold.id, hold.performed[0].id, { amount: 60 }, 'time', 'kg');
+    expect(s.exercises.map((e) => e.performed[0].state)).toEqual(['pending', 'pending']);
+    expect(s.exercises[0].performed[0].is_warmup).toBe(true);
+    expect(s.exercises[1].performed[0].load).toEqual({ kind: 'time', seconds: 60 });
+  });
+
+  it('reads back from the log exactly as written', () => {
+    const s = addExercise(planned(), squat, ids());
+    expect(parseSession(serializeSession(s))).toEqual(s);
+  });
+});
+
+describe('a session lifted now', () => {
+  it('is one started and not finished, timed to the instant', () => {
+    expect(isLive(started())).toBe(true);
+  });
+
+  it('is not one planned, nor one finished', () => {
+    const planned = newSession({
+      id: 'p',
+      at: new Date(2026, 9, 4, 12),
+      tz: 'Europe/Lisbon',
+      deviceId: 'phone',
+      planned: true,
+    });
+    expect(isLive(planned)).toBe(false);
+    expect(isLive(finish(started(), new Date(2026, 9, 4, 20)))).toBe(false);
+  });
+
+  it('is not one logged after the fact, open though it is: its clock says nothing about now', () => {
+    const past = setDate(started(), '2026-09-28');
+    expect(past.ended_at).toBeNull();
+    expect(isLive(past)).toBe(false);
+  });
+});
+
+describe('skipping, notes and counting', () => {
+  it('skips a set, emptying it, and unskips it to pending', () => {
+    const s = withSquat();
+    const [e] = s.exercises;
+    const skipped = skipSet(s, e.id, e.performed[0].id, true);
+    expect(skipped.exercises[0].performed[0]).toMatchObject({
+      state: 'skipped',
+      load: null,
+      rpe: null,
+    });
+    expect(skipSet(skipped, e.id, e.performed[0].id, false).exercises[0].performed[0].state).toBe(
+      'pending',
+    );
+  });
+
+  it('keeps a note per exercise, empty meaning none', () => {
+    const s = withSquat();
+    const id = s.exercises[0].id;
+    expect(setExerciseNotes(s, id, 'belt from set 3').exercises[0].notes).toBe('belt from set 3');
+    expect(setExerciseNotes(s, id, '  ').exercises[0].notes).toBeNull();
+  });
+
+  it('counts done sets, so a new one shows as a set just finished', () => {
+    expect(doneCount(started())).toBe(0);
+    expect(doneCount(withSquat())).toBe(1);
+  });
+});
+
+describe("an exercise's history", () => {
+  it('lists every session with it, newest first, with its done sets', () => {
+    const older: Session = { ...withSquat(), id: '2026-09-28-a1b2', date: '2026-09-28' };
+    const newer: Session = { ...withSquat(), id: '2026-10-01-c3d4', date: '2026-10-01' };
+    const history = historyOf(squat, [older, started(), newer]);
+    expect(history.map((h) => h.session.date)).toEqual(['2026-10-01', '2026-09-28']);
+    expect(history[0].sets).toEqual(['140 × 5 @ 8']);
+  });
+});
+
+describe('a new exercise', () => {
+  it('takes its id from its name', () => {
+    expect(exerciseIdFrom('Pin Squat (high)')).toBe('pin_squat_high');
+    expect(exerciseIdFrom('Agachamento Búlgaro')).toBe('agachamento_bulgaro');
+  });
+
+  it('refuses names the submission workflow would refuse', () => {
+    expect(nameProblem('Pin Squat')).toBeNull();
+    expect(nameProblem('Squat, paused')).not.toBeNull();
+    expect(nameProblem('#1 squat')).not.toBeNull();
+    expect(nameProblem('  ')).not.toBeNull();
   });
 });

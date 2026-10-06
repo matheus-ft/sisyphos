@@ -55,7 +55,7 @@ import type { SyncEntry } from '../../src/storage/store/store';
  * and every unit a commit changes must hold the device's base content in the
  * log (R = B). So a version can only vanish by being replaced knowingly, or when
  * its unit's content had gone back to a base, where three versions cannot show
- * the change: the known limit (docs/DESIGN.md, Storage). A deletion lost that way is reported as
+ * the change: the known limit (docs/DECISIONS.md, Storage). A deletion lost that way is reported as
  * undone by a concurrent write, invariant 2's one exception; anything else lost
  * fails.
  */
@@ -572,7 +572,7 @@ export class Oracle {
   }
 
   /**
-   * The design limit (`docs/DESIGN.md`, Storage: nothing marks a record as
+   * The design limit (`docs/DECISIONS.md`, Storage: nothing marks a record as
    * changed or deleted). A version a sync overwrote while its unit's content
    * equalled the base, so the sync had no way to see it: on its own device,
    * whose content had gone back to the base; or in the log, whose content had

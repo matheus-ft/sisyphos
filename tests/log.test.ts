@@ -75,6 +75,7 @@ function session(id: string, changes: Partial<Session> = {}): Session {
       {
         id: 'instance-1',
         exercise_id: 'low_bar_squat',
+        rest_s: 180,
         prescribed: [],
         performed: [
           {
@@ -103,9 +104,11 @@ function template(id: string, changes: Partial<Template> = {}): Template {
     id,
     name: 'Squat day A',
     intention: null,
+    label: { name: 'Off-season 2026', block: 1, week: 2, day: 1, weekday: 'monday' },
     exercises: [
       {
         exercise_id: 'low_bar_squat',
+        rest_s: 210,
         prescribed: [
           {
             reps: [5, 5],

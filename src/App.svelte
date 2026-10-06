@@ -1,284 +1,176 @@
 <script lang="ts">
   import { onMount } from 'svelte';
-  import type { Exercise, IsoDate, Session, Template } from './model';
-  import { startStorage, type AppStorage } from './storage/app';
-  import type { SetupInput, SetupResult } from './storage/setup';
-  import type { StatusSnapshot } from './storage/status';
-  import Home from './ui/Home.svelte';
-  import SessionView from './ui/SessionView.svelte';
-  import Setup from './ui/Setup.svelte';
-  import TemplateView from './ui/TemplateView.svelte';
-  import { finish, fromTemplate, localDate, newSession, setDate, templateFrom } from './ui/session';
-  import { newTemplate } from './ui/template';
-  import { statusLine } from './ui/status';
+  import { app } from './ui/app.svelte';
+  import Banner from './ui/kit/Banner.svelte';
+  import Boulder from './ui/kit/Boulder.svelte';
+  import DialogHost from './ui/kit/DialogHost.svelte';
+  import TabBar from './ui/kit/TabBar.svelte';
+  import ToastHost from './ui/kit/ToastHost.svelte';
+  import { routeHash, tabOf } from './ui/route';
+  import Agora from './ui/screens/Agora.svelte';
+  import Setup from './ui/screens/agora/Setup.svelte';
+  import ExerciseHistory from './ui/screens/ExerciseHistory.svelte';
+  import History from './ui/screens/History.svelte';
+  import NewExercise from './ui/screens/NewExercise.svelte';
+  import Progress from './ui/screens/Progress.svelte';
+  import Template from './ui/screens/Template.svelte';
+  import Train from './ui/screens/Train.svelte';
+  import FinishScreen from './ui/session/FinishScreen.svelte';
+  import SessionView from './ui/session/SessionView.svelte';
+  import ConflictNotice from './ui/ConflictNotice.svelte';
+  import { noticeShown } from './ui/conflicts';
+  import { bannerOf } from './ui/status';
+  import { update } from './ui/update.svelte';
+  import { showUpdateNotice } from './ui/update';
 
-  /** Set once the lifter chose to go without sync, so setup stops greeting them. */
-  const SKIPPED = 'sisyphos.setup-skipped';
-
-  let storage = $state<AppStorage | null>(null);
-  let status = $state<StatusSnapshot | null>(null);
-  let failure = $state<string | null>(null);
-  let showSetup = $state(false);
-  /** The session on screen: the one in progress, or a past one being read or edited. */
-  let session = $state<Session | null>(null);
-  /** The template being edited, when no session is on screen. */
-  let template = $state<Template | null>(null);
-  let sessions = $state<Session[]>([]);
-  let templates = $state<Template[]>([]);
-  let library = $state<Exercise[]>([]);
-
-  const inSession = $derived(session !== null && session.ended_at === null);
-  const line = $derived(status ? statusLine(status, inSession) : null);
+  /**
+   * The shell: the screen the route names, the tab bar under it, and what
+   * shows over every screen (the banner, the conflict notice, toasts and
+   * dialogs). State and actions live in ui/app.svelte.ts.
+   */
 
   onMount(() => {
-    let disposed = false;
-    let started: AppStorage | null = null;
-    // Exposure ages with the clock, not only with writes.
-    const timer = setInterval(() => void started?.scheduler.status(), 60_000);
-
-    startStorage({
-      target: window,
-      onStatus: (next) => {
-        status = next;
-        // A finished sync may have brought sessions from another device.
-        if (started) void load(started);
-      },
-    }).then(
-      async (s) => {
-        if (disposed) return s.dispose();
-        started = s;
-        storage = s;
-        await load(s);
-        const open = await s.log.listOpenSessions();
-        session = open.at(-1) ?? null;
-        const settings = await s.store.settings();
-        showSetup = settings.owner === null && !skipped();
-        await s.scheduler.status();
-      },
-      (error: unknown) =>
-        (failure = `This phone's storage could not be opened: ${messageOf(error)}`),
-    );
-
-    return () => {
-      disposed = true;
-      clearInterval(timer);
-      started?.dispose();
-    };
+    update.start(() => app.inSession);
+    return app.boot();
   });
 
-  async function load(s: AppStorage): Promise<void> {
-    const [all, saved, assembled] = await Promise.all([
-      s.log.listSessions('0000-01-01', '9999-12-31'),
-      s.log.getTemplates(),
-      s.log.library(),
-    ]);
-    sessions = all;
-    templates = saved;
-    library = assembled.exercises;
-  }
+  const route = $derived(app.route);
+  /** A session is a focused mode, with its own back: the tab bar steps aside. */
+  const focused = $derived(route.name === 'session' || route.name === 'finish');
+  const takeover = $derived(app.showSetup || app.creating !== null || app.editing !== null);
+  const docked = $derived(!focused && !takeover && app.storage !== null);
+  const banner = $derived(app.status ? bannerOf(app.status, app.inSession) : null);
+  /** On the page its action leads to, the banner would only repeat that page's own news. */
+  const bannerHome = $derived(
+    banner?.action != null && route.name === 'more' && route.page === banner.action.to,
+  );
+  const conflicts = $derived((app.status?.conflicts ?? 0) + (app.status?.libraryConflicts ?? 0));
+  const trainHref = $derived(
+    app.running ? routeHash({ name: 'session', id: app.running.id }) : routeHash({ name: 'train' }),
+  );
+  const exercise = $derived(
+    route.name === 'exercise' ? app.library.find((e) => e.id === route.id) : undefined,
+  );
 
-  function skipped(): boolean {
-    try {
-      return localStorage.getItem(SKIPPED) === 'yes';
-    } catch {
-      return false;
-    }
-  }
-
-  function skipSetup(): void {
-    try {
-      localStorage.setItem(SKIPPED, 'yes');
-    } catch {
-      // Without storage the form simply greets them again next launch.
-    }
-    showSetup = false;
-  }
-
-  function messageOf(error: unknown): string {
-    return error instanceof Error ? error.message : String(error);
-  }
-
-  /** Shows the change at once and writes it; the write is what makes it saved. */
-  async function save(next: Session): Promise<void> {
-    session = next;
-    if (!storage) return;
-    try {
-      await storage.log.putSession(next);
-      failure = null;
-    } catch (error) {
-      failure = `Not saved: ${messageOf(error)}`;
-    }
-  }
-
-  async function start(from: Template | null, date?: IsoDate): Promise<void> {
-    const s = storage;
-    if (!s) return;
-    const at = new Date();
-    const id = await s.log.newSessionId(date ?? localDate(at));
-    let fresh = newSession({
-      id,
-      at,
-      tz: Intl.DateTimeFormat().resolvedOptions().timeZone,
-      deviceId: s.log.options.deviceId,
-    });
-    if (date) fresh = setDate(fresh, date);
-    if (from) fresh = fromTemplate(fresh, from, () => crypto.randomUUID());
-    template = null;
-    await save(fresh);
-  }
-
-  async function finishSession(): Promise<void> {
-    const s = storage;
-    if (!s || !session) return;
-    await save(finish(session, new Date()));
-    // Not awaited: the status line follows the sync.
-    void s.scheduler.trigger('session_ended');
-    await close();
-  }
-
-  async function close(): Promise<void> {
-    session = null;
-    if (storage) await load(storage);
-  }
-
-  async function remove(): Promise<void> {
-    const s = storage;
-    if (!s || !session || !confirm('Delete this session? It is deleted from the log too.')) return;
-    await s.log.deleteSession(session.id);
-    await close();
-  }
-
-  async function saveAsTemplate(name: string): Promise<void> {
-    const s = storage;
-    if (!s || !session) return;
-    const template = templateFrom(session, {
-      id: await s.log.newTemplateId(name),
-      name,
-      at: new Date(),
-    });
-    await s.log.putTemplate(template);
-    templates = await s.log.getTemplates();
-  }
-
-  async function createTemplate(): Promise<void> {
-    const s = storage;
-    const name = prompt('Name the template', '')?.trim();
-    if (!s || !name) return;
-    await saveTemplate(newTemplate({ id: await s.log.newTemplateId(name), name, at: new Date() }));
-  }
-
-  /** Shows the change at once and writes it, like `save` for sessions. */
-  async function saveTemplate(next: Template): Promise<void> {
-    template = next;
-    if (!storage) return;
-    try {
-      await storage.log.putTemplate(next);
-      templates = await storage.log.getTemplates();
-      failure = null;
-    } catch (error) {
-      failure = `Not saved: ${messageOf(error)}`;
-    }
-  }
-
-  async function deleteTemplate(): Promise<void> {
-    const s = storage;
-    if (!s || !template || !confirm(`Delete the template ${template.name}?`)) return;
-    await s.log.deleteTemplate(template.id);
-    template = null;
-    templates = await s.log.getTemplates();
-  }
-
-  async function connect(input: SetupInput): Promise<SetupResult> {
-    if (!storage) throw new Error('storage is not open');
-    const result = await storage.connect(input);
-    if (result.ok) showSetup = false;
-    return result;
-  }
-
-  /** The status line leads to what fixes it: setup, or a sync now. */
-  function onStatusTap(): void {
-    if (!status) return;
-    if (['not_set_up', 'needs_token', 'repo_problem'].includes(status.status)) showSetup = true;
-    else void storage?.scheduler.trigger('manual');
-  }
+  // Each screen opens at its top, as a new page would.
+  $effect(() => {
+    void route;
+    window.scrollTo(0, 0);
+  });
 </script>
 
-<main>
-  {#if line}
-    <button class="status" class:alarm={line.alarm} onclick={onStatusTap}>{line.text}</button>
+<div
+  class="shell"
+  class:docked
+  style:--dock={docked ? 'var(--tabbar-total)' : 'var(--safe-bottom)'}
+>
+  {#if banner && !takeover && !bannerHome}
+    <Banner
+      kind={banner.kind}
+      text={banner.text}
+      action={banner.action
+        ? {
+            label: banner.action.label,
+            href: routeHash({ name: 'more', page: banner.action.to }),
+          }
+        : undefined}
+    />
   {/if}
-  {#if failure}
-    <p class="failure" role="alert">{failure}</p>
+  {#if showUpdateNotice({ waiting: update.waiting, inSession: app.inSession, takeover })}
+    <Banner
+      kind="info"
+      text="A new version is ready"
+      action={{ label: 'Reload', onclick: update.reload }}
+    />
+  {/if}
+  {#if app.failure}<p class="failure" role="alert">{app.failure}</p>{/if}
+
+  <main>
+    {#if !app.storage}
+      <div class="boot">
+        {#if !app.failure}<Boulder size="frieze" progress={0} label="Opening" />{/if}
+      </div>
+    {:else if app.showSetup}
+      <Setup greeting onclose={() => (app.showSetup = false)} />
+    {:else if app.creating !== null}
+      <NewExercise
+        name={app.creating}
+        library={app.library}
+        onsave={app.createExercise}
+        onclose={() => (app.creating = null)}
+      />
+    {:else if app.editing !== null}
+      <NewExercise
+        exercise={app.editing}
+        library={app.library}
+        onsave={app.changeExercise}
+        onclose={() => (app.editing = null)}
+      />
+    {:else if route.name === 'session' && app.session}
+      <SessionView session={app.session} />
+    {:else if route.name === 'finish' && app.session}
+      <FinishScreen
+        session={app.session}
+        library={app.library}
+        sessions={app.current}
+        ondone={app.closeFinish}
+        onsavetemplate={app.saveAsTemplate}
+      />
+    {:else if route.name === 'template' && app.template}
+      <Template template={app.template} />
+    {:else if route.name === 'exercise' && exercise}
+      <ExerciseHistory {exercise} />
+    {:else if route.name === 'history'}
+      <History />
+    {:else if route.name === 'progress'}
+      <Progress view={route.view} exercise={route.exercise} />
+    {:else if route.name === 'more'}
+      <Agora page={route.page} />
+    {:else if route.name === 'train'}
+      <Train />
+    {/if}
+  </main>
+
+  {#if docked}
+    <TabBar current={tabOf(route)} {trainHref} {conflicts} />
   {/if}
 
-  {#if !storage}
-    {#if !failure}<p class="opening">Opening…</p>{/if}
-  {:else if showSetup}
-    <Setup onconnect={connect} onskip={skipSetup} onclose={() => (showSetup = false)} />
-  {:else if session}
-    <SessionView
-      {session}
-      {library}
-      {sessions}
-      onchange={save}
-      onfinish={finishSession}
-      onclose={close}
-      ondelete={remove}
-      onsavetemplate={saveAsTemplate}
-    />
-  {:else if template}
-    <TemplateView
-      {template}
-      {library}
-      onchange={saveTemplate}
-      onstart={() => template && start(template)}
-      onclose={() => (template = null)}
-      ondelete={deleteTemplate}
-    />
-  {:else}
-    <Home
-      {sessions}
-      {templates}
-      {library}
-      onstart={start}
-      onopen={(s: Session) => (session = s)}
-      onopentemplate={(t: Template) => (template = t)}
-      onnewtemplate={createTemplate}
+  {#if app.storage && noticeShown( { requested: app.conflictNotice, count: conflicts, inSession: app.inSession, finishing: route.name === 'finish', takeover } )}
+    <ConflictNotice
+      count={conflicts}
+      onreview={() => {
+        app.conflictNotice = false;
+        app.go({ name: 'more', page: 'conflicts' });
+      }}
+      onlater={() => (app.conflictNotice = false)}
     />
   {/if}
-</main>
+
+  <ToastHost />
+  <DialogHost />
+</div>
 
 <style>
-  main {
+  .shell {
     max-width: 40rem;
     margin: 0 auto;
-    padding: 0 1rem 4rem;
-    font-family: var(--sans);
   }
 
-  .status {
-    display: block;
-    width: 100%;
-    margin: 0 0 1rem;
-    padding: 0.6rem 0;
-    border: 0;
-    border-bottom: 1px solid var(--line);
-    background: none;
-    color: var(--muted);
-    font: inherit;
-    font-size: 0.85rem;
-    text-align: left;
+  main {
+    padding-bottom: var(--space-8);
   }
 
-  .status.alarm {
-    color: var(--accent);
+  /* Clear of the tab bar; body already pads the home indicator. */
+  .docked main {
+    padding-bottom: calc(var(--tabbar-h) + var(--space-6));
   }
 
   .failure {
-    color: var(--accent);
+    margin: var(--space-2) var(--gutter);
+    color: var(--danger);
   }
 
-  .opening {
-    color: var(--muted);
+  .boot {
+    padding: 30dvh var(--gutter) 0;
   }
 </style>
