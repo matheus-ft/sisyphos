@@ -30,6 +30,7 @@
           id="dialog-field"
           bind:value={text}
           placeholder={d.placeholder}
+          inputmode={d.inputmode ?? 'text'}
           autocomplete="off"
           autocapitalize="sentences"
         />

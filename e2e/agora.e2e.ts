@@ -38,6 +38,29 @@ test('a weigh-in is added and a reference max filled from the suggestion', async
   await expect(page.getByText(`set ${today}`)).toBeVisible();
 });
 
+test("a meet's best stands beside the reference max, apart from the records", async ({ page }) => {
+  await page.getByRole('link', { name: /^Competition/ }).click();
+  const meets = page.getByRole('region', { name: 'Competition' });
+  await meets.getByRole('button', { name: 'Add a meet best' }).click();
+  await meets.getByRole('combobox', { name: 'Lift' }).selectOption({ label: 'Low-Bar Squat' });
+  await meets.getByRole('textbox', { name: 'Best single, kg' }).fill('160');
+  await meets.getByRole('textbox', { name: 'Meet, if you like' }).fill('Regionals');
+  await meets.getByRole('button', { name: 'Save meet best' }).click();
+  await expect(page.getByRole('status')).toContainText('Meet best saved');
+
+  // On the squat's card, under its reference max, beside the best single of training.
+  await page.reload();
+  const squat = page.locator('.max').first();
+  await expect(squat).toContainText(/Best single\s*155/);
+  await expect(squat).toContainText(/At a meet\s*160/);
+
+  // In Labours it stands above the table, and the one-rep record is still training's.
+  await page.getByRole('link', { name: /Athloi/ }).click();
+  await page.getByRole('button', { name: 'Labours' }).click();
+  await expect(page.getByRole('button', { name: /^At a meet, 160 kilograms/ })).toBeVisible();
+  await expect(page.getByRole('button', { name: /^1 rep, 155 kilograms/ })).toBeVisible();
+});
+
 test('settings survive a reload', async ({ page }) => {
   await page.getByRole('link', { name: /^Settings/ }).click();
   await expect(page).toHaveURL(/#\/more\/settings$/);
@@ -49,10 +72,13 @@ test('settings survive a reload', async ({ page }) => {
   await awake.click();
   await chime.click();
 
+  // A step the choices do not offer is typed in: fractional plates make 0.5 kg.
   await page
     .getByRole('group', { name: 'Kilogram plate increment' })
-    .getByRole('button', { name: '1.25' })
+    .getByRole('button', { name: 'Other' })
     .click();
+  await page.getByRole('alertdialog').getByRole('textbox', { name: 'Step, kg' }).fill('0,5');
+  await page.getByRole('button', { name: 'Save step' }).click();
   await page
     .getByRole('group', { name: 'Pound plate increment' })
     .getByRole('button', { name: '10' })
@@ -79,7 +105,7 @@ test('settings survive a reload', async ({ page }) => {
   await expect(
     page
       .getByRole('group', { name: 'Kilogram plate increment' })
-      .getByRole('button', { name: '1.25' }),
+      .getByRole('button', { name: '0.5' }),
   ).toHaveAttribute('aria-pressed', 'true');
   await expect(
     page.getByRole('group', { name: 'Pound plate increment' }).getByRole('button', { name: '10' }),
@@ -93,5 +119,5 @@ test('settings survive a reload', async ({ page }) => {
   const panel = page.getByRole('dialog', { name: 'Low-Bar Squat, Set 1' });
   await panel.getByRole('textbox', { name: 'Load' }).fill('100');
   await panel.getByRole('button', { name: 'More load' }).click();
-  await expect(panel.getByRole('textbox', { name: 'Load' })).toHaveValue('101.25');
+  await expect(panel.getByRole('textbox', { name: 'Load' })).toHaveValue('100.5');
 });

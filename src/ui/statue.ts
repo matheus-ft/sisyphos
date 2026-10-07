@@ -1,6 +1,6 @@
 /**
  * The statue on the Progress tab's Body view: which painted regions of the
- * kouros show each muscle group in `src/library/muscles.csv`, and the shade
+ * figure show each muscle group in `src/library/muscles.csv`, and the shade
  * each region takes from its group's volume. The drawing is
  * `src/ui/progress/statue-art.ts`; this is the map between it and the groups.
  */

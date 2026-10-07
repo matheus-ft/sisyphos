@@ -136,12 +136,15 @@ describe('records from sessions', () => {
     expect(r.session_id).toBe(kg.id);
   });
 
-  it('compares the added load of a bodyweight-plus lift, needing no bodyweight', () => {
-    const dips = sessionOf({
+  it('keeps a book for the competition lifts only', () => {
+    const s = sessionOf({
       date: '2026-09-01',
-      work: [[bwPlus, [{ load: 20, reps: 8, rpe: 8 }]]],
+      work: [
+        [bwPlus, [{ load: 20, reps: 8, rpe: 8 }]],
+        [squat, [{ load: 140, reps: 3, rpe: 8 }]],
+      ],
     });
-    expect(sessionRecords([dips], library)[0].weight_kg).toBe(20);
+    expect(sessionRecords([s], library).map((r) => r.exercise_id)).toEqual([squat.id]);
   });
 
   it('leaves warm-ups out, unless the config counts them', () => {
@@ -217,6 +220,11 @@ describe('records merged with those entered by hand', () => {
     const book = recordBook([lift('2026-09-01', 140, 5)], library, [manual({ weight_kg: 145 })]);
     expect(recordAt(book, 'low_bar_squat', 5)!.weight_kg).toBe(145);
     expect(recordAt(book, 'low_bar_squat', 4)).toBeNull();
+  });
+
+  it('leaves out a hand-entered record of an exercise that keeps no book', () => {
+    const book = recordBook([], library, [manual({ exercise_id: 'dips', weight_kg: 30 })]);
+    expect(book).toEqual([]);
   });
 });
 

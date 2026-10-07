@@ -3,6 +3,7 @@ import { exerciseFromRow } from '../library/parse';
 import type {
   BodyweightEntry,
   CompetitionLift,
+  CompetitionBest,
   ConflictRecord,
   Exercise,
   ExerciseAddition,
@@ -70,6 +71,7 @@ export interface Tables {
   bodyweight: TableSchema<BodyweightEntry>;
   oneRm: TableSchema<OneRmEntry>;
   manualRecords: TableSchema<ManualRecord>;
+  competitionBests: TableSchema<CompetitionBest>;
   additions: TableSchema<ExerciseAddition>;
 }
 
@@ -291,6 +293,30 @@ export const TABLES: Tables = {
       date: readDate(key, 'date'),
       exercise_id: readText(key, 'exercise_id'),
       reps: numberCell(readNumber(key, 'reps')),
+    }),
+  },
+
+  competitionBests: {
+    kind: 'competitionBests',
+    path: TABLE_PATHS.competitionBests,
+    columns: ['date', 'exercise_id', 'weight_kg', 'meet'],
+    key: ['date', 'exercise_id'],
+    numeric: [],
+    toRow: (best) => ({
+      date: best.date,
+      exercise_id: best.exercise_id,
+      weight_kg: numberCell(best.weight_kg),
+      meet: best.meet ?? '',
+    }),
+    fromRow: (row) => ({
+      date: readDate(row, 'date'),
+      exercise_id: readText(row, 'exercise_id'),
+      weight_kg: readNumber(row, 'weight_kg'),
+      meet: readOptionalText(row, 'meet'),
+    }),
+    readKey: (key) => ({
+      date: readDate(key, 'date'),
+      exercise_id: readText(key, 'exercise_id'),
     }),
   },
 

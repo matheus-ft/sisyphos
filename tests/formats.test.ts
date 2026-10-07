@@ -4,6 +4,7 @@ import { parseExercises } from '../src/library/parse';
 import exercisesCsv from '../src/library/exercises.csv?raw';
 import type {
   BodyweightEntry,
+  CompetitionBest,
   CompetitionLift,
   ConflictRecord,
   ExerciseAddition,
@@ -300,6 +301,12 @@ const records: { [K in TableKind]: (g: Gen) => RecordOf<K> } = {
     weight_kg: g.number(),
     rpe: g.maybe(() => g.number()),
     context: g.maybe(() => g.text()),
+  }),
+  competitionBests: (g): CompetitionBest => ({
+    date: g.date(),
+    exercise_id: g.pick(['bench', 'sumo_deadlift', g.text()]),
+    weight_kg: g.number(),
+    meet: g.maybe(() => g.text()),
   }),
   additions: (g): ExerciseAddition => ({
     id: g.pick(['bench', 'low_bar_squat', g.exerciseId()]),

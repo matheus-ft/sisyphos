@@ -69,6 +69,8 @@
     records: ReadonlySet<Id>;
     /** The lifter hid this exercise's suggested warm-ups for the session. */
     warmupsHidden: boolean;
+    /** A finished session not unlocked for editing: everything shows, nothing changes. */
+    locked: boolean;
     onchange: (next: Session) => void;
     onhidewarmups: () => void;
     /** Opens the exercise's history. */
@@ -88,6 +90,7 @@
     active,
     records,
     warmupsHidden,
+    locked,
     onchange,
     onhidewarmups,
     onhistory,
@@ -143,9 +146,9 @@
   );
   const lead = $derived(firstWorking ? (contexts.get(firstWorking.id) ?? null) : null);
   const suggestion = $derived(mode === 'current' && lead ? lead.suggestion : null);
-  const chip = $derived(suggestionShows(instance, suggestion) ? suggestion : null);
+  const chip = $derived(!locked && suggestionShows(instance, suggestion) ? suggestion : null);
   const plan = $derived(
-    mode === 'current' && lead && !warmupsHidden
+    mode === 'current' && lead && !warmupsHidden && !locked
       ? warmupPlan({ instance, exercise, ctx: lead })
       : null,
   );
@@ -200,7 +203,7 @@
     set: PerformedSet,
   ): void {
     // A skipped set shows its target struck through; typing into it is not lifting it.
-    if (set.state !== 'pending' || input.value !== '' || target === '') return;
+    if (locked || set.state !== 'pending' || input.value !== '' || target === '') return;
     const value = parse(target);
     if (value === null || value === undefined) return;
     edit(set, apply(value));
@@ -304,9 +307,11 @@
             onclick={() => (tapped = false)}><Icon name="down" size="sm" /></button
           >
         {/if}
-        <button class="icon-btn" aria-label="More for {name}" onclick={() => (menu = true)}
-          ><Icon name="more" /></button
-        >
+        {#if !locked || exercise}
+          <button class="icon-btn" aria-label="More for {name}" onclick={() => (menu = true)}
+            ><Icon name="more" /></button
+          >
+        {/if}
       </span>
     </header>
     {#if lastText}
@@ -321,6 +326,7 @@
         class="note"
         aria-label="Note on {name}"
         placeholder="Note…"
+        readonly={locked}
         value={instance.notes ?? ''}
         onchange={(e) => onchange(setExerciseNotes(session, instance.id, e.currentTarget.value))}
       />
@@ -389,12 +395,14 @@
           <button
             class="n"
             aria-label="{label} actions"
+            disabled={locked}
             onclick={() => (opened = opened === set.id ? null : set.id)}
             >{numbers.get(set.id)}</button
           >
           <input
             inputmode={timed ? 'text' : 'decimal'}
             aria-label={timed ? 'Time' : 'Load'}
+            readonly={locked}
             placeholder={target.amount || (timed ? '0:00' : '')}
             value={shownAmount(set)}
             onfocus={(e) =>
@@ -415,13 +423,17 @@
               )}
           />
           {#if !timed}
-            <button class="unit" aria-label="Unit, {unitOfRow(set)}" onclick={() => switchUnit(set)}
-              >{unitOfRow(set)}</button
+            <button
+              class="unit"
+              aria-label="Unit, {unitOfRow(set)}"
+              disabled={locked}
+              onclick={() => switchUnit(set)}>{unitOfRow(set)}</button
             >
             <span class="x">×</span>
             <input
               inputmode="numeric"
               aria-label="Reps"
+              readonly={locked}
               placeholder={target.reps}
               value={set.reps ?? ''}
               onfocus={(e) =>
@@ -443,6 +455,7 @@
               inputmode="decimal"
               aria-label="RPE"
               disabled={planning}
+              readonly={locked}
               placeholder={isActive ? '—' : target.rpe || '—'}
               value={set.rpe ?? ''}
               onchange={(e) =>
@@ -454,6 +467,7 @@
               <button
                 class="status"
                 aria-label="Edit {label.toLowerCase()}"
+                disabled={locked}
                 onclick={() => onentry(set)}
               >
                 {#if isRecord}
@@ -467,12 +481,14 @@
               <button
                 class="status"
                 aria-label="Enter {label.toLowerCase()}"
+                disabled={locked}
                 onclick={() => onentry(set)}><span class="word">skipped</span></button
               >
             {:else}
               <button
                 class="status open"
                 aria-label="Enter {label.toLowerCase()}"
+                disabled={locked}
                 onclick={() => onentry(set)}><Icon name="sheet" /></button
               >
             {/if}
@@ -500,43 +516,50 @@
       {/each}
     </div>
 
-    {#if missingBodyweight}<p class="meta">Today's bodyweight, below, counts in these sets.</p>{/if}
-    <div class="foot">
-      <Button variant="link" onclick={() => onchange(addSet(session, instance.id, newId))}
-        >+ Set</Button
-      >
-      <Button variant="link" onclick={() => (noting = !noting)}>Note</Button>
-    </div>
+    {#if missingBodyweight && !locked}<p class="meta">
+        Today's bodyweight, below, counts in these sets.
+      </p>{/if}
+    {#if !locked}
+      <div class="foot">
+        <Button variant="link" onclick={() => onchange(addSet(session, instance.id, newId))}
+          >+ Set</Button
+        >
+        <Button variant="link" onclick={() => (noting = !noting)}>Note</Button>
+      </div>
+    {/if}
   {/if}
 </section>
 
 <Sheet open={menu} onclose={() => (menu = false)} label="{name}, options">
   <p class="caps menu-title">{name}</p>
   <ul class="group menu">
-    <li class="row-link">
-      <button disabled={position === 0} onclick={() => move(-1)}
-        ><span class="grow t">Move up</span><Icon name="up" size="sm" /></button
-      >
-    </li>
-    <li class="row-link">
-      <button disabled={position === session.exercises.length - 1} onclick={() => move(1)}
-        ><span class="grow t">Move down</span><span class="flip"><Icon name="up" size="sm" /></span
-        ></button
-      >
-    </li>
-    <li class="row-link">
-      <button
-        onclick={() => {
-          menu = false;
-          noting = true;
-          tapped = true;
-        }}
-        ><span class="grow t">{instance.notes ? 'Edit note' : 'Add a note'}</span><Icon
-          name="edit"
-          size="sm"
-        /></button
-      >
-    </li>
+    {#if !locked}
+      <li class="row-link">
+        <button disabled={position === 0} onclick={() => move(-1)}
+          ><span class="grow t">Move up</span><Icon name="up" size="sm" /></button
+        >
+      </li>
+      <li class="row-link">
+        <button disabled={position === session.exercises.length - 1} onclick={() => move(1)}
+          ><span class="grow t">Move down</span><span class="flip"
+            ><Icon name="up" size="sm" /></span
+          ></button
+        >
+      </li>
+      <li class="row-link">
+        <button
+          onclick={() => {
+            menu = false;
+            noting = true;
+            tapped = true;
+          }}
+          ><span class="grow t">{instance.notes ? 'Edit note' : 'Add a note'}</span><Icon
+            name="edit"
+            size="sm"
+          /></button
+        >
+      </li>
+    {/if}
     {#if exercise}
       <li class="row-link">
         <button
@@ -547,11 +570,13 @@
         >
       </li>
     {/if}
-    <li class="row-link">
-      <button class="destroy" onclick={removeAsked}
-        ><span class="grow t">Remove {name}</span><Icon name="close" size="sm" /></button
-      >
-    </li>
+    {#if !locked}
+      <li class="row-link">
+        <button class="destroy" onclick={removeAsked}
+          ><span class="grow t">Remove {name}</span><Icon name="close" size="sm" /></button
+        >
+      </li>
+    {/if}
   </ul>
 </Sheet>
 
@@ -760,6 +785,16 @@
 
   .row input:focus {
     border-bottom: var(--stroke-strong) solid var(--accent);
+  }
+
+  /* Locked, a set is read, not written on: no line where the caret would go, no pointer. */
+  .row input:read-only:focus,
+  .note:read-only:focus {
+    border-bottom-color: transparent;
+  }
+
+  .row button:disabled {
+    cursor: default;
   }
 
   .n {

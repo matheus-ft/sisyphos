@@ -17,6 +17,7 @@ export const TABLE_PATHS = {
   bodyweight: 'lifter/bodyweight.csv',
   oneRm: 'lifter/one-rm-history.csv',
   manualRecords: 'lifter/manual-records.csv',
+  competitionBests: 'lifter/competition-bests.csv',
   additions: 'library/additions.csv',
 } as const;
 

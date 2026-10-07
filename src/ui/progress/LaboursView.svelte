@@ -1,12 +1,25 @@
 <script lang="ts">
+  import { aimAt, type LifterSection } from '../agoraIndex';
   import { app } from '../app.svelte';
-  import { recordedExercises, recordRows, resolvePick, shortDay } from '../athloi';
+  import {
+    dateInYear,
+    formatKg,
+    meetBest,
+    recordedExercises,
+    recordRows,
+    resolvePick,
+    shortDay,
+  } from '../athloi';
   import Chip from '../kit/Chip.svelte';
   import EmptyState from '../kit/EmptyState.svelte';
   import Laurel from '../kit/Laurel.svelte';
   import ExercisePicker from './ExercisePicker.svelte';
 
-  /** The best weight at each rep count from 1 to 10, from sessions and by hand together. */
+  /**
+   * A competition lift's best weight at each rep count from 1 to 10, from
+   * sessions and by hand together; above them, its best at a meet, which is
+   * none of them.
+   */
   interface Props {
     today: string;
     picked: string | null;
@@ -16,7 +29,7 @@
 
   let choosing = $state(false);
 
-  const choices = $derived(recordedExercises(app.records, app.library));
+  const choices = $derived(recordedExercises(app.records, app.library, app.competitionBests));
   const chosen = $derived(resolvePick(choices, picked));
   const rows = $derived(
     chosen
@@ -25,11 +38,21 @@
         })
       : [],
   );
+  const meet = $derived(chosen ? meetBest(app.competitionBests, chosen.exercise.id) : null);
+
+  /** What was entered by hand is changed where it was entered: under Lifter, at its section. */
+  function lifter(section: LifterSection): void {
+    aimAt(section);
+    app.go({ name: 'more', page: 'lifter' });
+  }
+
+  const recordCount = (n: number) =>
+    n === 0 ? 'a meet best' : `${n} ${n === 1 ? 'record' : 'records'}`;
 
   /** A session record opens its session; a hand-entered one is edited under Agora's Lifter. */
   function open(sessionId: string | null, manual: boolean): void {
     if (manual) {
-      app.go({ name: 'more', page: 'lifter' });
+      lifter('records');
       return;
     }
     const session = app.current.find((s) => s.id === sessionId);
@@ -38,12 +61,36 @@
 </script>
 
 {#if !chosen}
-  <EmptyState title="No records yet" line="Records appear as you log sets of 1 to 10 reps." />
+  <EmptyState
+    title="No records yet"
+    line="Records appear as you log the competition lifts, in sets of 1 to 10 reps."
+  />
 {:else}
   <div class="controls">
     <Chip chevron onclick={() => (choosing = true)}>{chosen.exercise.name}</Chip>
     <span class="meta">best weight for each rep count</span>
   </div>
+
+  {#if meet}
+    <button
+      class="card meet"
+      aria-label="At a meet, {formatKg(meet.weight_kg)} kilograms, {dateInYear(
+        meet.date,
+        today,
+      )}{meet.meet ? `, ${meet.meet}` : ''}. Edit under Lifter"
+      onclick={() => lifter('competition')}
+    >
+      <span class="caps">At a meet</span>
+      <span class="weight">
+        <span class="figure-num w">{formatKg(meet.weight_kg)}</span>
+        <span class="unit">kg</span>
+      </span>
+      <span class="when meta">
+        <span>{dateInYear(meet.date, today)}</span>
+        {#if meet.meet}<span>{meet.meet}</span>{/if}
+      </span>
+    </button>
+  {/if}
 
   <ul class="card rows">
     {#each rows as row (row.reps)}
@@ -93,7 +140,7 @@
     items={choices.map((c) => ({
       id: c.exercise.id,
       name: c.exercise.name,
-      meta: `${c.count} ${c.count === 1 ? 'record' : 'records'} · latest ${shortDay(c.last)}`,
+      meta: `${recordCount(c.count)} · latest ${shortDay(c.last)}`,
     }))}
   />
 {/if}
@@ -105,6 +152,29 @@
     flex-wrap: wrap;
     gap: var(--space-3);
     margin: var(--space-3) var(--gutter) var(--space-3);
+  }
+
+  /* Apart from the table: a meet's single is not the one-rep record beneath it. */
+  .meet {
+    display: grid;
+    grid-template-columns: auto 1fr auto;
+    align-items: center;
+    gap: var(--space-3);
+    width: calc(100% - 24px);
+    min-height: 52px;
+    margin: 0 12px var(--space-3);
+    padding: 4px var(--space-4) 4px var(--space-3);
+    border-color: var(--line-strong);
+    text-align: left;
+    color: inherit;
+  }
+
+  .meet .caps {
+    color: var(--muted);
+  }
+
+  .meet:active {
+    background: var(--sunken);
   }
 
   .rows {

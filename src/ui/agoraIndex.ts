@@ -1,5 +1,4 @@
-import type { LoadUnit } from '../model';
-import type { Prefs } from './prefs';
+import type { Prefs, PlateUnit } from './prefs';
 import { PLATE_CHOICES } from './prefs';
 
 /**
@@ -21,13 +20,30 @@ export function settingsSummary(prefs: Prefs): string {
   return `${name} · plates ${prefs.plateKg} kg, ${prefs.plateLb} lb`;
 }
 
-/** The plate increments as Segmented options; its values are strings. */
-export function plateOptions(unit: Exclude<LoadUnit, 'pins'>): { value: string; label: string }[] {
-  return PLATE_CHOICES[unit].map((n) => ({ value: String(n), label: String(n) }));
+/** The choice that asks for an increment to be typed in. */
+export const OTHER_PLATE = 'other';
+
+const offered = (unit: PlateUnit, step: number) =>
+  (PLATE_CHOICES[unit] as readonly number[]).includes(step);
+
+/**
+ * The plate increments as Segmented options (its values are strings), and
+ * last the one to type in, which shows the typed step once there is one.
+ */
+export function plateOptions(unit: PlateUnit, current: number): { value: string; label: string }[] {
+  return [
+    ...PLATE_CHOICES[unit].map((n) => ({ value: String(n), label: String(n) })),
+    { value: OTHER_PLATE, label: offered(unit, current) ? 'Other' : String(current) },
+  ];
+}
+
+/** Which option is pressed for the step in force. */
+export function plateChoice(unit: PlateUnit, current: number): string {
+  return offered(unit, current) ? String(current) : OTHER_PLATE;
 }
 
 /** Which lifter section a row on the index opens at. */
-export type LifterSection = 'bodyweight' | 'maxes' | 'records';
+export type LifterSection = 'bodyweight' | 'maxes' | 'competition' | 'records';
 
 let pending: LifterSection | null = null;
 

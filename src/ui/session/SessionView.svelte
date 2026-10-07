@@ -73,6 +73,16 @@
   const sessionId = $derived(session.id);
   const open = $derived(session.ended_at === null);
   const planned = $derived(session.started_at === null);
+  /**
+   * A finished session opens to be read: looking back through history should
+   * never nudge a set. Edit unlocks it until the lifter leaves it.
+   */
+  let unlocked = $state(false);
+  $effect(() => {
+    void sessionId;
+    unlocked = false;
+  });
+  const locked = $derived(!open && !unlocked);
   /** Lifted now: only then does a set start a rest, the rest ring, the screen stay on. */
   const live = $derived(isLive(session));
   const hasBodyweightWork = $derived(
@@ -142,6 +152,7 @@
   );
 
   function openEntry(instanceId: Id, set: PerformedSet): void {
+    if (locked) return;
     // A toast sits over the panel's foot, where the chips are.
     dismissToast();
     entry = { instanceId, setId: set.id };
@@ -155,6 +166,7 @@
    * inside the tap, since iOS lets sound start only from one.
    */
   function change(next: Session, options: { toast?: boolean } = {}): void {
+    if (locked) return;
     if (app.prefs.chime) restBell().prime();
     // The undo toast outlives this screen, whose `session` is gone once the lifter leaves.
     const savedIn = session.id;
@@ -368,8 +380,10 @@
     change(addExercise(session, exercise, () => crypto.randomUUID()));
   }
 
-  function changeDate(value: string): void {
-    if (/^\d{4}-\d{2}-\d{2}$/.test(value)) change(setDate(session, value));
+  function changeDate(input: HTMLInputElement): void {
+    // A phone may open its picker on a read-only date; what it picks is put back.
+    if (locked) input.value = session.date;
+    else if (/^\d{4}-\d{2}-\d{2}$/.test(input.value)) change(setDate(session, input.value));
   }
 
   function setBodyweight(text: string): void {
@@ -416,6 +430,14 @@
       {:else if minutes !== null}
         <span class="pill figure-num" aria-label="Running {formatMinutes(minutes)}"
           >{formatMinutes(minutes)}</span
+        >
+      {/if}
+      {#if !open}
+        <Button
+          variant="link"
+          caps
+          aria-label={unlocked ? 'Done editing' : 'Edit this session'}
+          onclick={() => (unlocked = !unlocked)}>{unlocked ? 'Done' : 'Edit'}</Button
         >
       {/if}
     </div>
@@ -470,6 +492,7 @@
         {active}
         {records}
         warmupsHidden={hidden.has(instance.id)}
+        {locked}
         onchange={change}
         onhidewarmups={() => hideWarmups(instance.id)}
         onhistory={app.openExercise}
@@ -479,9 +502,11 @@
     {/each}
   </div>
 
-  <div class="add">
-    <AddExercise library={app.library} {recentIds} onpick={pick} oncreate={app.startCreating} />
-  </div>
+  {#if !locked}
+    <div class="add">
+      <AddExercise library={app.library} {recentIds} onpick={pick} oncreate={app.startCreating} />
+    </div>
+  {/if}
 
   <div class="details">
     <div class="field">
@@ -489,8 +514,9 @@
       <input
         id="session-date"
         type="date"
+        readonly={locked}
         value={session.date}
-        onchange={(e) => changeDate(e.currentTarget.value)}
+        onchange={(e) => changeDate(e.currentTarget)}
       />
     </div>
     {#if hasBodyweightWork}
@@ -500,10 +526,11 @@
           id="session-bw"
           inputmode="decimal"
           placeholder="kg"
+          readonly={locked}
           value={session.bodyweight_kg ?? ''}
           onchange={(e) => setBodyweight(e.currentTarget.value)}
         />
-        {#if weighIn}
+        {#if weighIn && !locked}
           <Button variant="link" onclick={saveWeighIn}>Save as this day's weigh-in</Button>
         {/if}
       </div>
@@ -513,7 +540,8 @@
       <textarea
         id="session-notes"
         rows="3"
-        placeholder="How it went…"
+        placeholder={locked ? '' : 'How it went…'}
+        readonly={locked}
         value={session.notes ?? ''}
         onchange={(e) => setNotes(e.currentTarget.value)}></textarea>
     </div>

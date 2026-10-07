@@ -248,6 +248,19 @@ Reference maxes are a third thing again: `OneRmEntry` drives percentage
 prescriptions, is set by hand, and is effective-dated so raising it never
 rewrites what a past session asked for.
 
+**Records are kept for the competition lifts only**, each stance its own. They
+are what a record measures progress in; a laurel on every accessory made one on
+a squat mean less.
+
+**A meet's best is a fourth thing, in a table of its own**
+(`lifter/competition-bests.csv`). A single made on a platform is peaked for and
+judged, so it is neither a training record nor a reference max, and the app
+shows all three side by side rather than letting one stand for another.
+Rejected: a `competition` flag on a hand-entered record. Adding a column to a
+table changes the log's format, so every device's copy and every sync base
+would need migrating, and an older app could no longer read the file at all; a
+new file is additive, since an older app leaves a file it does not know alone.
+
 ## Rejected: storing anything twice
 
 `ExerciseInstance` had an `order` field. Removed — array position already carries

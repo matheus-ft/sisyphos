@@ -12,7 +12,14 @@ import { prng } from '../sync-harness';
  * still runs, which is what lets a failing one shrink.
  */
 
-export type Kind = 'session' | 'template' | 'bodyweight' | 'oneRm' | 'manualRecords' | 'additions';
+export type Kind =
+  | 'session'
+  | 'template'
+  | 'bodyweight'
+  | 'oneRm'
+  | 'manualRecords'
+  | 'competitionBests'
+  | 'additions';
 
 export const KINDS: readonly Kind[] = [
   'session',
@@ -20,6 +27,7 @@ export const KINDS: readonly Kind[] = [
   'bodyweight',
   'oneRm',
   'manualRecords',
+  'competitionBests',
   'additions',
 ];
 
@@ -97,6 +105,7 @@ export function generate(seed: number): Schedule {
       'bodyweight',
       'oneRm',
       'manualRecords',
+      'competitionBests',
       'additions',
     ]);
     return { op, kind, pick: int(12) };
@@ -191,6 +200,7 @@ const NOUNS: Record<Kind, string> = {
   bodyweight: 'a weigh-in',
   oneRm: 'a 1RM',
   manualRecords: 'a manual record',
+  competitionBests: 'a competition best',
   additions: 'an exercise',
 };
 

@@ -68,3 +68,32 @@ test('a template is edited and a session planned from it', async ({ page }) => {
   ).toHaveAttribute('placeholder', '120');
   await expect(page.getByRole('button', { name: 'Start', exact: true })).toBeVisible();
 });
+
+test('a session planned ahead from Train starts fresh or from a template', async ({ page }) => {
+  await openSeeded(page);
+  const ahead = new Date();
+  ahead.setDate(ahead.getDate() + 3);
+  const day = [
+    ahead.getFullYear(),
+    String(ahead.getMonth() + 1).padStart(2, '0'),
+    String(ahead.getDate()).padStart(2, '0'),
+  ].join('-');
+  const choice = page.getByRole('dialog', { name: /^Plan / });
+
+  // The day first, from the phone's own picker; then what the plan starts from.
+  await page.getByLabel('Plan a session for').fill(day);
+  await expect(choice.getByRole('button', { name: /^Start fresh/ })).toBeVisible();
+  await choice.getByRole('button', { name: /^Squat and bench/ }).click();
+  await expect(page).toHaveURL(new RegExp(`#/session/${day}-`));
+  await expect(page.getByText('Planned', { exact: true })).toBeVisible();
+  await expect(page.getByText('Rebuild · block 2 · week 6 · day 1 · Mon')).toBeVisible();
+  await expect(page.getByRole('region', { name: 'Low-Bar Squat' })).toBeVisible();
+
+  // Fresh is an empty plan on the day.
+  await page.getByRole('button', { name: 'Back' }).click();
+  await page.getByLabel('Plan a session for').fill(day);
+  await choice.getByRole('button', { name: /^Start fresh/ }).click();
+  await expect(page).toHaveURL(new RegExp(`#/session/${day}-`));
+  await expect(page.getByText('Planned', { exact: true })).toBeVisible();
+  await expect(page.getByRole('region', { name: 'Low-Bar Squat' })).toHaveCount(0);
+});

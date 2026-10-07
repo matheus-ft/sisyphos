@@ -1,31 +1,27 @@
 /**
- * The kouros, drawn: an archaic standing youth, front and back, as a
- * red-figure painter would lay him on a pot. Each figure is a 120 x 300
- * viewBox. Paths are authored for the viewer's left half and mirrored about
- * x = 60, so the body is symmetric as a kouros is, except that his left leg
- * stands forward: nearer the viewer from the front, so a little longer, and
- * farther from the back, so a little shorter.
+ * The statue, drawn: a Classical athlete, front and back, as a red-figure
+ * painter would lay him on a pot. Each figure is a 120 x 300 viewBox. Paths
+ * are authored for the viewer's left half of a body standing square, mirrored
+ * about x = 60, and then posed (`pose`): contrapposto, the weight on one leg.
+ *
+ * Classical, not archaic, because the archaic kouros reads as Egyptian, which
+ * is where it came from: the striding stance, the clenched fists, the beaded
+ * wig of tresses, the large frontal eyes and the fixed smile. The Classical
+ * answer, after the Doryphoros, is the relaxed weight, open hands, a short cap
+ * of curls and a calm face.
  *
  * Which muscle group each region shows is `src/ui/statue.ts`.
  */
 import { STATUE_REGIONS, type RegionOf, type StatueView } from '../statue';
 
 /** The strokes and fills a part is painted in, in painting order. */
-const LAYERS = [
-  'fill',
-  'wash',
-  'dilute',
-  'relief',
-  'contour',
-  'fine',
-  'hair',
-  'beads',
-  'fillet',
-] as const;
+const LAYERS = ['fill', 'wash', 'dilute', 'relief', 'contour', 'fine', 'hair', 'locks'] as const;
 type Layer = (typeof LAYERS)[number];
 type Pieces = Partial<Record<Layer, string[]>>;
 
 interface PartSource<V extends StatueView> {
+  /** What the part moves with in the pose: the body, unless it hangs from a shoulder or turns on the neck. */
+  bone?: Bone;
   /** The viewer's left half; drawn again mirrored. */
   half: Pieces & { regions?: [RegionOf<V>, string][] };
   /** On the centre line; drawn once. */
@@ -118,17 +114,129 @@ function circle(cx: number, cy: number, r: number): string {
   ].join(' ');
 }
 
-/** The crotch: below it, the advanced leg is drawn longer or shorter. */
-const HIP = 158;
-const ADVANCED: Record<StatueView, { side: 'left' | 'right'; stretch: number }> = {
-  front: { side: 'right', stretch: 1.037 },
-  back: { side: 'left', stretch: 0.97 },
-};
+// ---------------------------------------------------------------------------
+// The pose. Contrapposto: the weight on one leg, whose hip rises and juts out,
+// the shoulders tilting the other way, the free knee bent and its foot set
+// back and out. Seen from the front the weight is on the viewer's left (the
+// figure's right leg, as the Doryphoros stands); from the back that leg is on
+// the viewer's right. One continuous bend of the plane for the body, so every
+// outline moves with the shapes beside it; an arm moves with its shoulder and
+// the head turns on the neck.
 
-function side(view: StatueView, which: 'left' | 'right'): Point {
-  const { side: advanced, stretch } = ADVANCED[view];
-  const k = advanced === which ? stretch : 1;
-  return (x, y) => [which === 'left' ? x : 120 - x, y > HIP ? HIP + (y - HIP) * k : y];
+type Bone = 'body' | 'arm' | 'head';
+
+const DEG = Math.PI / 180;
+const POSE = {
+  /** The shoulders: down on the weight side. */
+  chest: -7 * DEG,
+  /** The hips: up on the weight side. */
+  pelvis: 10 * DEG,
+  /** Sideways, the chest a little toward the free side, the pelvis out over the weight leg. */
+  chestShift: 1.5,
+  pelvisShift: -5,
+  /** The head inclines toward the weight leg. */
+  head: -7 * DEG,
+  /** The weight leg slants in, its foot under the body. */
+  standing: -1.5 * DEG,
+  /** The free leg: knee in from the hip, the shin out from the knee. */
+  thigh: 4 * DEG,
+  shin: -11 * DEG,
+};
+/** The free foot is set back: farther from the viewer in front, so shorter; nearer from behind. */
+const FREE_SHIN: Record<StatueView, number> = { front: 0.93, back: 0.99 };
+
+const NECK_PIVOT: Pt = [60, 47];
+const HIPS: Record<'weight' | 'free', Pt> = { weight: [47, 154], free: [73, 154] };
+const KNEE: Pt = [70, 212];
+
+/** 0 before `a`, 1 after `b`, easing in and out between. */
+function smooth(a: number, b: number, v: number): number {
+  const t = Math.min(1, Math.max(0, (v - a) / (b - a)));
+  return t * t * (3 - 2 * t);
+}
+const mix = (a: number, b: number, t: number) => a + (b - a) * t;
+const mixPt = (a: Pt, b: Pt, t: number): Pt => [mix(a[0], b[0], t), mix(a[1], b[1], t)];
+
+function rotate([x, y]: Pt, [cx, cy]: Pt, angle: number): Pt {
+  const c = Math.cos(angle);
+  const s = Math.sin(angle);
+  return [cx + (x - cx) * c - (y - cy) * s, cy + (x - cx) * s + (y - cy) * c];
+}
+
+/**
+ * The trunk, row by row: each row tilts about the centre line, at the
+ * shoulders' angle above the ribs and the hips' below the waist, so the weight
+ * side's flank shortens and the free side's lengthens.
+ */
+function trunk([x, y]: Pt): Pt {
+  const t = smooth(100, 140, y);
+  const angle = mix(POSE.chest, POSE.pelvis, t);
+  const d = x - 60;
+  return [
+    60 + mix(POSE.chestShift, POSE.pelvisShift, t) + d * Math.cos(angle),
+    y + d * Math.sin(angle),
+  ];
+}
+
+/** A leg moves whole with its hip, then turns there; the free one bends at the knee too. */
+function leg(p: Pt, free: boolean, shin: number): Pt {
+  const hip = free ? HIPS.free : HIPS.weight;
+  const turn = smooth(154, 176, p[1]);
+  let q = p;
+  if (free) {
+    const bend = smooth(204, 220, p[1]);
+    q = [q[0], KNEE[1] + (q[1] - KNEE[1]) * mix(1, shin, bend)];
+    q = rotate(q, KNEE, POSE.shin * bend);
+    q = rotate(q, hip, POSE.thigh * turn);
+  } else {
+    q = rotate(q, hip, POSE.standing * turn);
+  }
+  const at = trunk(hip);
+  return [q[0] + at[0] - hip[0], q[1] + at[1] - hip[1]];
+}
+
+/**
+ * The body: the trunk, giving way below the groin to the legs. Which leg a
+ * point belongs to is its side of the centre line, softened at the crotch so
+ * the two halves still meet there.
+ */
+function body(p: Pt, shin: number): Pt {
+  const [x, y] = p;
+  const t = trunk(p);
+  const w = smooth(141, 168, y);
+  if (w === 0) return t;
+  const reach = mix(3, 0.001, smooth(150, 165, y));
+  const side = smooth(60 - reach, 60 + reach, x);
+  const legs = mixPt(leg(p, false, shin), leg(p, true, shin), side);
+  return mixPt(t, legs, w);
+}
+
+/** Where a point of the front view goes: on `bone`, the viewer's left the weight side. */
+function posed(bone: Bone, p: Pt, shin: number): Pt {
+  if (bone === 'arm') {
+    // The shoulder's cap goes with the trunk; below it the arm hangs straight
+    // from the front of the shoulder, wherever the trunk has carried that.
+    const shoulder: Pt = p[0] < 60 ? [33.8, 59] : [86.2, 59];
+    const at = trunk(shoulder);
+    const hanging: Pt = [p[0] + at[0] - shoulder[0], p[1] + at[1] - shoulder[1]];
+    return mixPt(trunk(p), hanging, smooth(62, 90, p[1]));
+  }
+  if (bone === 'head') {
+    const at = trunk(NECK_PIVOT);
+    const q = rotate(p, NECK_PIVOT, POSE.head);
+    return [q[0] + at[0] - NECK_PIVOT[0], q[1] + at[1] - NECK_PIVOT[1]];
+  }
+  return body(p, shin);
+}
+
+/** The pose for a view: from the back, the front's, mirrored, so the weight is on the same leg. */
+function pose(view: StatueView, bone: Bone): Point {
+  const shin = FREE_SHIN[view];
+  if (view === 'front') return (x, y) => posed(bone, [x, y], shin);
+  return (x, y) => {
+    const [px, py] = posed(bone, [120 - x, y], shin);
+    return [120 - px, py];
+  };
 }
 
 // ---------------------------------------------------------------------------
@@ -145,8 +253,10 @@ const EO_TO_WO =
   'C 19 122.8 18.8 127.8 19.6 133 C 20.8 140.4 22.8 147 24.2 152 C 24.7 155 25 158 25.1 160.5';
 const WO_TO_EO =
   'C 25 158 24.7 155 24.2 152 C 22.8 147 20.8 140.4 19.6 133 C 18.8 127.8 19 122.8 20.2 117.5';
-const FIST =
-  'C 23.8 165 23.6 171 26 175.6 C 28.2 179.4 33.8 179.8 36 176.2 C 37.8 173 37.4 167.4 35.4 163.4 C 34.4 161.6 33.6 160 33.3 158.5';
+/** An open hand, hanging relaxed: the fingers together and a little curled, the thumb along them. */
+const HAND =
+  'C 24.2 165.6 24.3 171.4 25.4 176.6 C 26.4 181.2 28.2 185.2 30.4 186.6 C 31.9 187.5 33.3 186.6 33.6 184.8 ' +
+  'C 34 181.2 34.6 176.6 35.4 172.4 C 36 169 35.8 165.6 34.8 162.8 C 34.2 161.2 33.7 159.8 33.3 158.5';
 const WI_TO_EI = 'C 32.9 149 32.3 136 31.7 126 C 31.5 122.6 31.3 119.6 31.1 116.5';
 const EI_TO_WI = 'C 31.3 119.6 31.5 122.6 31.7 126 C 32.3 136 32.9 149 33.3 158.5';
 const EI_TO_A = 'C 31.4 108 31.9 97 31.8 90 C 31.8 87 31.8 84.6 31.8 82.6';
@@ -158,7 +268,7 @@ const ARM_SHADOW =
 const DELT_FRONT = `C 32.4 71.4 34.8 65.4 ${C0}`;
 const WRIST = 'C 27.6 160.8 30.6 160 33.3 158.5';
 const WRIST_BACK = 'C 30.6 160 27.6 160.8 25.1 160.5';
-const ARM = `M ${C0} ${TO_D} ${D_TO_EO} ${EO_TO_WO} ${FIST} ${WI_TO_EI} ${EI_TO_A}`;
+const ARM = `M ${C0} ${TO_D} ${D_TO_EO} ${EO_TO_WO} ${HAND} ${WI_TO_EI} ${EI_TO_A}`;
 
 const TORSO_SIDE =
   'M 31.8 82.6 C 33.5 92 35.8 104 39.5 115 C 40.8 119 41.6 123 41.6 127 C 41.4 132 39.8 136.6 38.2 141';
@@ -175,6 +285,10 @@ const LEG =
   'C 57.5 215 58.2 212 58.2 208.4 C 57.9 199 57.7 190 58.2 180 C 58.6 173 59.2 168 59.7 165';
 const LEG_FILL = `${LEG} L 60 165 L 60 150 L 48 143 Z`;
 
+/** The head's outline, front or back: broad cheeks, a firm chin, a rounded skull. */
+const HEAD =
+  'M 60 46.4 C 56.2 46.4 52.6 44.2 50.6 40.6 C 49 37.6 48.3 33 48.4 28.4 C 48.5 21.6 52.4 14.5 60 14.5 C 67.6 14.5 71.5 21.6 71.6 28.4 C 71.7 33 71 37.6 69.4 40.6 C 67.4 44.2 63.8 46.4 60 46.4 Z';
+
 const ANKLES = [
   'M 53.9 275 C 55.4 275.6 56 277.8 55 279.6',
   'M 45.4 274.2 C 44 275.2 43.6 277.2 44.4 279',
@@ -184,13 +298,6 @@ const ANKLES = [
 // Front
 
 const FRONT: PartSource<'front'>[] = [
-  // The long hair, falling behind the neck to the shoulders.
-  {
-    half: {},
-    whole: {
-      hair: ['M 46.6 28 C 45.6 36 45 44 44.4 54.6 L 75.6 54.6 C 75 44 74.4 36 73.4 28 Z'],
-    },
-  },
   {
     half: {
       fill: [LEG_FILL],
@@ -290,6 +397,7 @@ const FRONT: PartSource<'front'>[] = [
     },
   },
   {
+    bone: 'arm',
     half: {
       fill: [`${ARM} C 31.1 80.4 30.4 78 29.6 75.4 ${DELT_FRONT} Z`],
       regions: [
@@ -307,58 +415,48 @@ const FRONT: PartSource<'front'>[] = [
       dilute: [
         'M 23.4 120 C 25.8 121.4 28.4 121.2 30.6 119.4', // elbow
         'M 21.6 124.4 C 22.8 133 24.6 143.6 26.6 153.6', // brachioradialis, the thumb side
-        'M 33.6 161.4 C 31 162.2 28.6 164.2 27.8 167.4', // thumb
-        'M 25.2 169.6 C 28 171 31.8 171.2 35.8 169.4',
-        'M 26 173.8 C 28.8 175.2 32.2 175.2 35.6 173.4',
+        'M 33.8 161.8 C 32 163.6 31 166.8 31.2 170.6 C 31.3 172.2 31.8 173.4 32.6 174', // thumb
+        'M 28.2 173.6 C 29 177.8 30.2 181.8 31.6 185', // between the fingers
+        'M 26.4 171 C 26.9 175.4 27.9 179.4 29.4 183.2',
       ],
       relief: [`M 31.8 82.6 C 31.1 80.4 30.4 78 29.6 75.4 ${DELT_FRONT}`],
       contour: [ARM],
     },
   },
   {
+    bone: 'head',
     half: {
       // The jaw: broad cheeks narrowing to a firm chin.
       relief: ['M 48.4 28.4 C 48.3 33 49 37.6 50.6 40.6 C 52.6 44.2 56.2 46.4 60 46.4'],
       fine: [
-        // a high arched brow, running down into the nose
-        'M 50.8 27.4 C 52.4 25.2 56 24.6 58.2 26.2 C 58.7 26.6 59 27.1 59.2 27.6',
-        // the large almond eye, set level, an eye's width from its fellow
-        'M 51.4 30 C 52.9 27.8 56.4 27.7 57.9 30.2 C 56.2 32 53.1 32 51.4 30 Z',
+        // a low, level brow, running on into the nose
+        'M 50.8 27.6 C 52.6 26.2 55.8 25.9 58.1 26.9 C 58.6 27.2 58.9 27.6 59.1 28.1',
+        // the eye: deep-set and of a natural size, under a heavy lid
+        'M 52.2 30.4 C 53.5 29.2 55.9 29.1 57.3 30.4 C 55.9 31.3 53.6 31.4 52.2 30.4 Z',
+        'M 51.9 30 C 53.4 28.4 56.2 28.3 57.7 30',
       ],
-      hair: [
-        circle(54.8, 29.5, 1.05),
-        // a lappet of beaded tresses, from behind the ear onto the shoulder
-        'M 47.4 35 C 46.4 41 45.6 48 44.8 56 C 44.4 60 44.2 63.6 44.8 66.4 C 45.8 67.8 47.6 67.8 48.6 66.4 C 49.2 61 49.8 52 50.4 44 C 50.6 40.6 50.6 37.6 50.2 35 Z',
-        // snail curls along the brow
-        circle(51.6, 22.6, 1.3),
-        circle(54.2, 21.4, 1.3),
-        circle(57.1, 20.8, 1.3),
-      ],
-      beads: lappetBeads(),
+      hair: [circle(54.8, 30.3, 0.75)],
     },
     whole: {
-      fill: [
-        'M 60 46.4 C 56.2 46.4 52.6 44.2 50.6 40.6 C 49 37.6 48.3 33 48.4 28.4 C 48.5 21.6 52.4 14.5 60 14.5 C 67.6 14.5 71.5 21.6 71.6 28.4 C 71.7 33 71 37.6 69.4 40.6 C 67.4 44.2 63.8 46.4 60 46.4 Z',
-      ],
+      fill: [HEAD],
       dilute: [
         // the nose's ridge, and its base with the nostrils' wings
         'M 59.2 27.8 C 59 30.8 58.6 33.4 57.9 35.3 C 57.4 36.3 58 37.1 59 36.9 C 59.6 37.3 60.4 37.3 61 36.9 C 62 37.1 62.6 36.3 62.1 35.3',
         'M 58.2 42.7 C 59.3 43.3 60.7 43.3 61.8 42.7', // lower lip
       ],
-      // The archaic smile: closed lips, level in the middle, the corners drawn up.
-      fine: [
-        'M 56.6 39.6 C 57.1 40.4 57.8 40.9 58.8 41 C 59.3 41.05 59.6 40.9 60 41 C 60.4 40.9 60.7 41.05 61.2 41 C 62.2 40.9 62.9 40.4 63.4 39.6',
-      ],
-      hair: [
-        'M 49 26 C 47.6 18 51.4 9.4 60 8.6 C 68.6 9.4 72.4 18 71 26 C 70.6 24.6 70 23.4 69.4 22.6 C 66.6 20.4 63.4 19.6 60 19.6 C 56.6 19.6 53.4 20.4 50.6 22.6 C 50 23.4 49.4 24.6 49 26 Z',
-        circle(60, 20.6, 1.3),
-      ],
-      beads: ['M 53.4 13.6 C 56.4 11.4 63.6 11.4 66.6 13.6'],
-      fillet: ['M 50.2 20.8 C 53.6 15.8 66.4 15.8 69.8 20.8'],
+      // The lips at rest: level, the bow of the upper one in the middle.
+      fine: ['M 57 40.4 C 58 40.5 59.2 40.2 60 40.5 C 60.8 40.2 62 40.5 63 40.4'],
+      hair: [frontCap()],
+      locks: curls([
+        [13.6, [56.4, 60, 63.6]],
+        [16.6, [52.4, 56.2, 60, 63.8, 67.6]],
+        [19.4, [50.4, 54, 57.8, 61.6, 65.4, 69]],
+      ]),
     },
   },
-  // The ears, over the lappets' roots.
+  // The ears, the curls over their tops.
   {
+    bone: 'head',
     half: {
       fill: ['M 49 26.6 C 47.2 25.4 45.6 26.8 45.8 29.4 C 46 32.4 47.2 35 49.4 35.8 Z'],
       dilute: ['M 48.2 28.8 C 47.2 29.6 47.4 32 48.6 33'],
@@ -367,17 +465,50 @@ const FRONT: PartSource<'front'>[] = [
   },
 ];
 
-/** The lappet's tresses, bead by bead. */
-function lappetBeads(): string[] {
-  const rows: string[] = [];
-  for (let y = 38; y <= 65; y += 2.6) {
-    const t = (y - 35) / 32;
-    const left = 47.4 - 2.8 * t + 0.4;
-    const right = 50.4 - 1.8 * t * t - 0.4;
-    rows.push(`M ${left} ${y} C ${left + 1} ${y + 0.9} ${right - 1} ${y + 0.9} ${right} ${y}`);
+/**
+ * A row of short locks along a hairline from `x0` to `x1`, each a comma hanging
+ * `drop` below the line and curling the same way, as the Doryphoros wears them.
+ */
+function locksAlong(x0: number, x1: number, line: (x: number) => number, n: number, drop: number) {
+  const w = (x1 - x0) / n;
+  let d = '';
+  for (let i = 0; i < n; i++) {
+    const a = x0 + i * w;
+    const b = a + w;
+    d += ` C ${a + w * 0.15} ${line(a) + drop} ${b - w * 0.35} ${line(b) + drop * 1.1} ${b} ${line(b)}`;
   }
-  rows.push('M 48.8 36 C 48.4 46 47.6 56 46.8 66');
-  return rows;
+  return d;
+}
+
+/** The cap of curls from the front: close to the skull, a fringe of locks over the brow. */
+function frontCap(): string {
+  const hairline = (x: number) => 21.6 + 0.04 * (x - 60) ** 2;
+  return (
+    'M 48.7 30.6 C 47.1 25.6 47.4 18.6 51.2 14.4 C 53.8 11.6 56.9 10.6 60 10.6 ' +
+    'C 63.1 10.6 66.2 11.6 68.8 14.4 C 72.6 18.6 72.9 25.6 71.3 30.6 C 70.9 28.4 70.3 26.6 69.6 25.2' +
+    locksAlong(69.6, 50.4, hairline, 7, 1.8) +
+    ' C 49.7 26.6 49.1 28.4 48.7 30.6 Z'
+  );
+}
+
+/** From behind, the curls cover the skull and end in a row of locks on the nape. */
+function backCap(): string {
+  const nape = (x: number) => 41 - 0.02 * (x - 60) ** 2;
+  return (
+    'M 60 8.6 C 52 8.6 46.9 14.8 46.8 23.6 C 46.7 29 47.2 34.2 48.2 38.1' +
+    locksAlong(48.2, 71.8, nape, 8, 1.8) +
+    ' C 72.8 34.2 73.3 29 73.2 23.6 C 73.1 14.8 68 8.6 60 8.6 Z'
+  );
+}
+
+/** A curl at each point, row by row: a short hook scratched through the glaze. */
+function curls(rows: [number, number[]][]): string[] {
+  return rows.flatMap(([y, xs]) =>
+    xs.map(
+      (x) =>
+        `M ${x - 1} ${y + 0.6} C ${x - 1.8} ${y - 1} ${x + 0.6} ${y - 2} ${x + 1.4} ${y - 0.6}`,
+    ),
+  );
 }
 
 // ---------------------------------------------------------------------------
@@ -396,48 +527,6 @@ const CREST = `C 48.2 136.6 43.4 135.6 ${K}`; // Q out to K
 const ERECTOR_EDGE = `C 53.4 118.4 51.6 123.6 51.2 129 C 50.9 133.6 51.2 138 ${Q}`; // J to Q
 const SACRUM = `C 57 154 54.2 148.6 ${Q}`; // the top of the cleft up to Q
 const GLUTE_EDGE = 'C 34.8 166 36.6 174 42 177.8 C 46.8 180.8 53 181.6 57.2 180.2';
-
-/** The hair down the back: a flat mass of beaded tresses, each ending in a round tip. */
-const TRESSES = 8;
-const HAIR_END = 71.4;
-
-/** The mass falls straight past the neck, then spreads a little over the shoulders. */
-function hairLeft(y: number): number {
-  return y <= 44 ? 47.2 : 47.2 - (1.6 * (y - 44)) / (HAIR_END - 44);
-}
-
-const tressWidth = (y: number) => (120 - 2 * hairLeft(y)) / TRESSES;
-
-function backHair(): string {
-  const left = hairLeft(HAIR_END);
-  const tress = tressWidth(HAIR_END);
-  let d = `M 60 8 C 52 8 47 14.6 46.8 24 C 46.6 32 47.2 38 47.2 44 C 47.2 54 46.4 63 ${left} ${HAIR_END}`;
-  for (let i = 0; i < TRESSES; i++) {
-    const x0 = left + i * tress;
-    const x1 = x0 + tress;
-    d += ` C ${x0} ${HAIR_END + 3.6} ${x1} ${HAIR_END + 3.6} ${x1} ${HAIR_END}`;
-  }
-  return `${d} C 73.6 63 72.8 54 72.8 44 C 72.8 38 73.4 32 73.2 24 C 73 14.6 68 8 60 8 Z`;
-}
-
-/** A bead for every tress on every row, and the crown's rings above the fillet. */
-function backBeads(): string[] {
-  const rows = [
-    'M 51 15.6 C 54.6 11.4 65.4 11.4 69 15.6',
-    'M 49 19.6 C 53.4 16.6 66.6 16.6 71 19.6',
-  ];
-  for (let y = 26; y <= 70; y += 2.9) {
-    let row = '';
-    const tress = tressWidth(y);
-    for (let i = 0; i < TRESSES; i++) {
-      const x0 = hairLeft(y) + i * tress + 0.5;
-      const x1 = x0 + tress - 1;
-      row += `M ${x0} ${y} C ${x0 + 0.4} ${y + 1} ${x1 - 0.4} ${y + 1} ${x1} ${y} `;
-    }
-    rows.push(row.trim());
-  }
-  return rows;
-}
 
 const BACK: PartSource<'back'>[] = [
   {
@@ -518,6 +607,7 @@ const BACK: PartSource<'back'>[] = [
     },
   },
   {
+    bone: 'arm',
     half: {
       fill: [`${ARM} L 27 72 L 29.6 62.6 L ${C0} Z`],
       regions: [
@@ -539,21 +629,27 @@ const BACK: PartSource<'back'>[] = [
       dilute: [
         'M 37.4 66.8 C 33.4 73 29.6 81.4 26.4 89.4', // the delt's edge on the shoulder blade
         'M 23.4 124.6 C 24.8 134 26.8 146 28.4 156.4', // the forearm's extensors
-        'M 25.6 169.6 C 28.6 171.2 32.2 171.2 35.8 169.4', // knuckles
+        'M 25.6 168.6 C 28.4 170 31.8 170.2 35.4 168.8', // knuckles
+        'M 27.6 173.4 C 28.4 177.6 29.8 181.6 31.4 184.8', // between the fingers
       ],
       contour: [ARM],
     },
   },
   {
+    bone: 'head',
     half: {
       fill: ['M 47.2 26.4 C 45.6 26.6 44.8 28.6 45.2 31 C 45.6 33.6 46.4 35.4 47.4 36.2 Z'],
       fine: ['M 47.2 26.4 C 45.6 26.6 44.8 28.6 45.2 31 C 45.6 33.6 46.4 35.4 47.4 36.2'],
-      fillet: ['M 59.2 23 C 58.6 26.6 58.8 30.4 57.8 34'], // the fillet's tied ends
     },
     whole: {
-      hair: [backHair()],
-      beads: backBeads(),
-      fillet: ['M 46.9 21.6 C 52 23.4 68 23.4 73.1 21.6'],
+      hair: [backCap()],
+      locks: curls([
+        [13, [55, 60, 65]],
+        [17, [51, 55.5, 60, 64.5, 69]],
+        [21.5, [49.5, 54, 58.5, 63, 67.5, 71]],
+        [26, [49, 53.5, 58, 62.5, 67, 71]],
+        [30.5, [50, 54.5, 59, 63.5, 68]],
+      ]),
     },
   },
 ];
@@ -561,13 +657,12 @@ const BACK: PartSource<'back'>[] = [
 // ---------------------------------------------------------------------------
 
 function paint<V extends StatueView>(view: V, parts: PartSource<V>[]): PaintedPart[] {
-  const left = side(view, 'left');
-  const right = side(view, 'right');
-  const both = (d: string) => `${transform(d, left, false)} ${transform(d, right, true)}`;
-  const same: Point = (x, y) => [x, y];
   const muscleOf = STATUE_REGIONS[view] as Record<string, string>;
 
-  return parts.map(({ half, whole }) => {
+  return parts.map(({ bone = 'body', half, whole }) => {
+    const same = pose(view, bone);
+    const mirrored: Point = (x, y) => same(120 - x, y);
+    const both = (d: string) => `${transform(d, same, false)} ${transform(d, mirrored, true)}`;
     const part = Object.fromEntries(
       LAYERS.map((layer) => [
         layer,

@@ -5,6 +5,7 @@
   import Button from '../kit/Button.svelte';
   import Icon from '../kit/Icon.svelte';
   import {
+    competitionExercises,
     RECORD_RPES,
     recordFigures,
     recordFrom,
@@ -20,8 +21,9 @@
   import ExerciseSheet from './ExerciseSheet.svelte';
 
   /**
-   * Records entered by hand: a lift from before the log, or from a meet. They
-   * join the Labours record book with the ones the sessions set.
+   * Records entered by hand: a competition lift from before the log. They join
+   * the Labours record book with the ones the sessions set. A meet's lifts are
+   * not records but bests, under Competition.
    */
 
   const today = localDate(new Date());
@@ -138,7 +140,7 @@
           id="rec-context"
           bind:value={form.context}
           autocomplete="off"
-          placeholder="Nationals 2026"
+          placeholder="Old gym"
         />
       </div>
     </EntryForm>
@@ -147,7 +149,7 @@
   {#if rows.length === 0}
     {#if !adding}
       <p class="meta none">
-        A lift from before the log, or from a meet, goes here and joins your records.
+        A lift from before the log goes here and joins your records. A meet's go under Competition.
       </p>
     {/if}
   {:else}
@@ -175,7 +177,7 @@
 
 <ExerciseSheet
   open={picking}
-  library={app.library}
+  library={competitionExercises(app.library)}
   current={form.exerciseId}
   onpick={(exercise) => {
     form.exerciseId = exercise.id;

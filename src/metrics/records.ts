@@ -18,6 +18,11 @@ import { weightKg } from './load';
  * per exercise. A record is for exactly that many reps, so a heavy five does not
  * stand as the record for three.
  *
+ * Only the competition lifts keep a book (`holdsRecords`): they are what a
+ * record measures progress in, and a laurel on every accessory would make one
+ * on a squat mean less. A meet's lifts are not in it either: they are
+ * `CompetitionBest`s, kept apart.
+ *
  * Records compare the weight the lifter loaded. For a bodyweight-plus lift that
  * is the added load, so a hand-entered "+30 kg" and a logged one line up
  * without anyone's bodyweight, and nothing here depends on one being on record.
@@ -43,7 +48,7 @@ function round(kg: number): number {
 export function recordWeightKg(set: PerformedSet, exercise: Exercise): number | null {
   if (set.state !== 'done') return null;
   if (set.is_warmup && !countsWarmups('records')) return null;
-  if (exercise.load_type === 'none') return null;
+  if (!holdsRecords(exercise) || exercise.load_type === 'none') return null;
   if (set.reps === null || !Number.isInteger(set.reps)) return null;
   if (set.reps < 1 || set.reps > RECORD_MAX_REPS) return null;
   const kg = weightKg(set.load);
@@ -51,6 +56,17 @@ export function recordWeightKg(set: PerformedSet, exercise: Exercise): number | 
 }
 
 const keyOf = (exerciseId: string, reps: number) => `${exerciseId}:${reps}`;
+
+/** Whether an exercise keeps a record book: the competition lifts, each stance its own. */
+export function holdsRecords(exercise: Exercise): boolean {
+  return exercise.tier === 'comp';
+}
+
+/** The hand-entered records of exercises that keep a book; the rest are kept but not shown. */
+function heldManual(manual: readonly ManualRecord[], library: readonly Exercise[]): ManualRecord[] {
+  const held = new Set(library.filter(holdsRecords).map((e) => e.id));
+  return manual.filter((m) => held.has(m.exercise_id));
+}
 
 // --- from sessions ----------------------------------------------------------
 
@@ -135,7 +151,7 @@ export function recordBook(
   manual: readonly ManualRecord[],
   options: { exceptSetId?: Id } = {},
 ): PersonalRecord[] {
-  return mergeRecords(sessionRecords(sessions, library, options), manual);
+  return mergeRecords(sessionRecords(sessions, library, options), heldManual(manual, library));
 }
 
 export function recordAt(
@@ -208,7 +224,7 @@ export function recordEvents(
   manual: readonly ManualRecord[],
 ): RecordEvent[] {
   const standing = new Map<string, number>();
-  const pending = [...manual]
+  const pending = heldManual(manual, library)
     .filter((m) => m.reps >= 1 && m.reps <= RECORD_MAX_REPS)
     .sort((a, b) => a.date.localeCompare(b.date));
   const take = (key: string, kg: number) => {

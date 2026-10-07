@@ -48,3 +48,50 @@ test('history lists the weeks, filters by exercise and opens a day from the cale
   await expect(page).toHaveURL(/#\/history$/);
   await expect(page.getByRole('region', { name: 'Calendar' })).toBeVisible();
 });
+
+test('a finished session opens locked, and Edit unlocks it until the lifter leaves', async ({
+  page,
+}) => {
+  await openSeeded(page);
+  await page.getByRole('link', { name: /Historia/ }).click();
+  await page.locator('.week').nth(1).getByRole('listitem').first().getByRole('button').click();
+  await expect(page).toHaveURL(/#\/session\//);
+
+  // Read, not written: the sets show, nothing in them takes a tap.
+  const card = page.getByRole('region').first();
+  await card.getByRole('button', { expanded: false }).click();
+  const load = card.getByRole('textbox', { name: 'Load' }).first();
+  await expect(load).not.toBeEditable();
+  await expect(card.getByRole('button', { name: /^Edit set/ }).first()).toBeDisabled();
+  await expect(page.getByRole('button', { name: '+ Set' })).toHaveCount(0);
+  await expect(page.getByRole('textbox', { name: 'Notes' })).not.toBeEditable();
+
+  // Unlocked, it edits as it always did.
+  await page.getByRole('button', { name: 'Edit this session' }).click();
+  await expect(load).toBeEditable();
+  await load.fill('101');
+  await load.blur();
+  await expect(load).toHaveValue('101');
+  await page.getByRole('button', { name: 'Done editing' }).click();
+  await expect(load).not.toBeEditable();
+
+  // Back and in again, it is locked again, and the edit stayed.
+  await page.getByRole('button', { name: 'Edit this session' }).click();
+  await page.getByRole('button', { name: 'Back' }).click();
+  await page.locator('.week').nth(1).getByRole('listitem').first().getByRole('button').click();
+  await expect(page.getByRole('button', { name: 'Edit this session' })).toBeVisible();
+});
+
+test('the last session of a week opens from a tap on its words, under a notch', async ({
+  page,
+}) => {
+  await openSeeded(page);
+  // An iPhone's inset, which each week's heading reaches up into so it can stick under the notch.
+  await page.addStyleTag({ content: ':root { --safe-top: 59px !important; }' });
+  await page.getByRole('link', { name: /Historia/ }).click();
+
+  // Right above the next week's heading, whose reach must not take the tap.
+  const last = page.locator('.week').nth(1).getByRole('listitem').last();
+  await last.getByRole('button').tap({ timeout: 5000 });
+  await expect(page).toHaveURL(/#\/session\//);
+});

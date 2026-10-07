@@ -1,5 +1,6 @@
 import type {
   BodyweightEntry,
+  CompetitionBest,
   Exercise,
   Id,
   IsoDate,
@@ -535,10 +536,11 @@ class App {
 
   // --- the lifter and this device -----------------------------------------------------
 
-  /** Weigh-ins, reference maxes and records entered by hand: the log's lifter tables. */
+  /** Weigh-ins, reference maxes, records entered by hand, meet bests: the log's lifter tables. */
   bodyweights = $state.raw<BodyweightEntry[]>([]);
   oneRms = $state.raw<OneRmEntry[]>([]);
   manualRecords = $state.raw<ManualRecord[]>([]);
+  competitionBests = $state.raw<CompetitionBest[]>([]);
   /** This device's preferences; they stay on the device and never sync. */
   prefs = $state.raw<Prefs>(DEFAULT_PREFS);
 
@@ -549,15 +551,17 @@ class App {
   records = $derived(recordBook(this.current, this.library, this.manualRecords));
 
   async #loadLifter(s: AppStorage): Promise<void> {
-    const [bodyweights, oneRms, manualRecords, settings] = await Promise.all([
+    const [bodyweights, oneRms, manualRecords, competitionBests, settings] = await Promise.all([
       s.log.getRows('bodyweight'),
       s.log.getRows('oneRm'),
       s.log.getRows('manualRecords'),
+      s.log.getRows('competitionBests'),
       s.store.settings(),
     ]);
     this.bodyweights = bodyweights;
     this.oneRms = oneRms;
     this.manualRecords = manualRecords;
+    this.competitionBests = competitionBests;
     this.prefs = readPrefs(settings);
   }
 

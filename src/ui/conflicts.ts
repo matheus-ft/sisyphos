@@ -210,6 +210,7 @@ const TABLE_NOUN: Record<string, string> = {
   bodyweight: 'weigh-in',
   oneRm: 'reference max',
   manualRecords: 'record',
+  competitionBests: 'competition best',
   additions: 'exercise',
 };
 

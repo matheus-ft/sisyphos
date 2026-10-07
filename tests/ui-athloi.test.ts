@@ -19,6 +19,7 @@ import {
   muscleRowText,
   openingWindow,
   pointText,
+  meetBest,
   recordedExercises,
   recordRows,
   resolvePick,
@@ -336,5 +337,25 @@ describe('the record book rows', () => {
       'bench',
     ]);
     expect(recordedExercises([], library)).toEqual([]);
+  });
+
+  it('lists an exercise with only a meet best, and counts no record for it', () => {
+    const meet = { date: '2026-05-16', exercise_id: 'sumo_deadlift', weight_kg: 200, meet: null };
+    const [only] = recordedExercises([], library, [meet]);
+    expect(only).toMatchObject({ last: '2026-05-16', count: 0 });
+    expect(only.exercise.id).toBe('sumo_deadlift');
+  });
+
+  it("finds an exercise's heaviest meet single, the earlier on a tie", () => {
+    const at = (date: string, weight_kg: number) => ({
+      date,
+      exercise_id: 'bench',
+      weight_kg,
+      meet: null,
+    });
+    expect(
+      meetBest([at('2026-05-16', 120), at('2025-11-02', 120), at('2026-03-01', 115)], 'bench'),
+    ).toEqual(at('2025-11-02', 120));
+    expect(meetBest([at('2026-05-16', 120)], 'sumo_deadlift')).toBeNull();
   });
 });

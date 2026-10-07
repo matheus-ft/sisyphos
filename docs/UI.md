@@ -101,8 +101,10 @@ target of 8"). Never for pins or timed sets (`src/ui/suggest.ts`).
 **Screen awake** is a switch: the screen stays on for the session where the
 phone allows it (`src/ui/device.ts`).
 
-**Records in the moment.** A set that beats the best weight at its rep count
-gets the laurel.
+**Records in the moment.** A set of a competition lift that beats the best
+weight at its rep count gets the laurel. Only the competition lifts keep
+records, each stance its own (tier `comp` in `src/library/exercises.csv`), so a
+laurel always means the squat, bench or deadlift moved.
 
 **The finish.** The boulder arrives. Duration, sets, tonnage and records set
 today, then each exercise's top set. Save as template, share, done. Share draws
@@ -116,7 +118,8 @@ empty session, plan one ahead, log a past session, and the templates.
 
 **Planning ahead.** A planned session is filled in without starting the clock;
 Start sets the time. "Do this again" copies a past session as a plan; a
-template starts or plans one.
+template starts or plans one; "Plan one ahead" asks for the day, then whether
+to start fresh or from a template.
 
 **Templates** carry a program label (name, block, week, day, weekday), which a
 session started from them copies, since "block 2, week 3" belongs to the plan,
@@ -127,28 +130,39 @@ range, and a target rest per exercise.
 **Historia (History).** Every session by week, newest first, marking any still
 holding pending sets; filtered by exercise, each row shows that exercise's best
 set and e1RM. A calendar shows the month: a disc per session, a ring for a plan,
-a dot for a record day, today ringed.
+a dot for a record day, today ringed. A whole row opens its session.
+
+**Past sessions are read, not edited.** A finished session opens locked:
+looking back through history never nudges a set. Edit unlocks it until the
+lifter leaves it.
 
 **Athloi (Progress).**
 
-- **Body:** a kouros, front and back, painted red-figure, its muscles shaded by
-  working sets this week or over the last four, auxiliary muscles counting half
-  (the active counting preset). Each muscle opens the sets behind it. The
-  figure's regions are in `src/ui/statue.ts`.
+- **Body:** a Classical athlete standing in contrapposto, front and back,
+  painted red-figure, its muscles shaded by working sets this week or over the
+  last four, auxiliary muscles counting half (the active counting preset). Each
+  muscle opens the sets behind it. It must read Greek: the archaic kouros, its
+  first drawing, read as Egyptian. The figure's regions are in
+  `src/ui/statue.ts`, its drawing and pose in `src/ui/progress/statue-art.ts`.
 - **Strength:** each lift's best e1RM over time, drawn as the hill the boulder
   climbs, record days gilded. e1RM comes from the RPE chart when a set has an
   RPE, and from Epley otherwise (`src/metrics/e1rm.ts`).
-- **Labours:** per exercise, the best weight at 1 to 10 reps, from sessions and
-  entered by hand together (`src/metrics/records.ts`); a record from the last
-  30 days carries the laurel.
+- **Labours:** per competition lift, the best weight at 1 to 10 reps, from
+  sessions and entered by hand together (`src/metrics/records.ts`); a record
+  from the last 30 days carries the laurel. Above them, the lift's best at a
+  meet, which is none of them.
 
 **Agora (More).** The lifter's data: weigh-ins; reference maxes, set by hand and
 dated, with the best recent e1RM beside each as a suggestion that is never
-written by itself; records entered by hand. The templates. The library: search
-filtered by base lift, tier and muscle; create an exercise; change one, which
-saves it and opens its proposal on github.com. Settings: the device's name,
-screen awake, the bell, plate increments per unit (`PLATE_CHOICES` in
-`src/ui/prefs.ts`), persistent storage, sync, and export of `sets.csv` and
+written by itself; under each, the two numbers it is not, the heaviest single
+in training and the heaviest at a meet; meet bests, entered by hand; records
+entered by hand. A lift has three different maxes and the app never mixes them:
+the reference programming reads, the best single in training, and the best
+single on a platform. The templates. The library: search filtered by base lift,
+tier and muscle; create an exercise; change one, which saves it and opens its
+proposal on github.com. Settings: the device's name, screen awake, the bell,
+plate increments per unit (one of `PLATE_CHOICES` in `src/ui/prefs.ts`, or
+typed in), persistent storage, sync, and export of `sets.csv` and
 `sessions.csv`. Preferences stay on the device and never sync.
 
 **Conflicts.** When a sync finds or brings one, a full-screen notice says so,
@@ -179,10 +193,14 @@ screen only, and rest analysis was never asked for.
 
 ## For the designer
 
+To try the app on the lifter's real data without touching their log, give the
+designer a copy of it: `DATA.md`, A copy for someone else.
+
 Open questions v0.5 answered provisionally:
 
-- The statue is a first drawing; an illustrator's pass would refine its
-  proportions and face.
+- The statue is drawn standing square and bent into its pose by code; an
+  illustrator's pass would refine its proportions, face and pose, and could
+  draw the free arm bent, as the Doryphoros holds his spear.
 - The share card follows the phone's mode (clay by day, glaze by night) rather
   than offering a choice.
 - The bell and screen awake depend on the iPhone: screen awake needs iOS 18.4 or

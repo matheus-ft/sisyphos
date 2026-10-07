@@ -15,11 +15,37 @@ export interface Prefs {
   chime: boolean;
 }
 
-/** The increments the settings screen offers, per unit. Anything else saved is ignored. */
+/** The increments the settings screen offers to pick, per unit. */
 export const PLATE_CHOICES = {
   kg: [1.25, 2.5, 5],
   lb: [2.5, 5, 10],
 } as const;
+
+/**
+ * Any other increment is typed in: fractional plates make 0.5 kg, a gym with
+ * nothing under 5 kg plates makes 10. Outside these bounds a step is a slip of
+ * a finger rather than a pair of plates, and is not taken.
+ */
+export const PLATE_RANGE = {
+  kg: { min: 0.25, max: 10 },
+  lb: { min: 0.5, max: 20 },
+} as const;
+
+export type PlateUnit = keyof typeof PLATE_RANGE;
+
+/** An increment, to the hundredth, if it is one `PLATE_RANGE` allows; else null. */
+export function plateIncrement(value: unknown, unit: PlateUnit): number | null {
+  if (typeof value !== 'number' || !Number.isFinite(value)) return null;
+  const step = Math.round(value * 100) / 100;
+  const { min, max } = PLATE_RANGE[unit];
+  return step >= min && step <= max ? step : null;
+}
+
+/** A typed increment ("0,5" too), or null when it is not one. */
+export function parsePlate(text: string, unit: PlateUnit): number | null {
+  const trimmed = text.trim().replace(',', '.');
+  return trimmed === '' ? null : plateIncrement(Number(trimmed), unit);
+}
 
 export const DEFAULT_PREFS: Prefs = {
   deviceName: '',
@@ -34,12 +60,10 @@ type Stored = Partial<Pick<Settings, keyof Prefs>>;
 /** Settings as stored, or a bare preferences record, to preferences. Junk falls back to the default. */
 export function readPrefs(settings: Stored | null | undefined): Prefs {
   const s = settings ?? {};
-  const plate = (value: unknown, choices: readonly number[], fallback: number) =>
-    typeof value === 'number' && choices.includes(value) ? value : fallback;
   return {
     deviceName: typeof s.deviceName === 'string' ? s.deviceName.trim() : DEFAULT_PREFS.deviceName,
-    plateKg: plate(s.plateKg, PLATE_CHOICES.kg, DEFAULT_PREFS.plateKg),
-    plateLb: plate(s.plateLb, PLATE_CHOICES.lb, DEFAULT_PREFS.plateLb),
+    plateKg: plateIncrement(s.plateKg, 'kg') ?? DEFAULT_PREFS.plateKg,
+    plateLb: plateIncrement(s.plateLb, 'lb') ?? DEFAULT_PREFS.plateLb,
     keepAwake: s.keepAwake === true,
     chime: s.chime === true,
   };

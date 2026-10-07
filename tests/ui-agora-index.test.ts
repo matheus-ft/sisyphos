@@ -3,7 +3,9 @@ import {
   aimAt,
   countOf,
   libraryValue,
+  OTHER_PLATE,
   persistenceText,
+  plateChoice,
   plateOptions,
   settingsSummary,
   takeAim,
@@ -26,9 +28,18 @@ describe('the words on the index', () => {
 });
 
 describe('plate increments', () => {
-  it('offer exactly the choices the preferences accept, as strings', () => {
-    expect(plateOptions('kg').map((o) => o.value)).toEqual(PLATE_CHOICES.kg.map(String));
-    expect(plateOptions('lb').map((o) => Number(o.value))).toEqual([...PLATE_CHOICES.lb]);
+  it('offer the usual choices as strings, then Other', () => {
+    expect(plateOptions('kg', 2.5).map((o) => o.value)).toEqual([
+      ...PLATE_CHOICES.kg.map(String),
+      OTHER_PLATE,
+    ]);
+    expect(plateOptions('lb', 5).at(-1)).toEqual({ value: OTHER_PLATE, label: 'Other' });
+    expect(plateChoice('kg', 2.5)).toBe('2.5');
+  });
+
+  it('show a typed increment as Other, pressed', () => {
+    expect(plateOptions('kg', 0.5).at(-1)).toEqual({ value: OTHER_PLATE, label: '0.5' });
+    expect(plateChoice('kg', 0.5)).toBe(OTHER_PLATE);
   });
 });
 

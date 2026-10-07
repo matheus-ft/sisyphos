@@ -3,7 +3,16 @@
   import { app } from '../app.svelte';
   import Button from '../kit/Button.svelte';
   import Icon from '../kit/Icon.svelte';
-  import { kgText, MAX_RANGE, maxProblem, maxViews, parseKg, whenText } from '../lifter';
+  import {
+    kgText,
+    liftBests,
+    MAX_RANGE,
+    maxProblem,
+    maxViews,
+    parseKg,
+    whenText,
+    type BestLine,
+  } from '../lifter';
   import { showToast } from '../overlays.svelte';
   import { localDate } from '../session';
   import EntryForm from './EntryForm.svelte';
@@ -12,7 +21,8 @@
    * The reference max per competition lift: the one in force today and when it
    * was set, its history, a dated entry to add, and beside it the best recent
    * e1RM as a suggestion that only fills the form. Nothing is written until the
-   * lifter saves it.
+   * lifter saves it. Under it, the two numbers it is not: the heaviest single
+   * in training and the heaviest at a meet.
    */
 
   const today = localDate(new Date());
@@ -67,11 +77,16 @@
   }
 
   const cap = (text: string) => text.charAt(0).toUpperCase() + text.slice(1);
+
+  /** "Sumo Deadlift · 14 March · Nationals 2026", whichever are known. */
+  const aboutBest = (best: BestLine) =>
+    [best.exercise, whenText(best.date, today), best.meet].filter(Boolean).join(' · ');
 </script>
 
 <section id="maxes" aria-labelledby="maxes-h">
   <h2 id="maxes-h" class="visually-hidden">Reference maxes</h2>
   {#each views as view (view.lift)}
+    {@const bests = liftBests(view.lift, app.records, app.competitionBests, app.library)}
     <p class="sec caps">Reference max · {view.lift}</p>
     <div class="card max">
       <div class="top">
@@ -94,6 +109,24 @@
           </div>
         {/if}
       </div>
+      {#if bests.single || bests.competition}
+        <dl class="bests">
+          {#if bests.single}
+            <dt class="caps">Best single</dt>
+            <dd>
+              <span class="figure-num">{kgText(bests.single.kg)}</span>
+              <span class="meta">{aboutBest(bests.single)}</span>
+            </dd>
+          {/if}
+          {#if bests.competition}
+            <dt class="caps">At a meet</dt>
+            <dd>
+              <span class="figure-num">{kgText(bests.competition.kg)}</span>
+              <span class="meta">{aboutBest(bests.competition)}</span>
+            </dd>
+          {/if}
+        </dl>
+      {/if}
       <div class="tools">
         <Button variant="link" onclick={() => open(view.lift)}>Enter a max</Button>
         {#if view.history.length > 1}
@@ -205,6 +238,28 @@
   .suggest :global(.button-link) {
     margin-top: -12px;
     margin-right: calc(-1 * var(--space-2));
+  }
+
+  .bests {
+    display: grid;
+    grid-template-columns: auto 1fr;
+    align-items: baseline;
+    gap: 2px var(--space-3);
+    margin: var(--space-1) 0 0;
+    padding-top: var(--space-2);
+    border-top: var(--hairline) solid var(--line);
+  }
+
+  .bests dt {
+    color: var(--muted);
+  }
+
+  .bests dd {
+    display: flex;
+    align-items: baseline;
+    gap: var(--space-2);
+    min-width: 0;
+    margin: 0;
   }
 
   .tools {

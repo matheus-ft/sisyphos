@@ -3,7 +3,7 @@
   import { aimAt, countOf, libraryValue, settingsSummary, type LifterSection } from '../agoraIndex';
   import Icon from '../kit/Icon.svelte';
   import ScreenHeader from '../kit/ScreenHeader.svelte';
-  import { bodyweightSummary, maxesSummary, recordsSummary } from '../lifter';
+  import { bestsSummary, bodyweightSummary, maxesSummary, recordsSummary } from '../lifter';
   import { routeHash, type AgoraPage } from '../route';
   import { localDate } from '../session';
   import { statusLine } from '../status';
@@ -66,6 +66,7 @@
   <ul class="group">
     {@render lifterRow('bodyweight', 'Bodyweight', bodyweightSummary(app.bodyweights))}
     {@render lifterRow('maxes', 'Reference maxes', maxesSummary(app.oneRms, today))}
+    {@render lifterRow('competition', 'Competition', bestsSummary(app.competitionBests))}
     {@render lifterRow('records', 'Records', recordsSummary(app.manualRecords))}
   </ul>
 

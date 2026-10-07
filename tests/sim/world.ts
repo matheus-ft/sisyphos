@@ -90,6 +90,11 @@ const RECORDS = [
   ['2026-06-01', 'low_bar_squat', 3],
   ['2026-06-02', 'comp_bench', 1],
 ] as const;
+const BESTS = [
+  ['2026-05-16', 'low_bar_squat'],
+  ['2026-05-16', 'sumo_deadlift'],
+  ['2026-11-07', 'bench'],
+] as const;
 /** A shipped exercise the lifter changes, and two of their own. */
 const ADDITIONS = ['low_bar_squat', 'seal_row', 'zercher_squat'];
 
@@ -412,6 +417,10 @@ export class World {
           context: `v${n}`,
         });
       }
+      case 'competitionBests': {
+        const [date, exercise_id] = BESTS[pick % BESTS.length];
+        return log.putRow('competitionBests', { date, exercise_id, weight_kg: 200, meet: `v${n}` });
+      }
       case 'additions':
         await log.saveExercise({ ...exercise(ADDITIONS[pick % ADDITIONS.length]), name: `v${n}` });
         return;
@@ -440,6 +449,10 @@ export class World {
       case 'manualRecords': {
         const row = await this.row(device, 'manualRecords', place);
         return log.putRow('manualRecords', { ...row, context: `v${n}` });
+      }
+      case 'competitionBests': {
+        const row = await this.row(device, 'competitionBests', place);
+        return log.putRow('competitionBests', { ...row, meet: `v${n}` });
       }
       case 'additions': {
         const { based_on: _, ...addition } = await this.row(device, 'additions', place);

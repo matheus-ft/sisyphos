@@ -17,7 +17,7 @@
   let { levels, selected = null, onpick, view = 'both', children }: Props = $props();
 
   /** Painted over the muscles, in this order. */
-  const LINES = ['wash', 'dilute', 'relief', 'contour', 'fine', 'hair', 'beads', 'fillet'] as const;
+  const LINES = ['wash', 'dilute', 'relief', 'contour', 'fine', 'hair', 'locks'] as const;
 
   const names = new Map(parseMuscles(musclesCsv).map((m) => [m.id, m.name]));
   const fills = $derived(regionFills(levels));
@@ -171,8 +171,7 @@
   .relief,
   .contour,
   .fine,
-  .beads,
-  .fillet,
+  .locks,
   .casing,
   .selected,
   .focus {
@@ -206,7 +205,8 @@
     fill: var(--statue-line);
   }
 
-  .beads {
+  /* The curls, scratched through the glaze to the clay. */
+  .locks {
     stroke: var(--vol-0);
     stroke-opacity: 0.55;
     stroke-width: 0.6;
