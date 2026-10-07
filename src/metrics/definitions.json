@@ -77,6 +77,12 @@
     }
   },
 
+  "records": {
+    "_about": "Which exercises keep a record book: the laurel, the Labours table, a meet's best. The lifts you take to the platform, each stance its own; one you only train, such as the other squat, keeps none.",
+    "exercises": ["low_bar_squat", "bench", "sumo_deadlift", "conventional_deadlift"],
+    "_options.exercises": "Ids from src/library/exercises.csv: low_bar_squat, high_bar_squat, bench, sumo_deadlift, conventional_deadlift, or any other you want a book for."
+  },
+
   "warmups": {
     "_about": "One decision, in one place, rather than repeated inside every metric. Name the metrics that count ramp-up sets.",
     "counted_in": [],

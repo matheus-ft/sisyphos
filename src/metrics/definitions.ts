@@ -42,6 +42,8 @@ export interface MetricsConfig {
   tierWeightPresets: Record<string, TierWeights>;
   activeTierWeights: string;
   warmupsCountedIn: WarmupScope[];
+  /** The exercises that keep a record book (definitions.json, records). */
+  recordExercises: string[];
   bodyweight: {
     requiredForLoadTypes: string[];
     hintMaxAgeDays: number;
@@ -75,6 +77,7 @@ export const CONFIG: MetricsConfig = {
   ]),
   activeTierWeights: raw.weights.tiers.active,
   warmupsCountedIn: raw.warmups.counted_in as WarmupScope[],
+  recordExercises: raw.records.exercises,
   bodyweight: {
     requiredForLoadTypes: raw.bodyweight.required_for_load_types,
     hintMaxAgeDays: raw.bodyweight.hint_max_age_days,

@@ -475,6 +475,11 @@ body {
   -webkit-font-smoothing: antialiased;
   -webkit-tap-highlight-color: transparent;
   text-rendering: optimizeLegibility;
+  /* An app, not a page: holding a card offers its actions (kit/longpress.ts),
+     never a text selection or the phone's own callout. Fields still select. */
+  -webkit-user-select: none;
+  user-select: none;
+  -webkit-touch-callout: none;
 }
 
 h1,
@@ -515,6 +520,13 @@ select,
 textarea {
   font: inherit;
   color: inherit;
+}
+
+input:not([readonly]),
+textarea:not([readonly]) {
+  -webkit-user-select: text;
+  user-select: text;
+  -webkit-touch-callout: default;
 }
 
 button {

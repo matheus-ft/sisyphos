@@ -23,6 +23,8 @@
     same: 'M5 9h14M5 15h14',
     warn: 'M12 3l10 18H2zM12 10v5M12 18v.5',
     edit: 'M4 20l4-1 11-11-3-3L5 16z',
+    copy: 'M9 9h11v11H9zM5 15H4V4h11v1',
+    paste: 'M9 3h6v4H9zM9 5H5v16h14V5h-4',
     cloud: 'M7 18h10a4 4 0 0 0 0-8 6 6 0 0 0-11.5 1.5A3.3 3.3 0 0 0 7 18z',
   } as const;
 

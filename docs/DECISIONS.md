@@ -248,9 +248,12 @@ Reference maxes are a third thing again: `OneRmEntry` drives percentage
 prescriptions, is set by hand, and is effective-dated so raising it never
 rewrites what a past session asked for.
 
-**Records are kept for the competition lifts only**, each stance its own. They
-are what a record measures progress in; a laurel on every accessory made one on
-a squat mean less.
+**Records are kept for the lifts taken to the platform only**, each stance its
+own. They are what a record measures progress in; a laurel on every accessory,
+or on the squat stance only trained, made one on the real lift mean less. Which
+lifts those are is the lifter's choice, so it is config (`definitions.json`),
+not the library's tier: high-bar squat is a competition lift, but not this
+lifter's.
 
 **A meet's best is a fourth thing, in a table of its own**
 (`lifter/competition-bests.csv`). A single made on a platform is peaked for and

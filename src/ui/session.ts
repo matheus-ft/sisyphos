@@ -6,6 +6,7 @@ import {
   type ExerciseInstance,
   type Id,
   type IsoDate,
+  type Load,
   type LoadPrescription,
   type LoadUnit,
   type PerformedSet,
@@ -242,6 +243,59 @@ export function doneCount(session: Session): number {
     (n, e) => n + e.performed.filter((s) => s.state === 'done').length,
     0,
   );
+}
+
+/** The set moved `by` places among its exercise's sets; its target, if it has one, goes with it. */
+export function moveSet(session: Session, instanceId: Id, setId: Id, by: number): Session {
+  return updateInstance(session, instanceId, (e) => {
+    const at = e.performed.findIndex((s) => s.id === setId);
+    return at === -1 ? e : { ...e, performed: move(e.performed, at, by) };
+  });
+}
+
+/**
+ * A copy right after the set: its load and reps, warm-up or not, but never its
+ * RPE, and pending until it is lifted, as a new set is (`addSet`). It fulfils
+ * no target, which stays with the set it was planned for.
+ */
+export function duplicateSet(session: Session, instanceId: Id, setId: Id, newId: NewId): Session {
+  return updateInstance(session, instanceId, (e) => ({
+    ...e,
+    performed: e.performed.flatMap((s) => {
+      if (s.id !== setId) return [s];
+      const copy: PerformedSet = {
+        ...emptySet(newId()),
+        is_warmup: s.is_warmup,
+        load: s.state === 'skipped' ? null : s.load,
+        reps: s.state === 'skipped' ? null : s.reps,
+      };
+      return [s, copy];
+    }),
+  }));
+}
+
+/** What a copied set holds for pasting: what was loaded, and for how many. */
+export interface SetCopy {
+  load: Load;
+  reps: number | null;
+}
+
+/** The set as copied, or null for one with nothing loaded yet. */
+export function copyOf(set: PerformedSet): SetCopy | null {
+  return set.load ? { load: set.load, reps: set.reps } : null;
+}
+
+/**
+ * The edit pasting `copy` makes to a set measured by `measure`: the load and
+ * the reps, never the RPE, which is what this set felt like; null when the copy
+ * measures something else (a hold pasted onto a squat).
+ */
+export function pasteEdit(copy: SetCopy, measure: 'weight' | 'time'): SetEdit | null {
+  if (copy.load.kind === 'weight' && measure === 'weight') {
+    return { amount: copy.load.value, unit: copy.load.unit, reps: copy.reps };
+  }
+  if (copy.load.kind === 'time' && measure === 'time') return { amount: copy.load.seconds };
+  return null;
 }
 
 export function removeSet(session: Session, instanceId: Id, setId: Id): Session {

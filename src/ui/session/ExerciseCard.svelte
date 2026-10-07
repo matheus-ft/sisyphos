@@ -8,30 +8,37 @@
     Session,
   } from '../../model';
   import { app } from '../app.svelte';
+  import { clipboard } from '../clipboard.svelte';
   import { entryContext, rowTargets } from '../entry';
   import Button from '../kit/Button.svelte';
   import Icon from '../kit/Icon.svelte';
   import Laurel from '../kit/Laurel.svelte';
+  import { longpress } from '../kit/longpress';
   import Sheet from '../kit/Sheet.svelte';
-  import { confirmDialog } from '../overlays.svelte';
+  import { confirmDialog, showToast } from '../overlays.svelte';
   import {
     addSet,
     amountOf,
+    copyOf,
+    duplicateSet,
     editSet,
     formatSeconds,
+    formatSet,
     measureOf,
     moveExercise,
+    moveSet,
     needsBodyweight,
     parseNumber,
     parseRpe,
     parseSeconds,
+    pasteEdit,
     planSet,
     removeExercise,
     removeSet,
+    type SetEdit,
     setExerciseNotes,
     skipSet,
     unitOf,
-    type SetEdit,
   } from '../session';
   import {
     doneSummary,
@@ -114,8 +121,9 @@
     tapped = false;
   });
 
-  /** The set whose actions (warm-up, skip, remove) are open, from a tap on its number. */
-  let opened = $state<Id | null>(null);
+  /** The set whose menu is open, from a tap on its number or a long press on its row. */
+  let setMenu = $state<Id | null>(null);
+  const menuSet = $derived(instance.performed.find((s) => s.id === setMenu) ?? null);
   let noting = $state(false);
   let menu = $state(false);
 
@@ -253,10 +261,37 @@
     onchange(moveExercise(session, instance.id, by));
   }
 
+  // --- a set's menu ----------------------------------------------------------------
+
+  /** Into the app's clipboard to paste into another set, and the phone's as text. */
+  function copySet(set: PerformedSet): void {
+    setMenu = null;
+    const copy = copyOf(set);
+    if (!copy) return;
+    const text = formatSet(set, exercise);
+    clipboard.copy = copy;
+    clipboard.text = text;
+    void navigator.clipboard?.writeText(text).catch(() => {});
+    showToast({ message: 'Set copied', strong: text });
+  }
+
+  function pasteInto(set: PerformedSet, change: SetEdit): void {
+    setMenu = null;
+    edit(set, change);
+  }
+
+  function setAction(next: Session): void {
+    setMenu = null;
+    onchange(next);
+  }
+
   const newId = () => crypto.randomUUID();
 </script>
 
 <section
+  use:longpress={() => {
+    if (!locked || exercise) menu = true;
+  }}
   class="card ex"
   class:card-current={mode === 'current'}
   class:card-done={mode === 'done'}
@@ -383,6 +418,7 @@
         {@const isRecord = records.has(set.id) && set.state === 'done' && !set.is_warmup}
         {@const label = setLabel(instance, set)}
         <div
+          use:longpress={() => (setMenu = set.id)}
           class="row"
           class:timed
           class:skipped
@@ -392,11 +428,7 @@
           class:active={isActive}
           class:record={isRecord}
         >
-          <button
-            class="n"
-            aria-label="{label} actions"
-            disabled={locked}
-            onclick={() => (opened = opened === set.id ? null : set.id)}
+          <button class="n" aria-label="{label} actions" onclick={() => (setMenu = set.id)}
             >{numbers.get(set.id)}</button
           >
           <input
@@ -494,25 +526,6 @@
             {/if}
           </span>
         </div>
-        {#if opened === set.id}
-          <div class="actions">
-            <Button variant="link" onclick={() => edit(set, { is_warmup: !set.is_warmup })}>
-              {set.is_warmup ? 'Not a warm-up' : 'Warm-up'}
-            </Button>
-            <Button
-              variant="link"
-              onclick={() => onchange(skipSet(session, instance.id, set.id, !skipped))}
-            >
-              {skipped ? 'Not skipped' : 'Skip'}
-            </Button>
-            <Button
-              variant="link"
-              onclick={() => onchange(removeSet(session, instance.id, set.id))}
-            >
-              Remove set
-            </Button>
-          </div>
-        {/if}
       {/each}
     </div>
 
@@ -578,6 +591,80 @@
       </li>
     {/if}
   </ul>
+</Sheet>
+
+<Sheet
+  open={menuSet !== null}
+  onclose={() => (setMenu = null)}
+  label="{name}, {menuSet ? setLabel(instance, menuSet) : ''}"
+>
+  {#if menuSet}
+    {@const copy = copyOf(menuSet)}
+    {@const paste = clipboard.copy ? pasteEdit(clipboard.copy, measure) : null}
+    {@const at = instance.performed.indexOf(menuSet)}
+    {@const skipped = menuSet.state === 'skipped'}
+    <p class="caps menu-title">
+      {name} · {setLabel(instance, menuSet)}{copy ? ` · ${formatSet(menuSet, exercise)}` : ''}
+    </p>
+    <ul class="group menu">
+      <li class="row-link">
+        <button disabled={!copy} onclick={() => copySet(menuSet)}
+          ><span class="grow t">Copy</span><Icon name="copy" size="sm" /></button
+        >
+      </li>
+      {#if !locked}
+        <li class="row-link">
+          <button disabled={!paste} onclick={() => paste && pasteInto(menuSet, paste)}
+            ><span class="grow t">Paste{paste ? ` ${clipboard.text}` : ''}</span><Icon
+              name="paste"
+              size="sm"
+            /></button
+          >
+        </li>
+        <li class="row-link">
+          <button onclick={() => setAction(duplicateSet(session, instance.id, menuSet.id, newId))}
+            ><span class="grow t">Duplicate</span><Icon name="plus" size="sm" /></button
+          >
+        </li>
+        <li class="row-link">
+          <button
+            disabled={at === 0}
+            onclick={() => setAction(moveSet(session, instance.id, menuSet.id, -1))}
+            ><span class="grow t">Move up</span><Icon name="up" size="sm" /></button
+          >
+        </li>
+        <li class="row-link">
+          <button
+            disabled={at === instance.performed.length - 1}
+            onclick={() => setAction(moveSet(session, instance.id, menuSet.id, 1))}
+            ><span class="grow t">Move down</span><span class="flip"
+              ><Icon name="up" size="sm" /></span
+            ></button
+          >
+        </li>
+        <li class="row-link">
+          <button
+            onclick={() => {
+              setMenu = null;
+              edit(menuSet, { is_warmup: !menuSet.is_warmup });
+            }}><span class="grow t">{menuSet.is_warmup ? 'Not a warm-up' : 'Warm-up'}</span></button
+          >
+        </li>
+        <li class="row-link">
+          <button onclick={() => setAction(skipSet(session, instance.id, menuSet.id, !skipped))}
+            ><span class="grow t">{skipped ? 'Not skipped' : 'Skip'}</span></button
+          >
+        </li>
+        <li class="row-link">
+          <button
+            class="destroy"
+            onclick={() => setAction(removeSet(session, instance.id, menuSet.id))}
+            ><span class="grow t">Remove set</span><Icon name="close" size="sm" /></button
+          >
+        </li>
+      {/if}
+    </ul>
+  {/if}
 </Sheet>
 
 <style>
@@ -1004,27 +1091,6 @@
   }
 
   /* Under the set's figures, the words starting where its load does; a narrow phone wraps them whole. */
-  .actions {
-    display: flex;
-    flex-wrap: wrap;
-    gap: 0 var(--space-1);
-    padding-left: calc(26px - var(--space-2));
-  }
-
-  .actions :global(.button-link) {
-    white-space: nowrap;
-  }
-
-  .foot {
-    display: flex;
-    gap: var(--space-3);
-    margin-left: calc(-1 * var(--space-2));
-  }
-
-  /*
-   * The glyphs turned over: the fold's chevron closes a card it opened, and the
-   * arrow that moves up moves down, so neither reads as the other.
-   */
   .flip :global(svg) {
     transform: rotate(180deg);
   }

@@ -9,7 +9,7 @@ import type {
   SessionRecord,
 } from '../model';
 import { daysBetween } from './dates';
-import { countsWarmups, RECORD_MAX_REPS } from './definitions';
+import { CONFIG, countsWarmups, RECORD_MAX_REPS } from './definitions';
 import { flattenSets } from './flatten';
 import { weightKg } from './load';
 
@@ -18,10 +18,10 @@ import { weightKg } from './load';
  * per exercise. A record is for exactly that many reps, so a heavy five does not
  * stand as the record for three.
  *
- * Only the competition lifts keep a book (`holdsRecords`): they are what a
- * record measures progress in, and a laurel on every accessory would make one
- * on a squat mean less. A meet's lifts are not in it either: they are
- * `CompetitionBest`s, kept apart.
+ * Only the lifts taken to the platform keep a book (`holdsRecords`): they are
+ * what a record measures progress in, and a laurel on every accessory, or on a
+ * squat stance never competed, would make one on the real lift mean less. A
+ * meet's lifts are not in it either: they are `CompetitionBest`s, kept apart.
  *
  * Records compare the weight the lifter loaded. For a bodyweight-plus lift that
  * is the added load, so a hand-entered "+30 kg" and a logged one line up
@@ -57,9 +57,9 @@ export function recordWeightKg(set: PerformedSet, exercise: Exercise): number | 
 
 const keyOf = (exerciseId: string, reps: number) => `${exerciseId}:${reps}`;
 
-/** Whether an exercise keeps a record book: the competition lifts, each stance its own. */
+/** Whether an exercise keeps a record book: the lifts taken to the platform (definitions.json, records). */
 export function holdsRecords(exercise: Exercise): boolean {
-  return exercise.tier === 'comp';
+  return CONFIG.recordExercises.includes(exercise.id);
 }
 
 /** The hand-entered records of exercises that keep a book; the rest are kept but not shown. */

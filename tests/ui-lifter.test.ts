@@ -264,11 +264,13 @@ describe('bests at meets', () => {
     ...over,
   });
 
-  it('can be of the competition lifts only, each stance its own', () => {
-    expect(competitionExercises(library).map((e) => e.id)).toEqual(
-      expect.arrayContaining(['low_bar_squat', 'bench', 'sumo_deadlift', 'conventional_deadlift']),
-    );
-    expect(competitionExercises(library).every((e) => e.tier === 'comp')).toBe(true);
+  it('can be of the lifts taken to the platform only, each stance its own', () => {
+    expect(competitionExercises(library).map((e) => e.id)).toEqual([
+      'low_bar_squat',
+      'bench',
+      'conventional_deadlift',
+      'sumo_deadlift',
+    ]);
   });
 
   it('turns a valid form into the best, and says what is wrong with any other', () => {

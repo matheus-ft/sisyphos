@@ -56,39 +56,104 @@
   <div class="figures">
     {#each views as v (v)}
       <figure>
-        <svg viewBox="0 0 120 300">
-          {#each STATUE_ART[v] as part, i (i)}
-            {#each part.fill as d, k (k)}<path class="fill" {d} />{/each}
-            {#each part.muscles as m (m.muscle)}
-              <g
-                class="muscle"
-                role="button"
-                tabindex={tabStop(v, m.muscle)}
-                aria-label={names.get(m.muscle) ?? m.muscle}
-                aria-pressed={selected === m.muscle}
-                onclick={() => onpick?.(m.muscle)}
-                onkeydown={(e) => onkeydown(e, m.muscle)}
-                onfocus={(e) => {
-                  if (e.currentTarget.matches(':focus-visible'))
-                    focused = { view: v, muscle: m.muscle };
-                }}
-                onblur={() => (focused = null)}
+        <svg viewBox="0 0 120 302">
+          <defs>
+            <!-- The modelling that makes the drawing read as carved: each shape, and
+                 then the whole figure, rounded under a light from the upper left. The
+                 height map is the shape's own edge, blurred; flat ground keeps its
+                 colour (the diffuse constant undoes the light's elevation), so the
+                 volume shades still match the legend. -->
+            <filter id="round-{v}" color-interpolation-filters="sRGB">
+              <feGaussianBlur in="SourceAlpha" stdDeviation="1.6" result="height" />
+              <feDiffuseLighting
+                in="height"
+                surfaceScale="1.1"
+                diffuseConstant="1.45"
+                lighting-color="#fff"
+                result="light"
               >
+                <feDistantLight azimuth="235" elevation="44" />
+              </feDiffuseLighting>
+              <feComposite in="light" in2="SourceAlpha" operator="in" result="lit" />
+              <feBlend in="SourceGraphic" in2="lit" mode="multiply" />
+            </filter>
+            <filter
+              id="carve-{v}"
+              x="-10%"
+              y="-4%"
+              width="120%"
+              height="108%"
+              color-interpolation-filters="sRGB"
+            >
+              <feGaussianBlur in="SourceAlpha" stdDeviation="3.2" result="height" />
+              <feDiffuseLighting
+                in="height"
+                surfaceScale="4"
+                diffuseConstant="1.45"
+                lighting-color="#fff"
+                result="light"
+              >
+                <feDistantLight azimuth="235" elevation="44" />
+              </feDiffuseLighting>
+              <feComposite in="light" in2="SourceAlpha" operator="in" result="lit" />
+              <feBlend in="SourceGraphic" in2="lit" mode="multiply" result="shaded" />
+              <feSpecularLighting
+                in="height"
+                surfaceScale="4"
+                specularConstant="0.22"
+                specularExponent="10"
+                lighting-color="#fff"
+                result="shine"
+              >
+                <feDistantLight azimuth="235" elevation="44" />
+              </feSpecularLighting>
+              <feComposite in="shine" in2="SourceAlpha" operator="in" result="gloss" />
+              <feComposite in="shaded" in2="gloss" operator="arithmetic" k2="1" k3="0.5" />
+            </filter>
+          </defs>
+          <g filter="url(#carve-{v})">
+            {#each STATUE_ART[v] as part, i (i)}
+              {#each part.fill as d, k (k)}<path class="fill" {d} />{/each}
+              {#each part.muscles as m (m.muscle)}
+                <g
+                  class="muscle"
+                  role="button"
+                  tabindex={tabStop(v, m.muscle)}
+                  aria-label={names.get(m.muscle) ?? m.muscle}
+                  aria-pressed={selected === m.muscle}
+                  onclick={() => onpick?.(m.muscle)}
+                  onkeydown={(e) => onkeydown(e, m.muscle)}
+                  onfocus={(e) => {
+                    if (e.currentTarget.matches(':focus-visible'))
+                      focused = { view: v, muscle: m.muscle };
+                  }}
+                  onblur={() => (focused = null)}
+                >
+                  {#each m.regions as r (r.region)}
+                    <path
+                      class="region"
+                      d={r.d}
+                      style:fill={fillOf(v, r.region)}
+                      filter="url(#round-{v})"
+                    />
+                  {/each}
+                </g>
+              {/each}
+              {#each LINES as layer (layer)}
+                {#each part[layer] as d, k (k)}<path
+                    class={layer}
+                    {d}
+                    filter={layer === 'hair' ? `url(#round-${v})` : undefined}
+                  />{/each}
+              {/each}
+              {#each outlines(part, v) as { m, kind } (kind)}
                 {#each m.regions as r (r.region)}
-                  <path class="region" d={r.d} style:fill={fillOf(v, r.region)} />
+                  <path class="casing" d={r.d} />
+                  <path class={kind} d={r.d} />
                 {/each}
-              </g>
-            {/each}
-            {#each LINES as layer (layer)}
-              {#each part[layer] as d, k (k)}<path class={layer} {d} />{/each}
-            {/each}
-            {#each outlines(part, v) as { m, kind } (kind)}
-              {#each m.regions as r (r.region)}
-                <path class="casing" d={r.d} />
-                <path class={kind} d={r.d} />
               {/each}
             {/each}
-          {/each}
+          </g>
         </svg>
         <figcaption class="caps">{v === 'front' ? 'Front' : 'Back'}</figcaption>
       </figure>
@@ -99,8 +164,8 @@
 </div>
 
 <style>
-  /* Always a clay figure on the black glaze, in both modes: a red-figure
-     painting, whatever the page around it. */
+  /* Always a statue in clay-coloured stone, lit on the black glaze, in both
+     modes, whatever the page around it. */
   .statue {
     display: grid;
     gap: var(--space-3);
@@ -145,6 +210,7 @@
 
   .fill {
     fill: var(--vol-0);
+    filter: url(#round-front);
   }
 
   .muscle {
@@ -185,36 +251,34 @@
     stroke-width: 0.9;
   }
 
-  /* The relief line: black glaze laid thick, standing up from the clay. */
+  /* Carved edges, not painted ones: the lines are the shadow in a cut. */
   .relief {
     stroke: var(--statue-line);
-    stroke-width: 1.2;
+    stroke-opacity: 0.7;
+    stroke-width: 0.9;
   }
 
   .contour {
     stroke: var(--statue-line);
-    stroke-width: 1.7;
+    stroke-opacity: 0.85;
+    stroke-width: 1.1;
   }
 
   .fine {
     stroke: var(--statue-line);
-    stroke-width: 0.8;
+    stroke-opacity: 0.8;
+    stroke-width: 0.7;
   }
 
+  /* Hair and beard in the same stone, a shade deeper, their curls cut into it. */
   .hair {
-    fill: var(--statue-line);
+    fill: color-mix(in srgb, var(--vol-0) 55%, var(--statue-line));
   }
 
-  /* The curls, scratched through the glaze to the clay. */
   .locks {
-    stroke: var(--vol-0);
+    stroke: var(--statue-line);
     stroke-opacity: 0.55;
     stroke-width: 0.6;
-  }
-
-  .fillet {
-    stroke: var(--vol-0);
-    stroke-width: 0.9;
   }
 
   .casing {

@@ -89,6 +89,13 @@ Decided against).
 session; unset, it follows the exercise's tier (`REST_BY_TIER` in
 `src/ui/rest.ts`).
 
+**Holding a set** opens its actions, as the set's number does: copy, paste
+(the load and reps, never the RPE, which is what that set felt like),
+duplicate, move up or down, warm-up, skip, remove. Holding a card opens the
+exercise's. A long press never selects text anywhere in the app; fields still
+do, since holding one is how the phone pastes into it. A template's targets
+move up and down too.
+
 **Warm-ups** are optional and quiet: smaller and muted, never counted for RPE,
 volume or records. The app suggests a ladder toward the first working weight,
 which the lifter adds whole, adds one rung of, or hides (`src/ui/warmup.ts`).
@@ -102,9 +109,10 @@ target of 8"). Never for pins or timed sets (`src/ui/suggest.ts`).
 phone allows it (`src/ui/device.ts`).
 
 **Records in the moment.** A set of a competition lift that beats the best
-weight at its rep count gets the laurel. Only the competition lifts keep
-records, each stance its own (tier `comp` in `src/library/exercises.csv`), so a
-laurel always means the squat, bench or deadlift moved.
+weight at its rep count gets the laurel. Only the lifts taken to the platform
+keep records, each stance its own (`records` in `src/metrics/definitions.json`:
+low-bar squat, bench, sumo and conventional deadlift), so a laurel always means
+the squat, bench or deadlift moved.
 
 **The finish.** The boulder arrives. Duration, sets, tonnage and records set
 today, then each exercise's top set. Save as template, share, done. Share draws
@@ -138,12 +146,15 @@ lifter leaves it.
 
 **Athloi (Progress).**
 
-- **Body:** a Classical athlete standing in contrapposto, front and back,
-  painted red-figure, its muscles shaded by working sets this week or over the
-  last four, auxiliary muscles counting half (the active counting preset). Each
-  muscle opens the sets behind it. It must read Greek: the archaic kouros, its
-  first drawing, read as Egyptian. The figure's regions are in
-  `src/ui/statue.ts`, its drawing and pose in `src/ui/progress/statue-art.ts`.
+- **Body:** a Greek statue of Sisyphos, front and back, on a plinth: a mature,
+  bearded, heavy-set hero lit as carved stone, its muscles shaded by working
+  sets this week or over the last four, auxiliary muscles counting half (the
+  active counting preset). Each muscle opens the sets behind it. It must read
+  as a Greek sculpture of a strong man: the first drawing, an archaic kouros,
+  read as Egyptian, and the slender youth after it read soft. The figure's
+  regions are in `src/ui/statue.ts`, its drawing, build and pose in
+  `src/ui/progress/statue-art.ts`, its lighting in
+  `src/ui/progress/Statue.svelte`.
 - **Strength:** each lift's best e1RM over time, drawn as the hill the boulder
   climbs, record days gilded. e1RM comes from the RPE chart when a set has an
   RPE, and from Epley otherwise (`src/metrics/e1rm.ts`).
@@ -198,9 +209,11 @@ designer a copy of it: `DATA.md`, A copy for someone else.
 
 Open questions v0.5 answered provisionally:
 
-- The statue is drawn standing square and bent into its pose by code; an
-  illustrator's pass would refine its proportions, face and pose, and could
-  draw the free arm bent, as the Doryphoros holds his spear.
+- The statue is drawn standing square, given its build and pose by code, and
+  lit by an SVG filter; an illustrator's pass would refine its anatomy, face
+  and pose, and could draw an arm bent, as the Riace warriors hold theirs. Its
+  stone is the volume ramp's untrained shade; white marble was the
+  alternative.
 - The share card follows the phone's mode (clay by day, glaze by night) rather
   than offering a choice.
 - The bell and screen awake depend on the iPhone: screen awake needs iOS 18.4 or

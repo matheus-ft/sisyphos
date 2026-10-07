@@ -115,6 +115,16 @@ export function removeTarget(template: Template, index: number, target: number):
   return updateTargets(template, index, (targets) => targets.filter((_, i) => i !== target));
 }
 
+/** The target moved `by` places among its exercise's. */
+export function moveTarget(
+  template: Template,
+  index: number,
+  target: number,
+  by: number,
+): Template {
+  return updateTargets(template, index, (targets) => move(targets, target, by));
+}
+
 /** A copy right after the target, so a ramp is built by copying and nudging. */
 export function duplicateTarget(template: Template, index: number, target: number): Template {
   return updateTargets(template, index, (targets) =>

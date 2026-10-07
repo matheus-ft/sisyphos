@@ -226,6 +226,14 @@ describe('records merged with those entered by hand', () => {
     const book = recordBook([], library, [manual({ exercise_id: 'dips', weight_kg: 30 })]);
     expect(book).toEqual([]);
   });
+
+  it('keeps no book for a squat stance that is only trained', () => {
+    const highBar = sessionOf({
+      date: '2026-09-01',
+      work: [[byId('high_bar_squat'), [{ load: 130, reps: 3, rpe: 8 }]]],
+    });
+    expect(sessionRecords([highBar], library)).toEqual([]);
+  });
 });
 
 describe('recent records', () => {

@@ -1,14 +1,16 @@
 /**
- * The statue, drawn: a Classical athlete, front and back, as a red-figure
- * painter would lay him on a pot. Each figure is a 120 x 300 viewBox. Paths
+ * The statue, drawn: Sisyphos as a Greek bronze or marble would show a mature
+ * hero, front and back, on a plinth. Each figure is a 120 x 302 viewBox. Paths
  * are authored for the viewer's left half of a body standing square, mirrored
- * about x = 60, and then posed (`pose`): contrapposto, the weight on one leg.
+ * about x = 60, given the hero's build (`build`) and then posed (`pose`): a
+ * firm contrapposto, the weight on one leg.
  *
- * Classical, not archaic, because the archaic kouros reads as Egyptian, which
- * is where it came from: the striding stance, the clenched fists, the beaded
- * wig of tresses, the large frontal eyes and the fixed smile. The Classical
- * answer, after the Doryphoros, is the relaxed weight, open hands, a short cap
- * of curls and a calm face.
+ * After the Riace warriors and the Artemision god rather than an archaic
+ * kouros, which reads as Egyptian (the stride, the clenched fists, the beaded
+ * wig, the staring eyes, the fixed smile), or a slender youth, which reads
+ * soft: a beard, curls, eyes left blank as a statue's are, broad shoulders and
+ * a heavy neck, hands loosely closed. The modelling that makes it read as
+ * carved is the component's lighting (`Statue.svelte`).
  *
  * Which muscle group each region shows is `src/ui/statue.ts`.
  */
@@ -20,7 +22,7 @@ type Layer = (typeof LAYERS)[number];
 type Pieces = Partial<Record<Layer, string[]>>;
 
 interface PartSource<V extends StatueView> {
-  /** What the part moves with in the pose: the body, unless it hangs from a shoulder or turns on the neck. */
+  /** What the part moves with in the pose: the body, unless it hangs from a shoulder, turns on the neck or is the ground. */
   bone?: Bone;
   /** The viewer's left half; drawn again mirrored. */
   half: Pieces & { regions?: [RegionOf<V>, string][] };
@@ -123,24 +125,24 @@ function circle(cx: number, cy: number, r: number): string {
 // outline moves with the shapes beside it; an arm moves with its shoulder and
 // the head turns on the neck.
 
-type Bone = 'body' | 'arm' | 'head';
+type Bone = 'body' | 'arm' | 'head' | 'ground';
 
 const DEG = Math.PI / 180;
 const POSE = {
   /** The shoulders: down on the weight side. */
-  chest: -7 * DEG,
+  chest: -5 * DEG,
   /** The hips: up on the weight side. */
-  pelvis: 10 * DEG,
+  pelvis: 7 * DEG,
   /** Sideways, the chest a little toward the free side, the pelvis out over the weight leg. */
-  chestShift: 1.5,
-  pelvisShift: -5,
+  chestShift: 1,
+  pelvisShift: -2.5,
   /** The head inclines toward the weight leg. */
-  head: -7 * DEG,
+  head: -3 * DEG,
   /** The weight leg slants in, its foot under the body. */
   standing: -1.5 * DEG,
   /** The free leg: knee in from the hip, the shin out from the knee. */
-  thigh: 4 * DEG,
-  shin: -11 * DEG,
+  thigh: 3 * DEG,
+  shin: -9 * DEG,
 };
 /** The free foot is set back: farther from the viewer in front, so shorter; nearer from behind. */
 const FREE_SHIN: Record<StatueView, number> = { front: 0.93, back: 0.99 };
@@ -211,8 +213,40 @@ function body(p: Pt, shin: number): Pt {
   return mixPt(t, legs, w);
 }
 
+/**
+ * The hero's build, on the square-standing drawing (viewer's left half, the
+ * other mirrored): shoulders and chest broader than the waist, a heavy neck,
+ * thicker arms, and thighs and calves that fill outward from the inner line.
+ */
+const BUILD = { chest: 1.07, neck: 1.18, arm: 1.14, leg: 1.08 };
+
+function build(bone: Bone, [x, y]: Pt): Pt {
+  if (bone === 'ground' || bone === 'head') return [x, y];
+  if (x > 60) {
+    const [mx, my] = build(bone, [120 - x, y]);
+    return [120 - mx, my];
+  }
+  if (bone === 'arm') {
+    // Thicker about its own axis down to the wrist, the hand as it is, and all
+    // of it carried out by the broader shoulder.
+    const axis = 26;
+    const out = (60 - 33.8) * (BUILD.chest - 1);
+    const thick = mix(BUILD.arm, 1, smooth(146, 158, y));
+    return [axis + (x - axis) * thick - out, y];
+  }
+  // Broad above the ribs, narrowing to the waist; the neck broader still.
+  const chest = mix(BUILD.chest, 1, smooth(95, 132, y));
+  const trunk = y < 58 ? mix(BUILD.neck, BUILD.chest, smooth(48, 58, y)) : chest;
+  let nx = 60 + (x - 60) * trunk;
+  // The legs fill out from their inner edge, so the thighs do not cross.
+  const leg = smooth(150, 172, y) * (BUILD.leg - 1);
+  nx = 59 + (nx - 59) * (1 + leg);
+  return [nx, y];
+}
+
 /** Where a point of the front view goes: on `bone`, the viewer's left the weight side. */
 function posed(bone: Bone, p: Pt, shin: number): Pt {
+  if (bone === 'ground') return p;
   if (bone === 'arm') {
     // The shoulder's cap goes with the trunk; below it the arm hangs straight
     // from the front of the shoulder, wherever the trunk has carried that.
@@ -232,9 +266,9 @@ function posed(bone: Bone, p: Pt, shin: number): Pt {
 /** The pose for a view: from the back, the front's, mirrored, so the weight is on the same leg. */
 function pose(view: StatueView, bone: Bone): Point {
   const shin = FREE_SHIN[view];
-  if (view === 'front') return (x, y) => posed(bone, [x, y], shin);
+  if (view === 'front') return (x, y) => posed(bone, build(bone, [x, y]), shin);
   return (x, y) => {
-    const [px, py] = posed(bone, [120 - x, y], shin);
+    const [px, py] = posed(bone, build(bone, [120 - x, y]), shin);
     return [120 - px, py];
   };
 }
@@ -253,10 +287,10 @@ const EO_TO_WO =
   'C 19 122.8 18.8 127.8 19.6 133 C 20.8 140.4 22.8 147 24.2 152 C 24.7 155 25 158 25.1 160.5';
 const WO_TO_EO =
   'C 25 158 24.7 155 24.2 152 C 22.8 147 20.8 140.4 19.6 133 C 18.8 127.8 19 122.8 20.2 117.5';
-/** An open hand, hanging relaxed: the fingers together and a little curled, the thumb along them. */
+/** A hand hanging at rest, loosely closed: the fingers curled in, the thumb along them. */
 const HAND =
-  'C 24.2 165.6 24.3 171.4 25.4 176.6 C 26.4 181.2 28.2 185.2 30.4 186.6 C 31.9 187.5 33.3 186.6 33.6 184.8 ' +
-  'C 34 181.2 34.6 176.6 35.4 172.4 C 36 169 35.8 165.6 34.8 162.8 C 34.2 161.2 33.7 159.8 33.3 158.5';
+  'C 24.4 165 24.6 170 25.6 174.4 C 26.6 178.2 28.6 180.6 30.9 180.6 C 33.2 180.6 34.7 178.6 34.9 175.6 ' +
+  'C 35.1 172 34.6 167.8 34.1 164.4 C 33.8 162.2 33.6 160.2 33.3 158.5';
 const WI_TO_EI = 'C 32.9 149 32.3 136 31.7 126 C 31.5 122.6 31.3 119.6 31.1 116.5';
 const EI_TO_WI = 'C 31.3 119.6 31.5 122.6 31.7 126 C 32.3 136 32.9 149 33.3 158.5';
 const EI_TO_A = 'C 31.4 108 31.9 97 31.8 90 C 31.8 87 31.8 84.6 31.8 82.6';
@@ -289,6 +323,21 @@ const LEG_FILL = `${LEG} L 60 165 L 60 150 L 48 143 Z`;
 const HEAD =
   'M 60 46.4 C 56.2 46.4 52.6 44.2 50.6 40.6 C 49 37.6 48.3 33 48.4 28.4 C 48.5 21.6 52.4 14.5 60 14.5 C 67.6 14.5 71.5 21.6 71.6 28.4 C 71.7 33 71 37.6 69.4 40.6 C 67.4 44.2 63.8 46.4 60 46.4 Z';
 
+/**
+ * The beard: from the sideburns along the jaw to below the chin, leaving the
+ * cheeks and the mouth. Its curls are drawn over it (`curls`).
+ */
+const BEARD =
+  'M 48.8 30.6 C 48.2 37 49.4 43.4 52.4 48.2 C 54.6 51.8 57.4 54.2 60 54.4 C 62.6 54.2 65.4 51.8 67.6 48.2 ' +
+  'C 70.6 43.4 71.8 37 71.2 30.6 C 70.4 34.2 68.8 36.8 66.6 38.4 C 65.2 39.4 64.4 40.2 63.8 41.2 ' +
+  'C 63.2 43.4 61.8 44.6 60 44.6 C 58.2 44.6 56.8 43.4 56.2 41.2 C 55.6 40.2 54.8 39.4 53.4 38.4 ' +
+  'C 51.2 36.8 49.6 34.2 48.8 30.6 Z';
+
+/** Over the upper lip, parted under the nose. */
+const MOUSTACHE =
+  'M 55.6 40.8 C 56.8 38.8 58.6 38.2 60 38.9 C 61.4 38.2 63.2 38.8 64.4 40.8 ' +
+  'C 62.8 40.2 61.4 40.2 60 40.7 C 58.6 40.2 57.2 40.2 55.6 40.8 Z';
+
 const ANKLES = [
   'M 53.9 275 C 55.4 275.6 56 277.8 55 279.6',
   'M 45.4 274.2 C 44 275.2 43.6 277.2 44.4 279',
@@ -297,7 +346,19 @@ const ANKLES = [
 // ---------------------------------------------------------------------------
 // Front
 
+/** The plinth the statue stands on: a block with a moulding along its top. */
+const PLINTH: PartSource<StatueView> = {
+  bone: 'ground',
+  half: {},
+  whole: {
+    fill: ['M 25 288.6 L 95 288.6 L 98 291.8 L 98 301.4 L 22 301.4 L 22 291.8 Z'],
+    dilute: ['M 22.2 291.8 L 97.8 291.8'],
+    contour: ['M 25 288.6 L 95 288.6 L 98 291.8 L 98 301.4 L 22 301.4 L 22 291.8 Z'],
+  },
+};
+
 const FRONT: PartSource<'front'>[] = [
+  PLINTH as PartSource<'front'>,
   {
     half: {
       fill: [LEG_FILL],
@@ -415,9 +476,9 @@ const FRONT: PartSource<'front'>[] = [
       dilute: [
         'M 23.4 120 C 25.8 121.4 28.4 121.2 30.6 119.4', // elbow
         'M 21.6 124.4 C 22.8 133 24.6 143.6 26.6 153.6', // brachioradialis, the thumb side
-        'M 33.8 161.8 C 32 163.6 31 166.8 31.2 170.6 C 31.3 172.2 31.8 173.4 32.6 174', // thumb
-        'M 28.2 173.6 C 29 177.8 30.2 181.8 31.6 185', // between the fingers
-        'M 26.4 171 C 26.9 175.4 27.9 179.4 29.4 183.2',
+        'M 33.8 161.8 C 32 163.6 31 166.4 31.2 169.8 C 31.3 171.2 31.8 172.4 32.6 173', // thumb
+        'M 26.2 174 C 28.4 175.4 31.2 175.8 33.8 175', // the curled fingers
+        'M 27.2 177.6 C 29.2 178.6 31.6 178.8 33.6 178.2',
       ],
       relief: [`M 31.8 82.6 C 31.1 80.4 30.4 78 29.6 75.4 ${DELT_FRONT}`],
       contour: [ARM],
@@ -431,11 +492,10 @@ const FRONT: PartSource<'front'>[] = [
       fine: [
         // a low, level brow, running on into the nose
         'M 50.8 27.6 C 52.6 26.2 55.8 25.9 58.1 26.9 C 58.6 27.2 58.9 27.6 59.1 28.1',
-        // the eye: deep-set and of a natural size, under a heavy lid
+        // the eye: deep-set under a heavy lid, and blank, as a statue's is
         'M 52.2 30.4 C 53.5 29.2 55.9 29.1 57.3 30.4 C 55.9 31.3 53.6 31.4 52.2 30.4 Z',
         'M 51.9 30 C 53.4 28.4 56.2 28.3 57.7 30',
       ],
-      hair: [circle(54.8, 30.3, 0.75)],
     },
     whole: {
       fill: [HEAD],
@@ -444,14 +504,22 @@ const FRONT: PartSource<'front'>[] = [
         'M 59.2 27.8 C 59 30.8 58.6 33.4 57.9 35.3 C 57.4 36.3 58 37.1 59 36.9 C 59.6 37.3 60.4 37.3 61 36.9 C 62 37.1 62.6 36.3 62.1 35.3',
         'M 58.2 42.7 C 59.3 43.3 60.7 43.3 61.8 42.7', // lower lip
       ],
-      // The lips at rest: level, the bow of the upper one in the middle.
-      fine: ['M 57 40.4 C 58 40.5 59.2 40.2 60 40.5 C 60.8 40.2 62 40.5 63 40.4'],
-      hair: [frontCap()],
-      locks: curls([
-        [13.6, [56.4, 60, 63.6]],
-        [16.6, [52.4, 56.2, 60, 63.8, 67.6]],
-        [19.4, [50.4, 54, 57.8, 61.6, 65.4, 69]],
-      ]),
+      // The lips at rest, under the moustache.
+      fine: ['M 57.4 41 C 58.4 41.1 59.4 40.9 60 41.1 C 60.6 40.9 61.6 41.1 62.6 41'],
+      hair: [frontCap(), BEARD, MOUSTACHE],
+      locks: [
+        ...curls([
+          [13.6, [56.4, 60, 63.6]],
+          [16.6, [52.4, 56.2, 60, 63.8, 67.6]],
+          [19.4, [50.4, 54, 57.8, 61.6, 65.4, 69]],
+          [44.6, [52.8, 56.4, 63.6, 67.2]],
+          [48, [54.6, 58.2, 61.8, 65.4]],
+          [51.2, [57.4, 61]],
+        ]),
+        // the moustache's two sweeps
+        'M 59.4 39.4 C 58.4 39.2 57.4 39.6 56.8 40.2',
+        'M 60.6 39.4 C 61.6 39.2 62.6 39.6 63.2 40.2',
+      ],
     },
   },
   // The ears, the curls over their tops.
@@ -529,6 +597,7 @@ const SACRUM = `C 57 154 54.2 148.6 ${Q}`; // the top of the cleft up to Q
 const GLUTE_EDGE = 'C 34.8 166 36.6 174 42 177.8 C 46.8 180.8 53 181.6 57.2 180.2';
 
 const BACK: PartSource<'back'>[] = [
+  PLINTH as PartSource<'back'>,
   {
     half: {
       fill: [LEG_FILL],
@@ -629,8 +698,8 @@ const BACK: PartSource<'back'>[] = [
       dilute: [
         'M 37.4 66.8 C 33.4 73 29.6 81.4 26.4 89.4', // the delt's edge on the shoulder blade
         'M 23.4 124.6 C 24.8 134 26.8 146 28.4 156.4', // the forearm's extensors
-        'M 25.6 168.6 C 28.4 170 31.8 170.2 35.4 168.8', // knuckles
-        'M 27.6 173.4 C 28.4 177.6 29.8 181.6 31.4 184.8', // between the fingers
+        'M 25.6 169.4 C 28.2 170.6 31.6 170.8 34.6 169.6', // knuckles
+        'M 26.4 174 C 28.6 175.4 31.4 175.8 34 175', // the curled fingers
       ],
       contour: [ARM],
     },
