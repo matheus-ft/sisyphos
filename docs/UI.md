@@ -146,14 +146,16 @@ lifter leaves it.
 
 **Athloi (Progress).**
 
-- **Body:** a Greek statue of Sisyphos, front and back, on a plinth: a mature,
-  bearded, heavy-set hero lit as carved stone, its muscles shaded by working
-  sets this week or over the last four, auxiliary muscles counting half (the
-  active counting preset). Each muscle opens the sets behind it. It must read
-  as a Greek sculpture of a strong man: the first drawing, an archaic kouros,
-  read as Egyptian, and the slender youth after it read soft. The figure's
-  regions are in `src/ui/statue.ts`, its drawing, build and pose in
-  `src/ui/progress/statue-art.ts`, its lighting in
+- **Body:** a marble statue of Sisyphos, front and back, on a plinth: a
+  mature, bearded, heavy-set hero standing square, lit as carved stone. Its
+  muscles are stained from bare marble toward terracotta by working sets this
+  week or over the last four, auxiliary muscles counting half (the active
+  counting preset). Each muscle opens the sets behind it. It must read as a
+  Greek sculpture of a strong man: the first drawing, an archaic kouros, read
+  as Egyptian, the slender youth after it read soft, and a contrapposto that
+  broke at the hips was not wanted. The figure's regions are in
+  `src/ui/statue.ts`, its drawing, build and stance in
+  `src/ui/progress/statue-art.ts`, its marble and lighting in
   `src/ui/progress/Statue.svelte`.
 - **Strength:** each lift's best e1RM over time, drawn as the hill the boulder
   climbs, record days gilded. e1RM comes from the RPE chart when a set has an
@@ -209,11 +211,10 @@ designer a copy of it: `DATA.md`, A copy for someone else.
 
 Open questions v0.5 answered provisionally:
 
-- The statue is drawn standing square, given its build and pose by code, and
-  lit by an SVG filter; an illustrator's pass would refine its anatomy, face
-  and pose, and could draw an arm bent, as the Riace warriors hold theirs. Its
-  stone is the volume ramp's untrained shade; white marble was the
-  alternative.
+- The statue is given its build by code and lit by an SVG filter; an
+  illustrator's pass would refine its anatomy and face, and could draw an arm
+  bent, as the Riace warriors hold theirs. Its marble shades are its own,
+  apart from the app's clay ramp.
 - The share card follows the phone's mode (clay by day, glaze by night) rather
   than offering a choice.
 - The bell and screen awake depend on the iPhone: screen awake needs iOS 18.4 or

@@ -164,9 +164,17 @@
 </div>
 
 <style>
-  /* Always a statue in clay-coloured stone, lit on the black glaze, in both
-     modes, whatever the page around it. */
+  /* Always a marble statue, lit on the black glaze, in both modes, whatever
+     the page around it. Untrained is the bare marble, and work stains it
+     toward terracotta; the legend inside the panel reads the same shades. */
   .statue {
+    --vol-0: #ece7df;
+    --vol-1: #e8c7a6;
+    --vol-2: #db9d6f;
+    --vol-3: #c26b3d;
+    --vol-4: #96401a;
+    --statue-line: #4a443e;
+    --statue-dilute: #a49b90;
     display: grid;
     gap: var(--space-3);
     padding: var(--space-3) var(--space-3) var(--space-4);
@@ -270,9 +278,9 @@
     stroke-width: 0.7;
   }
 
-  /* Hair and beard in the same stone, a shade deeper, their curls cut into it. */
+  /* Hair and beard in the same marble, a shade deeper, their curls cut into it. */
   .hair {
-    fill: color-mix(in srgb, var(--vol-0) 55%, var(--statue-line));
+    fill: color-mix(in srgb, var(--vol-0) 78%, var(--statue-line));
   }
 
   .locks {

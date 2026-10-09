@@ -1,9 +1,9 @@
 /**
  * The statue, drawn: Sisyphos as a Greek bronze or marble would show a mature
- * hero, front and back, on a plinth. Each figure is a 120 x 302 viewBox. Paths
- * are authored for the viewer's left half of a body standing square, mirrored
- * about x = 60, given the hero's build (`build`) and then posed (`pose`): a
- * firm contrapposto, the weight on one leg.
+ * hero, front and back, on a plinth, in marble. Each figure is a 120 x 302
+ * viewBox. Paths are authored for the viewer's left half of a body standing
+ * square, mirrored about x = 60, given the hero's build (`build`) and stood
+ * (`pose`): square, one knee at rest.
  *
  * After the Riace warriors and the Artemision god rather than an archaic
  * kouros, which reads as Egyptian (the stride, the clenched fists, the beaded
@@ -22,7 +22,7 @@ type Layer = (typeof LAYERS)[number];
 type Pieces = Partial<Record<Layer, string[]>>;
 
 interface PartSource<V extends StatueView> {
-  /** What the part moves with in the pose: the body, unless it hangs from a shoulder, turns on the neck or is the ground. */
+  /** What the part is, for its build and stance: the body, an arm, the head, or the ground. */
   bone?: Bone;
   /** The viewer's left half; drawn again mirrored. */
   half: Pieces & { regions?: [RegionOf<V>, string][] };
@@ -117,38 +117,18 @@ function circle(cx: number, cy: number, r: number): string {
 }
 
 // ---------------------------------------------------------------------------
-// The pose. Contrapposto: the weight on one leg, whose hip rises and juts out,
-// the shoulders tilting the other way, the free knee bent and its foot set
-// back and out. Seen from the front the weight is on the viewer's left (the
-// figure's right leg, as the Doryphoros stands); from the back that leg is on
-// the viewer's right. One continuous bend of the plane for the body, so every
-// outline moves with the shapes beside it; an arm moves with its shoulder and
-// the head turns on the neck.
+// The stance: square, as a statue stands on its plinth, hips and shoulders
+// level. Only the free leg rests, the viewer's right from the front (the
+// figure's left): its knee eases in and its foot is set a little back.
 
 type Bone = 'body' | 'arm' | 'head' | 'ground';
 
 const DEG = Math.PI / 180;
-const POSE = {
-  /** The shoulders: down on the weight side. */
-  chest: -5 * DEG,
-  /** The hips: up on the weight side. */
-  pelvis: 7 * DEG,
-  /** Sideways, the chest a little toward the free side, the pelvis out over the weight leg. */
-  chestShift: 1,
-  pelvisShift: -2.5,
-  /** The head inclines toward the weight leg. */
-  head: -3 * DEG,
-  /** The weight leg slants in, its foot under the body. */
-  standing: -1.5 * DEG,
-  /** The free leg: knee in from the hip, the shin out from the knee. */
-  thigh: 3 * DEG,
-  shin: -9 * DEG,
-};
-/** The free foot is set back: farther from the viewer in front, so shorter; nearer from behind. */
+/** The resting leg: the knee in from the hip, the shin out from the knee. */
+const REST = { thigh: 1.5 * DEG, shin: -4 * DEG };
+/** The resting foot is set back: farther from the viewer in front, so shorter; nearer from behind. */
 const FREE_SHIN: Record<StatueView, number> = { front: 0.93, back: 0.99 };
-
-const NECK_PIVOT: Pt = [60, 47];
-const HIPS: Record<'weight' | 'free', Pt> = { weight: [47, 154], free: [73, 154] };
+const HIP: Pt = [73, 154];
 const KNEE: Pt = [70, 212];
 
 /** 0 before `a`, 1 after `b`, easing in and out between. */
@@ -166,51 +146,19 @@ function rotate([x, y]: Pt, [cx, cy]: Pt, angle: number): Pt {
 }
 
 /**
- * The trunk, row by row: each row tilts about the centre line, at the
- * shoulders' angle above the ribs and the hips' below the waist, so the weight
- * side's flank shortens and the free side's lengthens.
+ * The resting leg bent at hip and knee; everything else stands as drawn. A
+ * point's side of the centre line says which leg it is, softened at the crotch
+ * so the two halves still meet there.
  */
-function trunk([x, y]: Pt): Pt {
-  const t = smooth(100, 140, y);
-  const angle = mix(POSE.chest, POSE.pelvis, t);
-  const d = x - 60;
-  return [
-    60 + mix(POSE.chestShift, POSE.pelvisShift, t) + d * Math.cos(angle),
-    y + d * Math.sin(angle),
-  ];
-}
-
-/** A leg moves whole with its hip, then turns there; the free one bends at the knee too. */
-function leg(p: Pt, free: boolean, shin: number): Pt {
-  const hip = free ? HIPS.free : HIPS.weight;
-  const turn = smooth(154, 176, p[1]);
-  let q = p;
-  if (free) {
-    const bend = smooth(204, 220, p[1]);
-    q = [q[0], KNEE[1] + (q[1] - KNEE[1]) * mix(1, shin, bend)];
-    q = rotate(q, KNEE, POSE.shin * bend);
-    q = rotate(q, hip, POSE.thigh * turn);
-  } else {
-    q = rotate(q, hip, POSE.standing * turn);
-  }
-  const at = trunk(hip);
-  return [q[0] + at[0] - hip[0], q[1] + at[1] - hip[1]];
-}
-
-/**
- * The body: the trunk, giving way below the groin to the legs. Which leg a
- * point belongs to is its side of the centre line, softened at the crotch so
- * the two halves still meet there.
- */
-function body(p: Pt, shin: number): Pt {
-  const [x, y] = p;
-  const t = trunk(p);
-  const w = smooth(141, 168, y);
-  if (w === 0) return t;
+function rest([x, y]: Pt, shin: number): Pt {
   const reach = mix(3, 0.001, smooth(150, 165, y));
-  const side = smooth(60 - reach, 60 + reach, x);
-  const legs = mixPt(leg(p, false, shin), leg(p, true, shin), side);
-  return mixPt(t, legs, w);
+  const share = smooth(141, 168, y) * smooth(60 - reach, 60 + reach, x);
+  if (share === 0) return [x, y];
+  const bend = smooth(204, 220, y);
+  let q: Pt = [x, KNEE[1] + (y - KNEE[1]) * mix(1, shin, bend)];
+  q = rotate(q, KNEE, REST.shin * bend);
+  q = rotate(q, HIP, REST.thigh * smooth(154, 176, y));
+  return mixPt([x, y], q, share);
 }
 
 /**
@@ -244,31 +192,16 @@ function build(bone: Bone, [x, y]: Pt): Pt {
   return [nx, y];
 }
 
-/** Where a point of the front view goes: on `bone`, the viewer's left the weight side. */
-function posed(bone: Bone, p: Pt, shin: number): Pt {
-  if (bone === 'ground') return p;
-  if (bone === 'arm') {
-    // The shoulder's cap goes with the trunk; below it the arm hangs straight
-    // from the front of the shoulder, wherever the trunk has carried that.
-    const shoulder: Pt = p[0] < 60 ? [33.8, 59] : [86.2, 59];
-    const at = trunk(shoulder);
-    const hanging: Pt = [p[0] + at[0] - shoulder[0], p[1] + at[1] - shoulder[1]];
-    return mixPt(trunk(p), hanging, smooth(62, 90, p[1]));
-  }
-  if (bone === 'head') {
-    const at = trunk(NECK_PIVOT);
-    const q = rotate(p, NECK_PIVOT, POSE.head);
-    return [q[0] + at[0] - NECK_PIVOT[0], q[1] + at[1] - NECK_PIVOT[1]];
-  }
-  return body(p, shin);
-}
-
-/** The pose for a view: from the back, the front's, mirrored, so the weight is on the same leg. */
+/** Where a point of the front view goes, built and stood; the back view is the front's, mirrored. */
 function pose(view: StatueView, bone: Bone): Point {
   const shin = FREE_SHIN[view];
-  if (view === 'front') return (x, y) => posed(bone, build(bone, [x, y]), shin);
+  const place = (p: Pt): Pt => {
+    const built = build(bone, p);
+    return bone === 'body' ? rest(built, shin) : built;
+  };
+  if (view === 'front') return (x, y) => place([x, y]);
   return (x, y) => {
-    const [px, py] = posed(bone, build(bone, [120 - x, y]), shin);
+    const [px, py] = place([120 - x, y]);
     return [120 - px, py];
   };
 }
