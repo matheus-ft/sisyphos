@@ -61,6 +61,10 @@ src/
   storage/    the device store, sync with the log repo, setup, scheduling,
               durability
 e2e/          the main flows driven in a browser at phone size
+tools/statue/ the statue workbench: the Body view's figure beside alternatives
+              to it, in dev only (npm run statue)
+scripts/      the library submission helper; scripts/statue/ the workbench's
+              shots, a grid to read a photo's coordinates, a photo cut-out
 ```
 
 What the lifter wants from each screen, the brief a designer works from, is in
@@ -85,6 +89,8 @@ npm run build    # production bundle + service worker
 npm run verify   # formatting, lint, typecheck, tests: what CI checks first
 npm run e2e      # the main flows in a browser at phone size (e2e/); CI runs these too
 npm run smoke    # the storage layer against real GitHub; see tests/smoke.live.test.ts
+npm run statue   # the statue workbench (tools/statue/)
+npm run statue:shots    # the workbench as large PNGs, in statue-shots/
 npm run hooks:install   # formatting on commit
 ```
 

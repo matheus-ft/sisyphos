@@ -12,6 +12,8 @@
     "test:watch": "vitest",
     "e2e": "playwright test",
     "smoke": "vitest run tests/smoke.live.test.ts --mode smoke --reporter=verbose",
+    "statue": "vite --open /tools/statue/",
+    "statue:shots": "node scripts/statue/shots.mjs",
     "format": "prettier --write .",
     "format:check": "prettier --check .",
     "hooks:install": "git config core.hooksPath .githooks",

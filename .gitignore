@@ -17,3 +17,4 @@ playwright-report
 # Rulesets as exported from github.com: kept beside the repo for importing,
 # but the live settings are the truth (README, Repository settings).
 .github/rulesets/
+statue-shots
