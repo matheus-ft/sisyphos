@@ -1,13 +1,14 @@
 <script lang="ts">
+  import { STATUE_ART } from '../../src/ui/progress/statue-art';
   import Statue from '../../src/ui/progress/Statue.svelte';
-  import PhotoStatue from './PhotoStatue.svelte';
-  import SculptedStatue from './SculptedStatue.svelte';
+  import { REDRAW_FRONT } from './redraw';
 
   /**
-   * The statue workbench: the app's statue beside the alternatives under
-   * study, at any size, with a week's training shaded on them. Not part of the
-   * app (vite serves it in dev, the build leaves it out); `npm run statue`
-   * opens it, `npm run statue:shots` photographs it.
+   * The statue workbench: the app's statue beside a drawing under study,
+   * painted by the app's own component so only the drawing differs, with a
+   * week's training shaded on both. Not part of the app (vite serves it in dev,
+   * the build leaves it out); `npm run statue` opens it, `npm run statue:shots`
+   * photographs it.
    */
 
   /** A plausible week: pressing and squatting heavy, little arm work. */
@@ -31,8 +32,11 @@
     ['tibialis', 0],
   ]);
 
+  /** The redraw, front so far; its back is the current one until drawn. */
+  const REDRAWN = { front: REDRAW_FRONT, back: STATUE_ART.back };
+
   const params = new URLSearchParams(location.search);
-  /** `?only=current|drawing|photo` shows one; `?width=` sets each panel's width. */
+  /** `?only=current|redrawn` shows one; `?width=` sets each panel's width. */
   const only = params.get('only');
   const width = Number(params.get('width') ?? 360);
   const shows = (name: string) => only === null || only === name;
@@ -45,26 +49,10 @@
       <Statue levels={LEVELS} />
     </section>
   {/if}
-  {#if shows('drawing')}
-    <section data-panel="drawing">
-      <h2>Sculpted drawing</h2>
-      <div class="field">
-        <div class="pair">
-          <SculptedStatue levels={LEVELS} view="front" />
-          <SculptedStatue levels={LEVELS} view="back" />
-        </div>
-      </div>
-    </section>
-  {/if}
-  {#if shows('photo')}
-    <section data-panel="photo">
-      <h2>Photograph</h2>
-      <div class="field">
-        <div class="single">
-          <PhotoStatue levels={LEVELS} />
-        </div>
-        <p class="note">Front only: no free back view of this statue yet.</p>
-      </div>
+  {#if shows('redrawn')}
+    <section data-panel="redrawn">
+      <h2>Redrawn <span>front; back still the current</span></h2>
+      <Statue levels={LEVELS} art={REDRAWN} />
     </section>
   {/if}
 </main>
@@ -82,12 +70,6 @@
     flex-wrap: wrap;
     gap: 24px;
     padding: 24px;
-    /* The marble the app's statue panel uses (Statue.svelte), for the alternatives too. */
-    --vol-0: #ece7df;
-    --vol-1: #e8c7a6;
-    --vol-2: #db9d6f;
-    --vol-3: #c26b3d;
-    --vol-4: #96401a;
   }
 
   section {
@@ -101,31 +83,10 @@
     text-transform: uppercase;
   }
 
-  .field {
-    padding: 16px 12px;
-    border-radius: 12px;
-    background: #1e140f;
-  }
-
-  .pair {
-    display: flex;
-    gap: 8px;
-  }
-
-  .pair > :global(svg) {
-    flex: 1 1 0;
-    max-width: 50%;
-  }
-
-  .single {
-    width: 62%;
-    margin: 0 auto;
-  }
-
-  .note {
-    margin: 8px 0 0;
-    font-style: italic;
-    text-align: center;
+  h2 span {
+    font: italic 400 13px/1 var(--font-text);
+    letter-spacing: 0;
+    text-transform: none;
     opacity: 0.7;
   }
 </style>

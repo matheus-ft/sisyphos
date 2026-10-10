@@ -214,10 +214,12 @@ Open questions v0.5 answered provisionally:
 - The statue is given its build by code and lit by an SVG filter; an
   illustrator's pass would refine its anatomy and face, and could draw an arm
   bent, as the Riace warriors hold theirs. Its marble shades are its own,
-  apart from the app's clay ramp. Two alternatives stand beside it in the
-  statue workbench (`tools/statue/`): the same shapes shaded as a drawing of a
-  sculpture, and a photograph of the Farnese Hercules with the muscles tinted
-  on it, which still lacks a free back view (`tools/statue/photo/CREDITS.md`).
+  apart from the app's clay ramp. A redraw stands beside it in the statue
+  workbench (`tools/statue/`): the figure drawn by its anatomy on the heroic
+  canon (`tools/statue/redraw.ts`), front so far. Rejected there: the same
+  shapes shaded as a drawing of a sculpture, which read as a worse copy, and a
+  photograph of a real statue with the muscles tinted on it, which looked
+  wrong and had no usable back view.
 - The share card follows the phone's mode (clay by day, glaze by night) rather
   than offering a choice.
 - The bell and screen awake depend on the iPhone: screen awake needs iOS 18.4 or

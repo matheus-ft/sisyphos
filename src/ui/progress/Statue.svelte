@@ -13,8 +13,17 @@
     view?: 'both' | 'front' | 'back';
     /** Shown inside the panel beneath the figures: the legend and its caption. */
     children?: Snippet;
+    /** The drawing; the statue workbench (tools/statue/) passes one under study. */
+    art?: Record<StatueView, PaintedPart[]>;
   }
-  let { levels, selected = null, onpick, view = 'both', children }: Props = $props();
+  let {
+    levels,
+    selected = null,
+    onpick,
+    view = 'both',
+    children,
+    art = STATUE_ART,
+  }: Props = $props();
 
   /** Painted over the muscles, in this order. */
   const LINES = ['wash', 'dilute', 'relief', 'contour', 'fine', 'hair', 'locks'] as const;
@@ -33,7 +42,7 @@
   const tabStop = (v: StatueView, muscle: string) =>
     v === 'back' &&
     views.length === 2 &&
-    STATUE_ART.front.some((p) => p.muscles.some((m) => m.muscle === muscle))
+    art.front.some((p) => p.muscles.some((m) => m.muscle === muscle))
       ? -1
       : 0;
 
@@ -112,7 +121,7 @@
             </filter>
           </defs>
           <g filter="url(#carve-{v})">
-            {#each STATUE_ART[v] as part, i (i)}
+            {#each art[v] as part, i (i)}
               {#each part.fill as d, k (k)}<path class="fill" {d} />{/each}
               {#each part.muscles as m (m.muscle)}
                 <g
