@@ -1,10 +1,21 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512">
-  <rect width="512" height="512" fill="#17191c"/>
-  <g fill="#f4f5f6">
-    <rect x="51" y="169" width="44" height="174"/>
-    <rect x="107" y="169" width="44" height="174"/>
-    <rect x="361" y="169" width="44" height="174"/>
-    <rect x="417" y="169" width="44" height="174"/>
-    <rect x="51" y="242" width="410" height="28"/>
+  <!-- Sisyphos pushing the stone: the in-app drawing (src/ui/hill.ts) in red-figure colours. -->
+  <rect width="512" height="512" fill="#15100c"/>
+  <g transform="translate(334 196) rotate(-30)">
+    <path d="M-700,110 L700,110 L700,900 L-700,900 Z" fill="#ee8a52"/>
+    <path d="M-700,148 L700,148" stroke="#15100c" stroke-width="5" stroke-dasharray="26 18" fill="none"/>
+    <g transform="scale(15)">
+      <g fill="none" stroke="#f0cfa4" stroke-width="3.2" stroke-linecap="round" stroke-linejoin="round">
+        <path d="M-15,1 L-10.5,-4 L-6.6,-1.6 M-15,1 L-21.5,7 M-15,1 L-11.5,3 L-12.5,7"/>
+      </g>
+      <circle cx="-8.6" cy="-7.2" r="3" fill="#f0cfa4"/>
+      <g transform="scale(7)">
+        <path d="M-.95,.2 L-.8,-.5 L-.35,-.95 L.3,-1 L.85,-.6 L1,.1 L.8,.7 L.2,1 L-.5,.9 Z" fill="#f0cfa4" stroke="#f0cfa4" stroke-width=".06" stroke-linejoin="round"/>
+        <g fill="none" stroke="#15100c" stroke-width=".1" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M-.62,-.42 Q-.25,-.72 .28,-.72"/>
+          <path d="M-.3,.12 L.1,.38 L.52,.22"/>
+        </g>
+      </g>
+    </g>
   </g>
 </svg>
