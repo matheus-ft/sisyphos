@@ -18,8 +18,11 @@ export default defineConfig(({ command }) => ({
         name: 'Sisyphos',
         short_name: 'Sisyphos',
         description: 'Powerlifting training log and analysis',
-        theme_color: '#111111',
-        background_color: '#111111',
+        // The light ground (--ground in src/app.css), what a launch paints first. The
+        // manifest has one colour for both modes; index.html's theme-color metas give
+        // each mode its own, and light is the palette dark mode is the exception to.
+        theme_color: '#e8c29c',
+        background_color: '#e8c29c',
         display: 'standalone',
         orientation: 'portrait',
         // Relative, so the same build works at the root or under /<repo>/.
