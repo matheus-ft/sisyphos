@@ -4,6 +4,7 @@ import { FormatError, SyncError } from '../src/storage/errors';
 import {
   serializeConflict,
   serializeFormatMarker,
+  serializeMeet,
   serializeSession,
   serializeTemplate,
   TABLES,
@@ -15,6 +16,7 @@ import {
   conflictPath,
   FORMAT_PATH,
   FORMAT_VERSION,
+  meetPath,
   sessionPath,
   templatePath,
 } from '../src/storage/paths';
@@ -32,6 +34,8 @@ import {
   failure,
   killed,
   MARKER,
+  meet,
+  meetFile,
   newLog,
   README,
   rejection,
@@ -300,6 +304,94 @@ describe('normal operation', () => {
     await expectConverged(remote, a, b);
   });
 
+  it('syncs a meet like any other record: pushed whole, taken by the other device', async () => {
+    const { remote, a, b } = await synced();
+    const m = meet('2026-05-16-8mzt', 2);
+    await a.put(meetFile(m));
+    const commit = vi.spyOn(remote, 'commit');
+
+    const pushed = await a.sync();
+    expect(pushed.pushed).toEqual([meetPath(m.id)]);
+    expect(commit.mock.calls[0][0].message).toBe('sync: 1 meet');
+    expect(remote.files().get(meetPath(m.id))).toBe(meetFile(m)[1]);
+
+    expect(await b.sync()).toMatchObject({ taken: [meetPath(m.id)], conflicts: [] });
+    expect((await b.files()).get(meetPath(m.id))).toBe(meetFile(m)[1]);
+    await expectConverged(remote, a, b);
+
+    // And its edit and its deletion.
+    await b.put(meetFile(meet(m.id, 1)));
+    await b.sync();
+    await a.sync();
+    expect((await a.files()).get(meetPath(m.id))).toBe(meetFile(meet(m.id, 1))[1]);
+    await a.write(meetPath(m.id), null);
+    await a.sync();
+    expect(remote.files().has(meetPath(m.id))).toBe(false);
+    await b.sync();
+    await expectConverged(remote, a, b);
+  });
+
+  it('keeps a meets/ file that is not a meet, as the lifter’s own', async () => {
+    const { remote, a, b } = await synced();
+    const m = meet('2026-05-16-8mzt');
+    const foreign = new Map([
+      ['meets/README.md', 'Results from the federation.\n'],
+      ['meets/nationals-2026.json', '{"results": []}\n'],
+      ['meets/2026/2026-05-16-8mzt.json', serializeMeet(m)],
+      ['meets/2026-05-16-8MZT.json', serializeMeet(m)],
+    ]);
+    remote.externalCommit([...foreign].map(change));
+    await a.put(meetFile(m));
+
+    const calls = await callsDuring(remote, () => a.sync());
+    expect(calls).toEqual(['head', 'contains', 'tree', 'commit', 'moveBranch']);
+    for (const [path, content] of foreign) expect(remote.files().get(path)).toBe(content);
+    await b.sync();
+    for (const device of [a, b]) {
+      expect([...(await device.files()).keys()].filter((path) => foreign.has(path))).toEqual([]);
+    }
+    expect((await b.files()).get(meetPath(m.id))).toBe(serializeMeet(m));
+    await expectConverged(remote, a, b);
+  });
+
+  it('leaves alone a meet copied on github.com with the id inside unchanged', async () => {
+    const { remote, a } = await synced();
+    const original = meet('2026-05-16-8mzt');
+    const copy = 'meets/2026-06-20-wxyz.json';
+    remote.externalCommit([
+      change(meetFile(original)),
+      { path: copy, content: serializeMeet(original) },
+    ]);
+
+    const result = await a.sync();
+    expect(result.unreadable).toEqual([copy]);
+    expect((await a.files()).has(copy)).toBe(false);
+    expect((await a.files()).get(meetPath(original.id))).toBe(serializeMeet(original));
+  });
+
+  it('never reads, pushes or deletes what an earlier build kept in a retired table', async () => {
+    const { remote, a, b } = await synced();
+    const retired = 'lifter/competition-bests.csv';
+    const theirs = 'date,exercise_id,weight_kg,meet\n2026-05-16,bench,120,Nationals 2026\n';
+    remote.externalCommit([{ path: retired, content: theirs }]);
+    // The device still holds a copy it wrote before the table was retired, changed since.
+    await a.write(
+      retired,
+      'date,exercise_id,weight_kg,meet\n2026-05-16,bench,125,Nationals 2026\n',
+    );
+
+    expect((await a.sync()).committed).toBeNull();
+    expect(remote.files().get(retired)).toBe(theirs);
+    await b.sync();
+    expect((await b.files()).has(retired)).toBe(false);
+    // The leftover is nothing to sync: with the head unmoved a sync is one request.
+    await expectQuiet(a);
+    // Deleting it on the device sends no deletion either.
+    await a.write(retired, null);
+    expect((await a.sync()).committed).toBeNull();
+    expect(remote.files().get(retired)).toBe(theirs);
+  });
+
   it('sends no deletion for a file the log no longer holds', async () => {
     const { remote, a, b } = await synced();
     await b.write(sessionPath(S2.id), null);
@@ -370,13 +462,15 @@ describe('normal operation', () => {
     await a.put(sessionFile(session(S2.id, 'v1')));
     await a.put(templateFile(template('bench-day-b-m4r8')));
     await a.put(templateFile(template(T1.id, 'mine')));
+    await a.put(meetFile(meet('2026-05-16-8mzt')));
+    await a.put(meetFile(meet('2026-06-20-k3f9')));
     await a.write(BODYWEIGHT, bodyweight({ '2026-09-01': 80 }));
     await a.write(conflictPath(old.id), null);
     const commit = vi.spyOn(remote, 'commit');
 
     await a.sync();
     expect(commit.mock.calls[0][0].message).toBe(
-      'sync: 2 sessions, 1 template, bodyweight, 1 conflict, 1 resolved',
+      'sync: 2 sessions, 1 template, 2 meets, bodyweight, 1 conflict, 1 resolved',
     );
   });
 });
@@ -459,6 +553,48 @@ describe('conflicts', () => {
       const stands = bodyweight({ ...changed(there, 85), '2026-09-04': 83 });
       expect(remote.files().get(BODYWEIGHT)).toBe(stands);
       expect((await a.files()).get(BODYWEIGHT)).toBe(stands);
+
+      await b.sync();
+      await expectConverged(remote, a, b);
+      expect(await b.conflicts()).toEqual([conflict]);
+    },
+  );
+
+  it.each(SHAPES)(
+    '%s, a meet: the log’s version stands and this one is saved, and the record round-trips',
+    async (_, here, there) => {
+      const { remote, a, b } = await synced();
+      const original = meet('2026-05-16-8mzt');
+      await a.put(meetFile(original));
+      await a.sync();
+      await b.sync();
+      const path = meetPath(original.id);
+      const theirs = there === 'edit' ? meet(original.id, 1) : null;
+      const mine = here === 'edit' ? meet(original.id, 3) : null;
+      await b.write(path, theirs && serializeMeet(theirs));
+      await b.sync();
+      await a.write(path, mine && serializeMeet(mine));
+      const commit = vi.spyOn(remote, 'commit');
+
+      const result = await a.sync();
+      expect(result.conflicts).toEqual([
+        {
+          id: expect.stringMatching(CONFLICT_ID),
+          path,
+          key: null,
+          found_at: T0,
+          device_id: 'dev-a',
+          version: mine,
+        },
+      ]);
+      const [conflict] = result.conflicts;
+      expect(result.pushed).toEqual([conflictPath(conflict.id)]);
+      expect(commit.mock.calls[0][0].message).toBe('sync: 1 conflict');
+      // The record is a file in the log, and reads back as the very conflict found.
+      expect(remote.files().get(conflictPath(conflict.id))).toBe(serializeConflict(conflict));
+      const stands = theirs && serializeMeet(theirs);
+      expect(remote.files().get(path) ?? null).toBe(stands);
+      expect((await a.files()).get(path) ?? null).toBe(stands);
 
       await b.sync();
       await expectConverged(remote, a, b);

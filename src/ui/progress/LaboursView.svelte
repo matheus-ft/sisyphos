@@ -1,15 +1,16 @@
 <script lang="ts">
-  import { aimAt, type LifterSection } from '../agoraIndex';
   import { app } from '../app.svelte';
   import { dateInYear, formatKg, meetBest, labourTabs, recordRows, resolveTab } from '../athloi';
   import EmptyState from '../kit/EmptyState.svelte';
   import Laurel from '../kit/Laurel.svelte';
   import LiftTabs from '../kit/LiftTabs.svelte';
+  import { routeHash } from '../route';
 
   /**
    * A record-keeping lift's best weight at each rep count from 1 to 10, from
    * sessions and by hand together; above them, its best at a meet, which is
-   * none of them.
+   * none of them. A hand-entered record and the meet link to the pages that
+   * edit them.
    */
   interface Props {
     today: string;
@@ -18,7 +19,7 @@
   }
   let { today, picked, onpick }: Props = $props();
 
-  const tabs = $derived(labourTabs(app.records, app.library, app.competitionBests));
+  const tabs = $derived(labourTabs(app.records, app.library, app.meets));
   const chosen = $derived(resolveTab(tabs, picked));
   const rows = $derived(
     chosen
@@ -27,20 +28,13 @@
         })
       : [],
   );
-  const meet = $derived(chosen ? meetBest(app.competitionBests, chosen.exercise.id) : null);
+  const meet = $derived(chosen ? meetBest(app.meets, chosen.exercise.id) : null);
 
-  /** What was entered by hand is changed where it was entered: under Lifter, at its section. */
-  function lifter(section: LifterSection): void {
-    aimAt(section);
-    app.go({ name: 'more', page: 'lifter' });
-  }
+  const meetsHref = routeHash({ name: 'more', page: 'meets' });
+  const recordsHref = routeHash({ name: 'more', page: 'records' });
 
-  /** A session record opens its session; a hand-entered one is edited under Agora's Lifter. */
-  function open(sessionId: string | null, manual: boolean): void {
-    if (manual) {
-      lifter('records');
-      return;
-    }
+  /** A session record opens its session. */
+  function open(sessionId: string | null): void {
     const session = app.current.find((s) => s.id === sessionId);
     if (session) app.openSession(session);
   }
@@ -67,29 +61,28 @@
       <p class="controls meta">best weight for each rep count</p>
 
       {#if meet}
-        <button
+        <a
           class="card meet"
-          aria-label="At a meet, {formatKg(meet.weight_kg)} kilograms, {dateInYear(
+          href={meetsHref}
+          aria-label="At a meet, {formatKg(meet.kg)} kilograms, {dateInYear(
             meet.date,
             today,
-          )}{meet.meet ? `, ${meet.meet}` : ''}. Edit under Lifter"
-          onclick={() => lifter('competition')}
+          )}{meet.meet ? `, ${meet.meet}` : ''}. Open Meets"
         >
           <span class="caps">At a meet</span>
           <span class="weight">
-            <span class="figure-num w">{formatKg(meet.weight_kg)}</span>
+            <span class="figure-num w">{formatKg(meet.kg)}</span>
             <span class="unit">kg</span>
           </span>
           <span class="when meta">
             <span>{dateInYear(meet.date, today)}</span>
             {#if meet.meet}<span>{meet.meet}</span>{/if}
           </span>
-        </button>
+        </a>
       {/if}
 
       <ul class="card rows">
         {#each rows as row (row.reps)}
-          {@const actionable = row.sessionId !== null || row.manual}
           <li class:recent={row.recent} class:none={row.weight === null}>
             {#snippet inner()}
               <span class="reps">
@@ -110,10 +103,14 @@
                 <span class="empty meta">no record yet</span>
               {/if}
             {/snippet}
-            {#if actionable}
+            {#if row.manual}
+              <a href={recordsHref} aria-label="{row.spoken}. Edit under Records">
+                {@render inner()}
+              </a>
+            {:else if row.sessionId !== null}
               <button
-                aria-label="{row.spoken}. {row.manual ? 'Edit under Lifter' : 'Open the session'}"
-                onclick={() => open(row.sessionId, row.manual)}
+                aria-label="{row.spoken}. Open the session"
+                onclick={() => open(row.sessionId)}
               >
                 {@render inner()}
               </button>
@@ -124,7 +121,7 @@
         {/each}
       </ul>
       <p class="foot">
-        {#if rows.some((r) => r.manual)}Records marked “by hand” were entered under Lifter in More.{/if}
+        {#if rows.some((r) => r.manual)}Records marked “by hand” were entered under Records in More.{/if}
       </p>
     {/if}
   </LiftTabs>
@@ -148,6 +145,7 @@
     border-color: var(--line-strong);
     text-align: left;
     color: inherit;
+    text-decoration: none;
   }
 
   .meet .caps {
@@ -174,8 +172,10 @@
   }
 
   button,
+  a:not(.meet),
   .plain {
     display: grid;
+    text-decoration: none;
     grid-template-columns: 44px 1fr auto;
     align-items: center;
     gap: var(--space-3);
@@ -186,7 +186,8 @@
     color: inherit;
   }
 
-  button:active {
+  button:active,
+  a:active {
     background: var(--sunken);
   }
 

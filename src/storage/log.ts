@@ -4,6 +4,7 @@ import type {
   ExerciseAddition,
   Id,
   IsoDate,
+  Meet,
   Session,
   TableRow,
   Template,
@@ -14,9 +15,11 @@ import {
   TABLES,
   exerciseRowHash,
   parseConflict,
+  parseMeet,
   parseSession,
   parseTemplate,
   rowKey,
+  serializeMeet,
   serializeSession,
   serializeTemplate,
   tableRows,
@@ -25,8 +28,15 @@ import {
   type TableSchema,
 } from './formats';
 import { blobSha } from './hash';
-import { newSessionId, newTemplateId } from './ids';
-import { classify, conflictPath, sessionPath, templatePath, type TableKind } from './paths';
+import { newMeetId, newSessionId, newTemplateId } from './ids';
+import {
+  classify,
+  conflictPath,
+  meetPath,
+  sessionPath,
+  templatePath,
+  type TableKind,
+} from './paths';
 import type { Exclusive, LocalStore, StoreOp, StoreReader, SyncEntry } from './store/store';
 
 /**
@@ -93,6 +103,12 @@ export class Log {
     return templates.sort((a, b) => compare(a.name, b.name) || compare(a.id, b.id));
   }
 
+  /** Newest first (by date, then id), the order the Meets page lists them in. */
+  async getMeets(): Promise<Meet[]> {
+    const meets = await this.readAll('meet', parseMeet);
+    return meets.sort((a, b) => compare(b.date, a.date) || compare(b.id, a.id));
+  }
+
   /** Every row of a table, in the file's order (sorted by key). A missing file is an empty table. */
   async getRows<K extends TableKind>(kind: K): Promise<RecordOf<K>[]> {
     const schema = TABLES[kind] as unknown as TableSchema<RecordOf<K>>;
@@ -143,6 +159,11 @@ export class Log {
   async newTemplateId(name: string): Promise<Id> {
     const held = await this.heldPaths();
     return newTemplateId(name, (id) => held.has(templatePath(id)), this.options.random);
+  }
+
+  async newMeetId(date: IsoDate): Promise<Id> {
+    const held = await this.heldPaths();
+    return newMeetId(date, (id) => held.has(meetPath(id)), this.options.random);
   }
 
   /**
@@ -198,6 +219,34 @@ export class Log {
 
   async deleteTemplate(id: Id): Promise<void> {
     await this.deleteFile(pathOf('template', id));
+  }
+
+  /** Sets `updated_at` and `device_id`, with the same skip rule as sessions. */
+  async putMeet(meet: Meet): Promise<void> {
+    const path = pathOf('meet', meet.id);
+    await this.store.exclusive(async (store) => {
+      const text = serializeMeet({
+        ...meet,
+        updated_at: this.now(),
+        device_id: this.options.deviceId,
+      });
+      const current = parsedOrNull(await store.content(path), parseMeet);
+      if (
+        current !== null &&
+        serializeMeet({
+          ...meet,
+          updated_at: current.updated_at,
+          device_id: current.device_id,
+        }) === serializeMeet(current)
+      ) {
+        return;
+      }
+      await store.apply([{ op: 'content', path, text }]);
+    });
+  }
+
+  async deleteMeet(id: Id): Promise<void> {
+    await this.deleteFile(pathOf('meet', id));
   }
 
   /** Replaces the row with the record's key. Not for additions: use `saveExercise`. */
@@ -338,7 +387,7 @@ export class Log {
 
   /** Every file of one kind the device holds, parsed. */
   private async readAll<T>(
-    kind: 'session' | 'template' | 'conflict',
+    kind: 'session' | 'template' | 'meet' | 'conflict',
     parse: (text: string) => T,
   ): Promise<T[]> {
     const entries = (await this.store.entries()).filter(
@@ -358,10 +407,11 @@ export class Log {
 
 /**
  * The file a record's id names, refusing an id that would file it where sync
- * never looks (a session id not starting with a year, a `/` in an id).
+ * never looks (a session or meet id not starting with a date, a `/` in an id).
  */
-function pathOf(kind: 'session' | 'template', id: Id): string {
-  const path = kind === 'session' ? sessionPath(id) : templatePath(id);
+function pathOf(kind: 'session' | 'template' | 'meet', id: Id): string {
+  const path =
+    kind === 'session' ? sessionPath(id) : kind === 'template' ? templatePath(id) : meetPath(id);
   if (classify(path).kind !== kind) throw new Error(`not a ${kind} id: "${id}"`);
   return path;
 }
@@ -433,6 +483,14 @@ async function savedVersionOps(store: StoreReader, conflict: ConflictRecord): Pr
           op: 'content',
           path: conflict.path,
           text: conflict.version === null ? null : serializeTemplate(conflict.version as Template),
+        },
+      ];
+    case 'meet':
+      return [
+        {
+          op: 'content',
+          path: conflict.path,
+          text: conflict.version === null ? null : serializeMeet(conflict.version as Meet),
         },
       ];
     case 'table': {

@@ -1,13 +1,15 @@
 import { csvLine } from '../../src/csv';
-import type { Exercise, Session, Template } from '../../src/model';
+import type { Exercise, Meet, Session, Template } from '../../src/model';
 import type { Mode } from '../../src/storage/decide';
 import { SyncError } from '../../src/storage/errors';
 import {
   parseSession,
+  parseMeet,
   parseTemplate,
   rowKey,
   rowLine,
   serializeSession,
+  serializeMeet,
   serializeTemplate,
   TABLES,
   tableRows,
@@ -90,11 +92,6 @@ const RECORDS = [
   ['2026-06-01', 'low_bar_squat', 3],
   ['2026-06-02', 'comp_bench', 1],
 ] as const;
-const BESTS = [
-  ['2026-05-16', 'low_bar_squat'],
-  ['2026-05-16', 'sumo_deadlift'],
-  ['2026-11-07', 'bench'],
-] as const;
 /** A shipped exercise the lifter changes, and two of their own. */
 const ADDITIONS = ['low_bar_squat', 'seal_row', 'zercher_squat'];
 
@@ -129,6 +126,11 @@ function edited(
     const session: Session = { ...parseSession(text), ...(op === 'edit' && { notes: `v${n}` }) };
     return byHand ? `${JSON.stringify(session)}\n` : serializeSession(session);
   }
+  if (kind.kind === 'meet') {
+    if (op === 'delete') return null;
+    const meet: Meet = { ...parseMeet(text), ...(op === 'edit' && { notes: `v${n}` }) };
+    return byHand ? `${JSON.stringify(meet)}\n` : serializeMeet(meet);
+  }
   if (kind.kind === 'template') {
     if (op === 'delete') return null;
     const template: Template = {
@@ -158,6 +160,7 @@ function kindOf(place: Place): Kind | 'conflict' | null {
   switch (kind.kind) {
     case 'session':
     case 'template':
+    case 'meet':
     case 'conflict':
       return kind.kind;
     case 'table':
@@ -417,10 +420,27 @@ export class World {
           context: `v${n}`,
         });
       }
-      case 'competitionBests': {
-        const [date, exercise_id] = BESTS[pick % BESTS.length];
-        return log.putRow('competitionBests', { date, exercise_id, weight_kg: 200, meet: `v${n}` });
-      }
+      case 'meet':
+        return log.putMeet({
+          id: `${date}-${suffix(n)}`,
+          date,
+          name: `Meet ${n}`,
+          location: null,
+          federation: null,
+          weight_class: null,
+          equipment: null,
+          bodyweight_kg: null,
+          placing: null,
+          notes: `v${n}`,
+          lifts: {
+            squat: [null, null, null],
+            bench: [null, null, null],
+            deadlift: [null, null, null],
+          },
+          created_at: now,
+          updated_at: now,
+          device_id: device.id,
+        });
       case 'additions':
         await log.saveExercise({ ...exercise(ADDITIONS[pick % ADDITIONS.length]), name: `v${n}` });
         return;
@@ -438,6 +458,10 @@ export class World {
       const template = (await log.getTemplates()).find((t) => t.id === kind.id)!;
       return log.putTemplate({ ...template, intention: `v${n}` });
     }
+    if (kind.kind === 'meet') {
+      const meet = (await log.getMeets()).find((m) => m.id === kind.id)!;
+      return log.putMeet({ ...meet, notes: `v${n}` });
+    }
     if (kind.kind !== 'table') throw new Error(`cannot edit ${place}`);
     switch (kind.table) {
       case 'bodyweight': {
@@ -449,10 +473,6 @@ export class World {
       case 'manualRecords': {
         const row = await this.row(device, 'manualRecords', place);
         return log.putRow('manualRecords', { ...row, context: `v${n}` });
-      }
-      case 'competitionBests': {
-        const row = await this.row(device, 'competitionBests', place);
-        return log.putRow('competitionBests', { ...row, meet: `v${n}` });
       }
       case 'additions': {
         const { based_on: _, ...addition } = await this.row(device, 'additions', place);
@@ -467,6 +487,7 @@ export class World {
     const kind = classify(pathOf(place));
     if (kind.kind === 'session') return log.deleteSession(kind.id);
     if (kind.kind === 'template') return log.deleteTemplate(kind.id);
+    if (kind.kind === 'meet') return log.deleteMeet(kind.id);
     if (kind.kind !== 'table') throw new Error(`cannot delete ${place}`);
     return log.deleteRow(kind.table, await this.row(device, kind.table, place));
   }

@@ -1,9 +1,9 @@
 import type {
   BodyweightEntry,
-  CompetitionBest,
   Exercise,
   Id,
   IsoDate,
+  Meet,
   PersonalRecord,
   Session,
 } from '../model';
@@ -13,6 +13,7 @@ import { isRecentRecord, recordAt } from '../metrics/records';
 import { CONFIG, MUSCLE_PRESET_NAMES, RECORD_MAX_REPS } from '../metrics/definitions';
 import type { MuscleSet, MuscleVolume, VolumeWindow } from '../metrics/weekly';
 import { weekdayShort } from './format';
+import { bestOfExercise, meetDays, type MeetLift } from './meets';
 import { formatSet } from './session';
 
 /**
@@ -369,36 +370,23 @@ export function sparseNote(
 
 // --- Labours -------------------------------------------------------------------------
 
-/** Labours' tabs: each lift's last day with a record or a meet's best. */
+/** Labours' tabs: each lift's last day with a record or a good attempt at a meet. */
 export function labourTabs(
   book: readonly PersonalRecord[],
   library: readonly Exercise[],
-  bests: readonly CompetitionBest[] = [],
+  meets: readonly Meet[] = [],
 ): LiftTab[] {
-  const last = new Map<string, IsoDate>();
-  for (const r of [...book, ...bests]) {
+  const last = meetDays(meets);
+  for (const r of book) {
     const held = last.get(r.exercise_id);
     if (!held || r.date > held) last.set(r.exercise_id, r.date);
   }
   return liftTabs(library, (exercise) => last.get(exercise.id) ?? null);
 }
 
-/** The heaviest an exercise was ever lifted at a meet, the earlier on a tie; null if never. */
-export function meetBest(
-  bests: readonly CompetitionBest[],
-  exerciseId: string,
-): CompetitionBest | null {
-  return bests
-    .filter((b) => b.exercise_id === exerciseId)
-    .reduce<CompetitionBest | null>(
-      (best, b) =>
-        !best ||
-        b.weight_kg > best.weight_kg ||
-        (b.weight_kg === best.weight_kg && b.date < best.date)
-          ? b
-          : best,
-      null,
-    );
+/** The heaviest good attempt an exercise ever had at a meet, the earlier on a tie; null if never. */
+export function meetBest(meets: readonly Meet[], exerciseId: string): MeetLift | null {
+  return bestOfExercise(meets, exerciseId);
 }
 
 export interface RecordRow {
