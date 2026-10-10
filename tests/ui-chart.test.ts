@@ -5,9 +5,10 @@ import {
   dateScale,
   monotonePath,
   monthMarks,
-  nearestPoint,
+  nearestDay,
   niceTicks,
   scaleLinear,
+  stepDay,
   strataPaths,
   STRATA_OFFSETS,
   toChartX,
@@ -145,26 +146,40 @@ describe('areaPath and strata', () => {
   });
 });
 
-describe('nearestPoint', () => {
-  const at = (x: number, y = 0) => ({ x, y });
-
+describe('nearestDay', () => {
   it('finds the closest x, the left one on a tie', () => {
-    const line = [at(10), at(50), at(90)];
-    expect(nearestPoint(line, 60, 0)).toBe(1);
-    expect(nearestPoint(line, 70, 0)).toBe(1);
-    expect(nearestPoint(line, 71, 0)).toBe(2);
-    expect(nearestPoint([], 5, 0)).toBe(-1);
+    const xs = [10, 50, 90];
+    expect(nearestDay(xs, 60)).toBe(1);
+    expect(nearestDay(xs, 70)).toBe(1);
+    expect(nearestDay(xs, 71)).toBe(2);
+    expect(nearestDay(xs, -40)).toBe(0);
+    expect(nearestDay([], 5)).toBe(-1);
+  });
+});
+
+describe('stepDay', () => {
+  it('steps a day at a time and stops at the ends', () => {
+    expect(stepDay(2, 'ArrowRight', 5)).toEqual({ day: 3 });
+    expect(stepDay(2, 'ArrowLeft', 5)).toEqual({ day: 1 });
+    expect(stepDay(4, 'ArrowRight', 5)).toEqual({ day: 4 });
+    expect(stepDay(0, 'ArrowLeft', 5)).toEqual({ day: 0 });
   });
 
-  it('tells the sets of one day apart by height', () => {
-    const day = [at(50, 20), at(50, 60), at(50, 100), at(90, 30)];
-    expect(nearestPoint(day, 52, 25)).toBe(0);
-    expect(nearestPoint(day, 48, 70)).toBe(1);
-    expect(nearestPoint(day, 50, 160)).toBe(2);
+  it('starts from the near end when no day is picked', () => {
+    expect(stepDay(null, 'ArrowRight', 5)).toEqual({ day: 0 });
+    expect(stepDay(null, 'ArrowLeft', 5)).toEqual({ day: 4 });
   });
 
-  it('goes to the nearest day first, whatever the height', () => {
-    expect(nearestPoint([at(50, 20), at(90, 100)], 80, 20)).toBe(1);
+  it('jumps to the ends and lets go on Escape', () => {
+    expect(stepDay(2, 'Home', 5)).toEqual({ day: 0 });
+    expect(stepDay(2, 'End', 5)).toEqual({ day: 4 });
+    expect(stepDay(2, 'Escape', 5)).toEqual({ day: null });
+  });
+
+  it('leaves other keys, and an empty chart, alone', () => {
+    expect(stepDay(2, 'a', 5)).toBeUndefined();
+    expect(stepDay(null, 'ArrowRight', 0)).toBeUndefined();
+    expect(stepDay(null, 'Escape', 0)).toEqual({ day: null });
   });
 });
 

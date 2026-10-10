@@ -574,6 +574,20 @@ export interface TemplateFolder {
 
 export const NO_PROGRAM_KEY = '-';
 
+/**
+ * The folders with the pinned one first, the rest as they were. The pin is a
+ * program name, matched as `groupTemplates` does; one that names no folder
+ * (its templates gone or renamed) pins nothing.
+ */
+export function pinFolder(
+  folders: readonly TemplateFolder[],
+  pinned: string | null,
+): { folders: TemplateFolder[]; pinned: TemplateFolder | null } {
+  const key = pinned?.trim() ? `p:${pinned.trim().toLowerCase()}` : null;
+  const hit = folders.find((f) => f.key === key) ?? null;
+  return { folders: hit ? [hit, ...folders.filter((f) => f !== hit)] : [...folders], pinned: hit };
+}
+
 /** Nulls first, then ascending. */
 const byNumber = (a: number | null, b: number | null): number => (a ?? 0) - (b ?? 0);
 

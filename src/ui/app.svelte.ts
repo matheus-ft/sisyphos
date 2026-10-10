@@ -15,6 +15,7 @@ import { startStorage, type AppStorage } from '../storage/app';
 import type { RecordOf } from '../storage/formats';
 import type { TableKind } from '../storage/paths';
 import { DEFAULT_PREFS, readPrefs, type Prefs } from './prefs';
+import { applyTheme } from './theme';
 import type { SetupInput, SetupResult } from '../storage/setup';
 import type { StatusSnapshot } from '../storage/status';
 import { confirmDialog, promptDialog, showToast } from './overlays.svelte';
@@ -53,6 +54,12 @@ interface NavState {
 
 class App {
   storage = $state.raw<AppStorage | null>(null);
+  /**
+   * Launch is done: the data is loaded and the route and greeting are settled.
+   * Until then the shell shows only the ground, never a screen with nothing
+   * in it yet.
+   */
+  ready = $state(false);
   status = $state.raw<StatusSnapshot | null>(null);
   /** What last went wrong, in words, until the next write succeeds. */
   failure = $state<string | null>(null);
@@ -115,6 +122,9 @@ class App {
     this.route = launchedAt;
     window.addEventListener('popstate', this.#follow);
     window.addEventListener('hashchange', this.#follow);
+    // Fetched while storage opens, so the first screen comes up in its own type
+    // rather than reflowing into it a moment later. One that fails is left to the fallback.
+    const fonts = Promise.all([...document.fonts].map((f) => f.load().catch(() => null)));
 
     startStorage({
       target: window,
@@ -125,8 +135,8 @@ class App {
       },
       onConflicts: () => this.#announceConflicts(),
       onLibraryConflicts: () => this.#announceConflicts(),
-    }).then(
-      async (s) => {
+    })
+      .then(async (s) => {
         if (disposed) return s.dispose();
         started = s;
         this.storage = s;
@@ -145,14 +155,18 @@ class App {
         // The greeting would cover a session under way, whether launch reopened it or the
         // launch's own link did; it comes at a later launch.
         this.showSetup = settings.owner === null && !skipped() && running === undefined;
+        await fonts;
+        this.ready = true;
         await s.scheduler.status();
         // Conflicts are announced again at every launch until settled.
         const waiting = (this.status?.conflicts ?? 0) + (this.status?.libraryConflicts ?? 0);
         if (waiting > 0) this.#announceConflicts();
-      },
-      (error: unknown) =>
-        (this.failure = `This phone's storage could not be opened: ${messageOf(error)}`),
-    );
+      })
+      // Failing to read what it opened says so too, rather than leaving only the ground.
+      .catch(
+        (error: unknown) =>
+          (this.failure = `This phone's storage could not be opened: ${messageOf(error)}`),
+      );
 
     return () => {
       disposed = true;
@@ -564,6 +578,7 @@ class App {
     this.manualRecords = manualRecords;
     this.meets = meets;
     this.prefs = readPrefs(settings);
+    applyTheme(this.prefs.theme);
   }
 
   /** Adds or replaces a lifter row (same key), then rereads the tables. */
@@ -637,6 +652,7 @@ class App {
   /** Changes this device's preferences; shown at once, kept once the write resolves. */
   setPrefs = async (patch: Partial<Prefs>): Promise<void> => {
     this.prefs = readPrefs({ ...this.prefs, ...patch });
+    applyTheme(this.prefs.theme);
     try {
       await this.storage?.store.saveSettings(patch);
     } catch (error) {

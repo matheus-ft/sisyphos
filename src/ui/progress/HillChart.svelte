@@ -1,17 +1,17 @@
 <script lang="ts">
   import type { IsoDate } from '../../model';
   import type { E1rmPoint, SetE1rmPoint } from '../../metrics/e1rm';
-  import type { HoverText } from '../athloi';
+  import type { DayText, StrengthDay } from '../athloi';
   import {
     areaPath,
     CHART,
     dateScale,
     monotonePath,
     monthMarks,
-    nearestPoint,
+    nearestDay,
+    stepDay,
     strataPaths,
     toChartX,
-    toChartY,
     tooltipLeft,
     valueScale,
   } from '../chart';
@@ -22,7 +22,8 @@
    * ground beneath it incised with strata and the stone resting on the latest.
    * Behind the line, every working set as a faint dot; over it, each
    * single solid at the weight lifted, and a gilded mark on a record day. A finger or pointer
-   * draws a crosshair that snaps to a set, the arrow keys step through them.
+   * draws a crosshair that snaps to a day, never to one of its sets, and the arrow keys step
+   * from day to day. The day picked lights its best and its single and dims the rest.
    * The geometry is `ui/chart.ts`; this only paints it.
    */
   interface Props {
@@ -30,14 +31,16 @@
     points: E1rmPoint[];
     /** Every working set in view, oldest first; at least one per day of `points`. */
     sets: SetE1rmPoint[];
-    /** What the tooltip says of each set, in step with `sets`. */
-    texts: HoverText[];
+    /** The days, in step with `points`, each with the sets that fall on it. */
+    days: StrengthDay[];
+    /** What the tooltip says of each day, in step with `days`. */
+    texts: DayText[];
     /** The chart in a sentence, for a screen reader. */
     label: string;
     /** Where the plot ends on the right: today, so a gap since the last session shows. */
     to: IsoDate;
   }
-  let { points, sets, texts, label, to }: Props = $props();
+  let { points, sets, days, texts, label, to }: Props = $props();
 
   // With one day there is nothing to run between: it stands in the middle.
   const span = $derived<{ from: IsoDate; to: IsoDate }>(
@@ -58,43 +61,49 @@
   // solid, over it, at the weight actually lifted; the records are gilded on the line.
   const scatter = $derived(setXy.map((p, i) => ({ ...p, key: sets[i].set_id })));
   const singles = $derived(
-    sets.flatMap((p, i) => (p.kind === 'single' ? [{ ...setXy[i], key: p.set_id }] : [])),
+    sets.flatMap((p, i) => (p.kind === 'single' ? [{ ...setXy[i], key: p.set_id, index: i }] : [])),
   );
   const records = $derived(
     points.flatMap((p, i) => (p.record ? [{ ...xy[i], key: p.set_id }] : [])),
   );
 
-  let hover = $state<number | null>(null);
+  // The day picked, an index into `days`; null for none, and the chart looks as it always has.
+  let pick = $state<number | null>(null);
   let box = $state<HTMLDivElement | null>(null);
   let boxWidth = $state(0);
   let tipWidth = $state(150);
 
-  const at = $derived(hover === null || hover >= sets.length ? null : hover);
+  const at = $derived(pick === null || pick >= days.length ? null : pick);
   const tipLeftPx = $derived(
-    at === null ? 0 : tooltipLeft((setXy[at].x / CHART.width) * boxWidth, tipWidth, boxWidth),
+    at === null ? 0 : tooltipLeft((xy[at].x / CHART.width) * boxWidth, tipWidth, boxWidth),
   );
-  // The stone rests on the latest day's best, so a ring there would sit under it.
-  const underStone = $derived(at !== null && sets[at].set_id === points.at(-1)!.set_id);
+  // The readout wraps rather than cover the crosshair: it may be as wide as the room beside it.
+  const tipMax = $derived(
+    at === null
+      ? 0
+      : Math.max(
+          (xy[at].x / CHART.width) * boxWidth,
+          boxWidth - (xy[at].x / CHART.width) * boxWidth,
+        ) - 14,
+  );
+  // Which dots are the day's own, which are its other sets, and which belong to other days.
+  const ownSets = $derived(new Set(at === null ? [] : days[at].sets));
+  const ownSingles = $derived(new Set(at === null ? [] : days[at].singles));
 
   function aim(event: PointerEvent): void {
     if (!box) return;
     const rect = box.getBoundingClientRect();
-    hover = nearestPoint(
-      setXy,
+    const day = nearestDay(
+      xy.map((p) => p.x),
       toChartX(event.clientX, rect.left, box.clientWidth),
-      toChartY(event.clientY, rect.top, box.clientHeight),
     );
+    pick = day < 0 ? null : day;
   }
 
   function key(event: KeyboardEvent): void {
-    const last = sets.length - 1;
-    const step = event.key === 'ArrowLeft' ? -1 : event.key === 'ArrowRight' ? 1 : 0;
-    if (event.key === 'Escape') hover = null;
-    else if (event.key === 'Home') hover = 0;
-    else if (event.key === 'End') hover = last;
-    else if (step !== 0)
-      hover = Math.min(last, Math.max(0, (at ?? (step > 0 ? -1 : last + 1)) + step));
-    else return;
+    const next = stepDay(at, event.key, days.length);
+    if (!next) return;
+    pick = next.day;
     event.preventDefault();
   }
 
@@ -102,7 +111,7 @@
 </script>
 
 <!-- A finger drags along the hill; a swipe up or down still scrolls the page. The slider
-     role is what the arrow keys do: step from set to set, with the set read out. -->
+     role is what the arrow keys do: step from day to day, with the day read out. -->
 <div
   class="chart"
   bind:this={box}
@@ -112,20 +121,18 @@
   aria-label={label}
   aria-orientation="horizontal"
   aria-valuemin={1}
-  aria-valuemax={sets.length}
-  aria-valuenow={(at ?? sets.length - 1) + 1}
-  aria-valuetext="{texts[at ?? sets.length - 1].value}, {texts[
-    at ?? sets.length - 1
-  ].kind.toLowerCase()}, {texts[at ?? sets.length - 1].detail}"
+  aria-valuemax={days.length}
+  aria-valuenow={(at ?? days.length - 1) + 1}
+  aria-valuetext={texts[at ?? days.length - 1].spoken}
   onpointerdown={aim}
   onpointermove={(e) => {
     if (e.pointerType === 'mouse' || e.buttons) aim(e);
   }}
   onpointerleave={(e) => {
-    if (e.pointerType === 'mouse') hover = null;
+    if (e.pointerType === 'mouse') pick = null;
   }}
   onkeydown={key}
-  onblur={() => (hover = null)}
+  onblur={() => (pick = null)}
 >
   <svg viewBox="0 0 {CHART.width} {CHART.height}" aria-hidden="true">
     <defs>
@@ -144,8 +151,15 @@
       </g>
     {/if}
 
-    {#each scatter as d (d.key)}
-      <circle class="scatter" cx={d.x} cy={d.y} r="3" />
+    {#each scatter as d, i (d.key)}
+      <circle
+        class="scatter"
+        class:day={ownSets.has(i)}
+        class:away={at !== null && !ownSets.has(i)}
+        cx={d.x}
+        cy={d.y}
+        r="3"
+      />
     {/each}
 
     {#if points.length > 1}
@@ -163,6 +177,9 @@
 
     {#each singles as d (d.key)}
       <circle class="single" cx={d.x} cy={d.y} r="3.5" />
+      {#if ownSingles.has(d.index)}
+        <circle class="ring" cx={d.x} cy={d.y} r="7" />
+      {/if}
     {/each}
 
     <!-- The stone rests on the latest point, not in it. -->
@@ -175,17 +192,25 @@
     </g>
 
     {#if at !== null}
-      <line class="cross" x1={setXy[at].x} x2={setXy[at].x} y1={CHART.top - 6} y2={CHART.bottom} />
-      {#if !underStone}
-        <circle class="ring" cx={setXy[at].x} cy={setXy[at].y} r="5.5" />
-      {/if}
+      <line class="cross" x1={xy[at].x} x2={xy[at].x} y1={CHART.top - 6} y2={CHART.bottom} />
+      <circle class="ring" cx={xy[at].x} cy={xy[at].y} r="7" />
     {/if}
   </svg>
 
   {#if at !== null}
-    <div class="tip" style:left="{tipLeftPx}px" bind:clientWidth={tipWidth} aria-hidden="true">
-      <strong class="figure-num">{texts[at].value}</strong>
-      <span class="meta">{texts[at].kind} · {texts[at].detail}</span>
+    <div
+      class="tip"
+      style:left="{tipLeftPx}px"
+      style:max-width="{tipMax}px"
+      bind:clientWidth={tipWidth}
+      aria-hidden="true"
+    >
+      <strong class="figure-num"
+        >{texts[at].best}{#if texts[at].from}<span class="from">from {texts[at].from}</span
+          >{/if}</strong
+      >
+      {#if texts[at].single}<span class="single-text figure-num">{texts[at].single}</span>{/if}
+      <span class="meta">{texts[at].date}</span>
     </div>
   {/if}
 </div>
@@ -255,6 +280,15 @@
     opacity: 0.14;
   }
 
+  /* The picked day: its other sets stay, dimmer, as the day's volume; other days fade further. */
+  .scatter.day {
+    opacity: 0.11;
+  }
+
+  .scatter.away {
+    opacity: 0.05;
+  }
+
   .record {
     fill: var(--laurel-fill);
     stroke: var(--surface);
@@ -287,8 +321,9 @@
     stroke-width: 1;
   }
 
+  /* A halo round the day's best on the line, and its single: over a record's gilding or the stone's foot. */
   .ring {
-    fill: var(--surface);
+    fill: none;
     stroke: var(--chart-line);
     stroke-width: 2;
   }
@@ -303,11 +338,28 @@
     background: var(--raised);
     box-shadow: var(--shadow-2);
     pointer-events: none;
-    white-space: nowrap;
   }
 
   .tip strong {
     font-size: 1.125rem;
+  }
+
+  .tip .from,
+  .tip .single-text {
+    font-size: 0.8125rem;
+  }
+
+  .tip .meta,
+  .tip .single-text {
+    white-space: nowrap;
+  }
+
+  /* The set the best came from, on its own line under it. */
+  .tip .from {
+    display: block;
+    white-space: nowrap;
+    font-weight: var(--fw-text);
+    color: var(--ink-2);
   }
 
   .tip .meta {

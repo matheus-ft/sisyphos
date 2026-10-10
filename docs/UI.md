@@ -48,7 +48,8 @@ resolves. Only setup waits on GitHub.
 **Red-figure, with the polish of a museum.** Attic vase painting: in light mode
 the unglazed clay with black-glaze ink and a fired terracotta accent; in dark
 mode the black glaze, with type and figures reserved in clay. The phone's
-setting decides. Titles, exercise names, labels and buttons are inscription
+setting decides unless the lifter has chosen Light or Dark in Agora's
+settings, a device preference that applies before first paint. Titles, exercise names, labels and buttons are inscription
 capitals (Cinzel); text and every number are a book serif (EB Garamond) with
 tabular figures. Greek-key bands are the rules. The fonts ship with the app, so
 it works offline.
@@ -128,9 +129,9 @@ session. The templates follow, in folders by program.
 **Planning ahead.** A planned session is filled in without starting the clock;
 Start sets the time. "Do this again" copies a past session as a plan; a
 template starts or plans one. "Plan one ahead" and "Log a past session" ask for
-the day in the app's own calendar, a sheet showing one month at a time: days
-with a session carry a disc, days with a plan a dashed ring, today an accent
-ring. Planning allows today and later and logging today and earlier, the days
+the day in the app's own calendar, a sheet showing one month at a time, weeks
+running Sunday to Saturday: days with a session carry a disc, days with a plan
+a dashed ring, today an accent ring. Planning allows today and later and logging today and earlier, the days
 outside greyed and the arrows stopping at the edge. Planning then asks whether
 to start fresh or from a template; logging opens the session on the day.
 
@@ -145,16 +146,24 @@ bodyweight plus, a target RPE or range, and a target rest per exercise. Lists of
 templates, on Train and in Agora, are folders by the label's program name with
 the blocks set apart inside, each folding to a line; templates with no program
 come last under "No program", and when none has a program there are no folders.
-The folders are a view: nothing is stored for them.
+On Train the folders start closed and any one opens; one folder can be pinned
+with the pin on its header (44 pt), and a pinned folder stays open at the top,
+marked "Pinned". Pinning another replaces it, and the pin takes it off. Which
+folder is pinned is a device preference (`pinnedFolder` in `src/ui/prefs.ts`)
+and does not sync; Agora's list keeps its plain, open folders. The folders are
+a view: nothing is stored for them.
 
 **Historia (History).** Every session by week, newest first, marking any still
 holding pending sets; filtered by exercise, each row shows that exercise's best
-set and e1RM. A calendar shows the month: a disc per session, a ring for a plan,
-a dot for a record day, today ringed. A whole row opens its session.
+set and e1RM. A calendar shows the month, Sunday first: a disc per session, a
+ring for a plan, a dot for a record day, today ringed. A whole row opens its session.
 
 **Past sessions are read, not edited.** A finished session opens locked:
 looking back through history never nudges a set. Edit unlocks it until the
-lifter leaves it.
+lifter leaves it. Its notes, and a saved meet's, read the same way: plain text
+in the body font, full width, line breaks kept, no box, with an "Edit" link that
+turns them back into a textarea growing with its text; leaving the field saves
+it and returns to text. A session in progress and a new meet keep the field.
 
 **Athloi (Progress).**
 
@@ -165,9 +174,9 @@ lifter leaves it.
   muscles count: auxiliary muscles half, not at all, or in full. It is a
   device preference (`muscleCounting` in `src/ui/prefs.ts`) that starts at
   the active preset in `src/metrics/definitions.json`, and it feeds the
-  statue, the list and the table alike. The table lists each muscle's sets
-  and nothing more: the shade is the statue's to show. Each muscle opens the
-  sets behind it. It must read as a
+  statue and the table alike. The table is always shown, most worked first,
+  and lists each muscle's sets and nothing more: the shade is the statue's to
+  show. Each muscle opens the sets behind it. It must read as a
   Greek sculpture of a strong man: the first drawing, an archaic kouros, read
   as Egyptian, the slender youth after it read soft, and a contrapposto that
   broke at the hips was not wanted. The figure's regions are in
@@ -181,8 +190,16 @@ lifter leaves it.
   gilded, and the headline reads from those daily bests. Behind the line,
   every working set is a faint dot, however many there are; over it, each
   single (one rep) is a solid mark at the weight lifted, which may sit off
-  the line. A small legend names line, sets and single. Several sets may share a day; the crosshair, the arrow keys,
-  the spoken text and the table all cover every set, each told as single or
+  the line. A small legend names line, sets and single. Selection is by day,
+  never by set: a tap, hover or crosshair move anywhere on the chart picks the
+  nearest day, and the arrow keys move day by day. The readout gives that
+  day's best e1RM and the set it came from ("e1RM 172", and under it "from 150 × 3 @ 8"),
+  then the single lifted that day if any ("Single 165 @ 9"), then the date.
+  The day's best on the line is haloed and its single is ringed; its other sets
+  stay as dots, dimmed, as the day's volume, and every other day's dots fade
+  further. With no day picked the chart looks as it does at rest. Picking does
+  not open the session. The spoken text and the table follow the same day-first
+  order; the table lists every set under its day, each told as single or
   estimate. A lift with no data shows the empty state under its tab. e1RM
   comes from the RPE chart when a set has an RPE, and from Epley otherwise
   (`src/metrics/e1rm.ts`).
@@ -204,7 +221,9 @@ the best single in training, and the best single on a platform.
 
 - **Meets** lists them newest first, each with its date, name, location and
   total, under a summary of each lift's all-time meet best and the most recent
-  meet's. A meet is entered afterwards, in an editor with its details and a
+  meet's, and beside the best total the theoretical total: the three all-time
+  meet bests added together, each from whichever meet it came at, shown only
+  once all three lifts have one. A meet is entered afterwards, in an editor with its details and a
   compact 3 × 3 grid of attempts: a row for each lift with one exercise to
   choose (that lift's competition exercises, starting on the usual one), and for
   each attempt a weight, left empty when it was not taken, and good or missed.
@@ -218,7 +237,7 @@ the best single in training, and the best single on a platform.
 
 Also in Agora: the templates. The library: search filtered by base lift, tier
 and muscle; create an exercise; change one, which saves it and opens its
-proposal on github.com. Settings: the device's name, screen awake, the bell,
+proposal on github.com. Settings: the device's name, appearance (System, Light or Dark), screen awake, the bell,
 plate increments per unit (one of `PLATE_CHOICES` in `src/ui/prefs.ts`, or
 typed in), persistent storage, sync, and export of `sets.csv`, `sessions.csv`,
 `meets.csv` and `attempts.csv`. Preferences stay on the device and never sync.

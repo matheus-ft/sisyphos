@@ -169,6 +169,21 @@ export function bestTotal(
   return best;
 }
 
+/**
+ * The theoretical total: the sum of the lifter's all-time meet bests of squat,
+ * bench and deadlift, each from whichever meet it came at. Null unless all
+ * three lifts have a good attempt somewhere.
+ */
+export function theoreticalTotal(meets: readonly Meet[]): number | null {
+  let total = 0;
+  for (const lift of LIFTS) {
+    const best = bestOfLift(meets, lift);
+    if (!best) return null;
+    total += best.kg;
+  }
+  return round(total);
+}
+
 /** The days an exercise was made good at a meet, for Labours' "last day with data". */
 export function meetDays(meets: readonly Meet[]): Map<string, IsoDate> {
   const last = new Map<string, IsoDate>();
@@ -193,6 +208,8 @@ export interface LiftSummary {
 export interface MeetsSummary {
   lifts: LiftSummary[];
   total: ReturnType<typeof bestTotal>;
+  /** The sum of the all-time bests of the three lifts; null while one has none. */
+  theoretical: number | null;
   /** The most recent meet, and what it totalled. */
   latest: { meet: Meet; total: number | null } | null;
 }
@@ -217,6 +234,7 @@ export function meetsSummary(meets: readonly Meet[], library: readonly Exercise[
       };
     }),
     total: bestTotal(meets),
+    theoretical: theoreticalTotal(meets),
     latest: latest && { meet: latest, total: meetTotal(latest) },
   };
 }

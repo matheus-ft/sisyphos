@@ -3,11 +3,12 @@
   import { app } from '../app.svelte';
   import {
     bodyweightAtFrom,
-    dateInYear,
+    dayText,
     headlineOf,
     pointText,
     resolveTab,
     sparseNote,
+    strengthDays,
     strengthTabs,
     STRENGTH_RANGES,
   } from '../athloi';
@@ -46,10 +47,13 @@
   const texts = $derived(
     lift ? sets.map((p) => pointText(p, app.current, lift.exercise, today)) : [],
   );
-  const records = $derived(new Set(points.filter((p) => p.record).map((p) => p.set_id)));
+  const days = $derived(strengthDays(points, sets));
+  const dayTexts = $derived(
+    lift ? days.map((d) => dayText(d, sets, app.current, lift.exercise, today)) : [],
+  );
   const summary = $derived(
     lift && headline
-      ? `${lift.exercise.name}, e1RM ${headline.value} kilograms${headline.change ? `, ${headline.change}` : ''}. ${points.length} ${points.length === 1 ? 'day' : 'days'}, ${sets.length} ${sets.length === 1 ? 'set' : 'sets'}. Arrow keys move along the sets.`
+      ? `${lift.exercise.name}, e1RM ${headline.value} kilograms${headline.change ? `, ${headline.change}` : ''}. ${points.length} ${points.length === 1 ? 'day' : 'days'}, ${sets.length} ${sets.length === 1 ? 'set' : 'sets'}. Arrow keys move along the days.`
       : '',
   );
 </script>
@@ -85,7 +89,7 @@
 
       {#if points.length > 0}
         <div class="card chart-card">
-          <HillChart {points} {sets} {texts} label={summary} to={today} />
+          <HillChart {points} {sets} {days} texts={dayTexts} label={summary} to={today} />
         </div>
       {/if}
 
@@ -108,30 +112,40 @@
           <div class="card tablecard">
             <table>
               <caption class="visually-hidden">
-                {lift.exercise.name}, every working set's max, newest first
+                {lift.exercise.name}, newest day first: the day's best e1RM and the set it came
+                from, then every working set
               </caption>
               <thead>
                 <tr
-                  ><th scope="col">Date</th><th scope="col">Max</th><th scope="col">Set</th><th
+                  ><th scope="col">Day</th><th scope="col">e1RM</th><th scope="col">Set</th><th
                     scope="col">Kind</th
                   ></tr
                 >
               </thead>
-              <tbody>
-                {#each [...sets].reverse() as p, i (p.set_id)}
-                  {@const text = texts[sets.length - 1 - i]}
-                  <tr class:record={records.has(p.set_id)}>
-                    <th scope="row">{dateInYear(p.date, today)}</th>
+              {#each [...days].reverse() as d, i (d.date)}
+                {@const day = dayTexts[days.length - 1 - i]}
+                <tbody>
+                  <tr class="day" class:record={d.best.record}>
+                    <th scope="row">{day.date}</th>
                     <td
-                      >{text.value}{#if records.has(p.set_id)}<span class="laurel"
+                      >{day.best.replace('e1RM ', '')}{#if d.best.record}<span class="laurel"
                           ><Laurel size={14} label="record" /></span
                         >{/if}</td
                     >
-                    <td>{text.set ?? ''}</td>
-                    <td>{text.kind}</td>
+                    <td>{day.from ?? ''}</td>
+                    <td>{day.single ?? 'Best'}</td>
                   </tr>
-                {/each}
-              </tbody>
+                  {#each [...d.sets].reverse() as si (sets[si].set_id)}
+                    {@const text = texts[si]}
+                    <tr class="set">
+                      <th scope="row"><span class="visually-hidden">{day.date}, </span>Set</th>
+                      <td>{text.value}</td>
+                      <td>{text.set ?? ''}</td>
+                      <td>{text.kind}</td>
+                    </tr>
+                  {/each}
+                </tbody>
+              {/each}
             </table>
           </div>
         {/if}
@@ -208,8 +222,16 @@
     font-weight: var(--fw-text);
   }
 
-  tbody tr {
+  tbody tr.day {
     border-top: var(--hairline) solid var(--line);
+  }
+
+  tr.set {
+    color: var(--ink-2);
+  }
+
+  tr.set th {
+    padding-left: var(--space-5);
   }
 
   tr.record {

@@ -165,3 +165,35 @@ test('a past session is picked from the calendar and kept on that day', async ({
   await expect.poll(async () => (await savedSession(page, id))?.date).toBe(day);
   expect((await savedSession(page, id))?.ended_at ?? null).toBeNull();
 });
+
+test('a finished session’s notes read as text, and Edit turns them back into a field', async ({
+  page,
+}) => {
+  await openSeeded(page);
+  await page.getByRole('link', { name: /Historia/ }).click();
+  await page.locator('.week').nth(1).getByRole('listitem').first().getByRole('button').click();
+  await expect(page).toHaveURL(/#\/session\//);
+
+  // Locked: text in the body font, no box, no field.
+  await expect(page.getByRole('textbox', { name: 'Notes' })).toHaveCount(0);
+  const notes = page.locator('#session-notes');
+  await expect(notes).toHaveCSS('white-space', 'pre-wrap');
+  await expect(notes).toHaveCSS('border-top-width', '0px');
+
+  // Edit gives the field back, growing with what is typed; leaving it saves and reads again.
+  await page.getByRole('button', { name: 'Edit notes' }).click();
+  const field = page.getByRole('textbox', { name: 'Notes' });
+  await expect(field).toBeFocused();
+  const before = (await field.boundingBox())!.height;
+  await field.fill(
+    'Felt strong.\nBelt on for the heavy sets.\nSleep was poor.\nElbow fine.\nMore later.',
+  );
+  await expect.poll(async () => (await field.boundingBox())!.height).toBeGreaterThan(before);
+  await field.blur();
+  await expect(page.getByRole('textbox', { name: 'Notes' })).toHaveCount(0);
+  await expect(notes).toHaveText(/Felt strong\.\nBelt on for the heavy sets\./);
+
+  // It was saved: reading the session again shows it.
+  await page.reload();
+  await expect(page.locator('#session-notes')).toContainText('Belt on for the heavy sets.');
+});

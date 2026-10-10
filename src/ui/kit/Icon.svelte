@@ -25,6 +25,7 @@
     edit: 'M4 20l4-1 11-11-3-3L5 16z',
     copy: 'M9 9h11v11H9zM5 15H4V4h11v1',
     paste: 'M9 3h6v4H9zM9 5H5v16h14V5h-4',
+    pin: 'M9 3h6l-1 6 3 3H7l3-3zM12 12v9',
     cloud: 'M7 18h10a4 4 0 0 0 0-8 6 6 0 0 0-11.5 1.5A3.3 3.3 0 0 0 7 18z',
   } as const;
 

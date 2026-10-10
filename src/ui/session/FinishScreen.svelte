@@ -73,10 +73,18 @@
 
   onMount(() => {
     draw();
-    // The card wears the colours of the mode it is drawn in, so a switch redraws it.
+    // The card wears the colours of the mode it is drawn in, so a switch redraws it:
+    // the phone's, which matters under System, and the lifter's own choice.
     const dark = window.matchMedia('(prefers-color-scheme: dark)');
     dark.addEventListener('change', draw);
     return () => dark.removeEventListener('change', draw);
+  });
+
+  let drawnTheme = app.prefs.theme;
+  $effect(() => {
+    if (app.prefs.theme === drawnTheme) return;
+    drawnTheme = app.prefs.theme;
+    draw();
   });
 
   async function share(): Promise<void> {

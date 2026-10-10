@@ -147,24 +147,41 @@ export function strataPaths(
 }
 
 /**
- * The index of the point nearest `x` across the plot, and among the points of
- * that same x (several sets on one day) the one nearest `y`; -1 when there are
- * none. Ties go left.
+ * The index of the day nearest `x` across the plot, whatever the height: a
+ * touch picks a day, never one of its sets. -1 when there are none; ties go left.
  */
-export function nearestPoint(points: readonly Point[], x: number, y: number): number {
+export function nearestDay(xs: readonly number[], x: number): number {
   let best = -1;
   let gap = Infinity;
-  let rise = Infinity;
-  points.forEach((p, i) => {
-    const dx = Math.abs(p.x - x);
-    const dy = Math.abs(p.y - y);
-    if (dx < gap || (dx === gap && dy < rise)) {
+  xs.forEach((dayX, i) => {
+    const dx = Math.abs(dayX - x);
+    if (dx < gap) {
       best = i;
       gap = dx;
-      rise = dy;
     }
   });
   return best;
+}
+
+/**
+ * Where a key leaves the selected day (null for none) among `count` days, as
+ * `{ day }`; undefined for a key the chart does not use. The arrows start from
+ * the nearest end when nothing is selected, and stop at the ends.
+ */
+export function stepDay(
+  current: number | null,
+  key: string,
+  count: number,
+): { day: number | null } | undefined {
+  if (key === 'Escape') return { day: null };
+  if (count === 0) return undefined;
+  const last = count - 1;
+  if (key === 'Home') return { day: 0 };
+  if (key === 'End') return { day: last };
+  const step = key === 'ArrowLeft' ? -1 : key === 'ArrowRight' ? 1 : 0;
+  if (step === 0) return undefined;
+  const from = current ?? (step > 0 ? -1 : count);
+  return { day: Math.min(last, Math.max(0, from + step)) };
 }
 
 /** Where a pointer at `clientX` falls in the drawing's own units. */

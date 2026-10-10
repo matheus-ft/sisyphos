@@ -9,6 +9,7 @@
   import Button from '../kit/Button.svelte';
   import Icon from '../kit/Icon.svelte';
   import Meander from '../kit/Meander.svelte';
+  import Notes from '../kit/Notes.svelte';
   import Switch from '../kit/Switch.svelte';
   import { dismissToast, promptDialog, showToast } from '../overlays.svelte';
   import { adjustRest, parseRest, serializeRest } from '../rest';
@@ -399,8 +400,13 @@
     }
   }
 
+  /** A note is kept even on a locked session: its Edit opens only that field. */
+  function saveNote(next: Session): void {
+    void app.save(next);
+  }
+
   function setNotes(text: string): void {
-    change({ ...session, notes: text.trim() === '' ? null : text });
+    saveNote({ ...session, notes: text.trim() === '' ? null : text });
   }
 
   async function saveTemplate(): Promise<void> {
@@ -494,6 +500,7 @@
         warmupsHidden={hidden.has(instance.id)}
         {locked}
         onchange={change}
+        onnote={saveNote}
         onhidewarmups={() => hideWarmups(instance.id)}
         onhistory={app.openExercise}
         onentry={(set) => openEntry(instance.id, set)}
@@ -537,13 +544,15 @@
     {/if}
     <div class="field">
       <label for="session-notes">Notes</label>
-      <textarea
+      <Notes
         id="session-notes"
-        rows="3"
-        placeholder={locked ? '' : 'How it went…'}
-        readonly={locked}
+        label="Notes"
+        rows={3}
+        placeholder="How it went…"
+        saved={locked}
         value={session.notes ?? ''}
-        onchange={(e) => setNotes(e.currentTarget.value)}></textarea>
+        onchange={setNotes}
+      />
     </div>
     {#if live}
       <div class="switch-row">
@@ -822,10 +831,6 @@
   .field :global(.button-link) {
     justify-self: start;
     margin-left: calc(-1 * var(--space-2));
-  }
-
-  textarea {
-    resize: vertical;
   }
 
   /* Room below for the undo toast each set leaves for 5 s, so Finish can scroll clear of it. */

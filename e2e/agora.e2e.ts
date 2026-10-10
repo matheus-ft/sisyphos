@@ -88,6 +88,8 @@ test('a meet is entered, stands beside the reference max and in Labours, and is 
   await meets.getByRole('textbox', { name: 'Name' }).fill('Regionals');
   await meets.getByLabel('Date', { exact: true }).fill(dayFromToday(-20));
   await meets.getByRole('textbox', { name: 'Location' }).fill('Lisbon');
+  // A new meet keeps the editable field.
+  await expect(meets.getByRole('textbox', { name: 'Notes' })).toBeEditable();
   await meets.getByRole('textbox', { name: 'Bodyweight, kg' }).fill('82.6');
 
   // A 3 x 3 grid: a row for each lift, with its exercise to choose.
@@ -160,6 +162,19 @@ test('a meet is entered, stands beside the reference max and in Labours, and is 
   await expect(meets.getByRole('combobox', { name: 'Deadlift' })).toHaveValue('sumo_deadlift');
   await meets.getByRole('textbox', { name: 'Placing' }).fill('2');
   await weight('Squat', 3).fill('212.5');
+
+  // Notes: a saved meet reads them as text, Edit gives the field back, leaving it returns to text.
+  const noted = meets.locator('[id$="-notes"]');
+  await expect(noted).toHaveCount(1);
+  await expect(meets.getByRole('textbox', { name: 'Notes' })).toHaveCount(0);
+  await meets.getByRole('button', { name: 'Edit notes' }).click();
+  await meets
+    .getByRole('textbox', { name: 'Notes' })
+    .fill('Opener felt light.\nThird was a grinder.');
+  await meets.getByRole('textbox', { name: 'Notes' }).blur();
+  await expect(meets.getByRole('textbox', { name: 'Notes' })).toHaveCount(0);
+  await expect(noted).toHaveCSS('white-space', 'pre-wrap');
+  await expect(noted).toHaveText('Opener felt light.\nThird was a grinder.');
   await meets.getByRole('button', { name: 'Save meet' }).click();
   await expect(page.getByRole('status').filter({ hasText: 'Meet saved' })).toBeVisible();
   await expect(meets.getByRole('listitem').first()).toContainText('600 kg');
@@ -274,6 +289,69 @@ test('the library starts a blank new exercise, and filters by variation', async 
   const tiers = page.locator('.tier');
   await expect(tiers.first()).toHaveText('Variation');
   await expect(tiers.last()).toHaveText('Variation');
+});
+
+test('the appearance follows the phone until Light or Dark is chosen, and is kept', async ({
+  page,
+}) => {
+  await page.getByRole('link', { name: /^Settings/ }).click();
+  await expect(page).toHaveURL(/#\/more\/settings$/);
+
+  // The card's own background, which is --surface in each mode (clay, glaze).
+  const CLAY = 'rgb(240, 213, 182)';
+  const GLAZE = 'rgb(31, 24, 18)';
+  const card = page.locator('ul.group').first();
+  const theme = page.locator('html');
+  const appearance = page.getByRole('group', { name: 'Appearance' });
+  const chromeColours = () =>
+    page.evaluate(() =>
+      [...document.querySelectorAll<HTMLMetaElement>('meta[name="theme-color"]')].map(
+        (tag) => tag.content,
+      ),
+    );
+
+  // System: no attribute, and the phone decides.
+  await expect(appearance.getByRole('button', { name: 'System' })).toHaveAttribute(
+    'aria-pressed',
+    'true',
+  );
+  await expect(theme).not.toHaveAttribute('data-theme', /.*/);
+  await page.emulateMedia({ colorScheme: 'light' });
+  await expect(card).toHaveCSS('background-color', CLAY);
+  await page.emulateMedia({ colorScheme: 'dark' });
+  await expect(card).toHaveCSS('background-color', GLAZE);
+  expect(await chromeColours()).toEqual(['#e8c29c', '#15100c']);
+
+  // Light holds on a dark phone, and the browser chrome follows.
+  await appearance.getByRole('button', { name: 'Light' }).click();
+  await expect(theme).toHaveAttribute('data-theme', 'light');
+  await expect(card).toHaveCSS('background-color', CLAY);
+  expect(await chromeColours()).toEqual(['#e8c29c', '#e8c29c']);
+
+  // Dark holds on a light phone.
+  await page.emulateMedia({ colorScheme: 'light' });
+  await appearance.getByRole('button', { name: 'Dark' }).click();
+  await expect(theme).toHaveAttribute('data-theme', 'dark');
+  await expect(card).toHaveCSS('background-color', GLAZE);
+  expect(await chromeColours()).toEqual(['#15100c', '#15100c']);
+
+  // Kept on the device, and applied before the app has started.
+  await expect.poll(async () => (await savedSettings(page)).theme).toBe('dark');
+  await page.reload();
+  await expect(theme).toHaveAttribute('data-theme', 'dark');
+  await expect(
+    page.getByRole('group', { name: 'Appearance' }).getByRole('button', { name: 'Dark' }),
+  ).toHaveAttribute('aria-pressed', 'true');
+  await expect(page.locator('ul.group').first()).toHaveCSS('background-color', GLAZE);
+
+  // System again hands it back to the phone.
+  await page
+    .getByRole('group', { name: 'Appearance' })
+    .getByRole('button', { name: 'System' })
+    .click();
+  await expect(theme).not.toHaveAttribute('data-theme', /.*/);
+  await expect(page.locator('ul.group').first()).toHaveCSS('background-color', CLAY);
+  expect(await chromeColours()).toEqual(['#e8c29c', '#15100c']);
 });
 
 test('settings survive a reload', async ({ page }) => {

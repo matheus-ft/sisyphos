@@ -14,11 +14,8 @@
     levelsOf,
     muscleRowText,
     openingWindow,
-    topMuscles,
-    volumeHeading,
     VOLUME_WINDOWS,
   } from '../athloi';
-  import Button from '../kit/Button.svelte';
   import Chip from '../kit/Chip.svelte';
   import Segmented from '../kit/Segmented.svelte';
   import Sheet from '../kit/Sheet.svelte';
@@ -38,7 +35,6 @@
     ),
   );
   let selected = $state<string | null>(null);
-  let table = $state(false);
 
   // The counting is a device preference; the active preset in definitions.json is only its default.
   const counting = $derived(app.prefs.muscleCounting);
@@ -46,7 +42,6 @@
 
   const volume = $derived(weeklyVolume(app.current, app.library, muscles, period, today, weights));
   const levels = $derived(levelsOf(volume));
-  const top = $derived(topMuscles(volume));
   const worked = $derived(volume.find((v) => v.muscle.id === selected));
   const behind = $derived(
     selected
@@ -94,57 +89,27 @@
   </Statue>
 </div>
 
-<h2 class="sec caps">{volumeHeading(period)}</h2>
-{#if top.length === 0}
-  <p class="none meta">No working sets {span} yet.</p>
-{:else}
-  <ul class="bars">
-    {#each top as bar (bar.id)}
-      <li>
-        <button
-          aria-label="{bar.name}, {bar.text} sets {span}. Show the sets"
-          onclick={() => (selected = bar.id)}
-        >
-          <span class="name">{bar.name}</span>
-          <span class="track" aria-hidden="true"
-            ><i style:width="{Math.max(4, bar.share * 100)}%"></i></span
+<div class="card tablecard">
+  <table>
+    <caption class="visually-hidden">Working sets {span}, by muscle, most worked first</caption>
+    <thead>
+      <tr>
+        <th scope="col">Muscle</th>
+        <th scope="col" class="num">Sets</th>
+      </tr>
+    </thead>
+    <tbody>
+      {#each volume as v (v.muscle.id)}
+        <tr class:rested={v.sets === 0}>
+          <th scope="row"
+            ><button onclick={() => (selected = v.muscle.id)}>{v.muscle.name}</button></th
           >
-          <span class="figure-num count">{bar.text}</span>
-        </button>
-      </li>
-    {/each}
-  </ul>
-{/if}
-
-<div class="foot">
-  <Button variant="link" aria-expanded={table} onclick={() => (table = !table)}
-    >{table ? 'Hide the table' : 'All muscles as a table'}</Button
-  >
-</div>
-
-{#if table}
-  <div class="card tablecard">
-    <table>
-      <caption class="visually-hidden">Working sets {span}, by muscle, most worked first</caption>
-      <thead>
-        <tr>
-          <th scope="col">Muscle</th>
-          <th scope="col" class="num">Sets</th>
+          <td class="num figure-num">{formatCount(v.sets)}</td>
         </tr>
-      </thead>
-      <tbody>
-        {#each volume as v (v.muscle.id)}
-          <tr class:rested={v.sets === 0}>
-            <th scope="row"
-              ><button onclick={() => (selected = v.muscle.id)}>{v.muscle.name}</button></th
-            >
-            <td class="num figure-num">{formatCount(v.sets)}</td>
-          </tr>
-        {/each}
-      </tbody>
-    </table>
-  </div>
-{/if}
+      {/each}
+    </tbody>
+  </table>
+</div>
 
 <Sheet
   open={selected !== null}
@@ -240,65 +205,8 @@
     opacity: 0.85;
   }
 
-  .sec {
-    margin-top: var(--space-5);
-  }
-
-  .none {
-    margin: 0 var(--gutter);
-  }
-
-  .bars {
-    margin: 0 var(--gutter);
-    padding: 0;
-    list-style: none;
-  }
-
-  .bars li + li {
-    border-top: var(--hairline) solid var(--line);
-  }
-
-  .bars button {
-    display: grid;
-    grid-template-columns: minmax(0, 9.5rem) 1fr 3rem;
-    align-items: center;
-    gap: var(--space-3);
-    width: 100%;
-    min-height: var(--tap);
-    text-align: left;
-  }
-
-  /* Wraps rather than cutting "Front and side delts" short: the name is the label. */
-  .name {
-    padding: var(--space-2) 0;
-    line-height: var(--lh-tight);
-  }
-
-  .track {
-    display: block;
-    height: 6px;
-  }
-
-  .track i {
-    display: block;
-    height: 100%;
-    border-radius: 3px;
-    background: var(--vol-3);
-  }
-
-  .count {
-    font-size: 1.25rem;
-    text-align: right;
-  }
-
-  .foot {
-    display: flex;
-    justify-content: flex-end;
-    margin: var(--space-2) var(--gutter) 0;
-  }
-
   .tablecard {
-    margin: var(--space-2) 12px 0;
+    margin: var(--space-4) 12px 0;
     padding: 0;
   }
 
