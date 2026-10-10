@@ -15,6 +15,7 @@ import { startStorage, type AppStorage } from '../storage/app';
 import type { RecordOf } from '../storage/formats';
 import type { TableKind } from '../storage/paths';
 import { DEFAULT_PREFS, readPrefs, type Prefs } from './prefs';
+import { applyTheme } from './theme';
 import type { SetupInput, SetupResult } from '../storage/setup';
 import type { StatusSnapshot } from '../storage/status';
 import { confirmDialog, promptDialog, showToast } from './overlays.svelte';
@@ -564,6 +565,7 @@ class App {
     this.manualRecords = manualRecords;
     this.meets = meets;
     this.prefs = readPrefs(settings);
+    applyTheme(this.prefs.theme);
   }
 
   /** Adds or replaces a lifter row (same key), then rereads the tables. */
@@ -637,6 +639,7 @@ class App {
   /** Changes this device's preferences; shown at once, kept once the write resolves. */
   setPrefs = async (patch: Partial<Prefs>): Promise<void> => {
     this.prefs = readPrefs({ ...this.prefs, ...patch });
+    applyTheme(this.prefs.theme);
     try {
       await this.storage?.store.saveSettings(patch);
     } catch (error) {

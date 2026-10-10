@@ -48,7 +48,8 @@ resolves. Only setup waits on GitHub.
 **Red-figure, with the polish of a museum.** Attic vase painting: in light mode
 the unglazed clay with black-glaze ink and a fired terracotta accent; in dark
 mode the black glaze, with type and figures reserved in clay. The phone's
-setting decides. Titles, exercise names, labels and buttons are inscription
+setting decides unless the lifter has chosen Light or Dark in Agora's
+settings, a device preference that applies before first paint. Titles, exercise names, labels and buttons are inscription
 capitals (Cinzel); text and every number are a book serif (EB Garamond) with
 tabular figures. Greek-key bands are the rules. The fonts ship with the app, so
 it works offline.
@@ -218,7 +219,7 @@ the best single in training, and the best single on a platform.
 
 Also in Agora: the templates. The library: search filtered by base lift, tier
 and muscle; create an exercise; change one, which saves it and opens its
-proposal on github.com. Settings: the device's name, screen awake, the bell,
+proposal on github.com. Settings: the device's name, appearance (System, Light or Dark), screen awake, the bell,
 plate increments per unit (one of `PLATE_CHOICES` in `src/ui/prefs.ts`, or
 typed in), persistent storage, sync, and export of `sets.csv`, `sessions.csv`,
 `meets.csv` and `attempts.csv`. Preferences stay on the device and never sync.

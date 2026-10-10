@@ -98,6 +98,8 @@ export interface Settings {
   chime?: boolean;
   /** How the Body view counts muscles: a preset of `muscle_roles` in `definitions.json`. */
   muscleCounting?: string;
+  /** The appearance: 'system', 'light' or 'dark'; `readPrefs` treats anything else as 'system'. */
+  theme?: string;
 }
 
 /**

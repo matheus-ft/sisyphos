@@ -10,15 +10,21 @@
   import Segmented from '../../kit/Segmented.svelte';
   import Switch from '../../kit/Switch.svelte';
   import { promptDialog, showToast } from '../../overlays.svelte';
-  import { parsePlate, PLATE_RANGE, type PlateUnit } from '../../prefs';
+  import { parsePlate, PLATE_RANGE, type PlateUnit, type Theme } from '../../prefs';
   import { routeHash } from '../../route';
   import { statusLine } from '../../status';
 
   /**
-   * This device's settings: its name, the screen and the bell, whether the
+   * This device's settings: its name, the appearance, the screen and the bell, whether the
    * browser may clear the log, the plate increments, and the way out for the
    * data (sync, and the two CSV files).
    */
+
+  const THEME_OPTIONS: { value: Theme; label: string }[] = [
+    { value: 'system', label: 'System' },
+    { value: 'light', label: 'Light' },
+    { value: 'dark', label: 'Dark' },
+  ];
 
   let persisted = $state<boolean | null>(null);
   let asking = $state(false);
@@ -94,6 +100,16 @@
       >
       <Icon name="chev" size="sm" />
     </button>
+  </li>
+  <li class="plates">
+    <span class="grow t">Appearance</span>
+    <Segmented
+      full
+      label="Appearance"
+      options={THEME_OPTIONS}
+      value={app.prefs.theme}
+      onchange={(theme) => void app.setPrefs({ theme })}
+    />
   </li>
   <li>
     <span class="grow" id="awake-l">
@@ -173,7 +189,7 @@
 </p>
 
 <style>
-  /* Four choices, Other among them, need the row's width: the unit sits above them. */
+  /* Four choices, Other among them, need the row's width: the unit sits above them. Appearance wraps the same way. */
   .plates {
     flex-wrap: wrap;
     row-gap: var(--space-1);
