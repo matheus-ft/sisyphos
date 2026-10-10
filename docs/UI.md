@@ -190,8 +190,16 @@ it and returns to text. A session in progress and a new meet keep the field.
   gilded, and the headline reads from those daily bests. Behind the line,
   every working set is a faint dot, however many there are; over it, each
   single (one rep) is a solid mark at the weight lifted, which may sit off
-  the line. A small legend names line, sets and single. Several sets may share a day; the crosshair, the arrow keys,
-  the spoken text and the table all cover every set, each told as single or
+  the line. A small legend names line, sets and single. Selection is by day,
+  never by set: a tap, hover or crosshair move anywhere on the chart picks the
+  nearest day, and the arrow keys move day by day. The readout gives that
+  day's best e1RM and the set it came from ("e1RM 172 · from 150 × 3 @ 8"),
+  then the single lifted that day if any ("Single 165 @ 9"), then the date.
+  The day's best on the line is haloed and its single is ringed; its other sets
+  stay as dots, dimmed, as the day's volume, and every other day's dots fade
+  further. With no day picked the chart looks as it does at rest. Picking does
+  not open the session. The spoken text and the table follow the same day-first
+  order; the table lists every set under its day, each told as single or
   estimate. A lift with no data shows the empty state under its tab. e1RM
   comes from the RPE chart when a set has an RPE, and from Epley otherwise
   (`src/metrics/e1rm.ts`).

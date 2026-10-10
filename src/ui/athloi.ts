@@ -316,6 +316,96 @@ export function pointText(
   };
 }
 
+/**
+ * One trained day of a lift, for the chart to select as a whole: its best
+ * e1RM (the point on the line) and, as indexes into the chart's `sets`, every
+ * working set of the day, the one the best came from and the singles.
+ */
+export interface StrengthDay {
+  date: IsoDate;
+  best: E1rmPoint;
+  /** Every set of the day, in the order lifted. */
+  sets: number[];
+  /** The set the best e1RM came from; -1 when it is not among `sets`. */
+  bestSet: number;
+  /** The singles, heaviest first. */
+  singles: number[];
+}
+
+/**
+ * The days of `points` (oldest first, one best each) with the sets of `sets`
+ * (oldest first) that fall on them. A set on a day with no point is left out.
+ */
+export function strengthDays(
+  points: readonly E1rmPoint[],
+  sets: readonly SetE1rmPoint[],
+): StrengthDay[] {
+  const byDate = new Map<IsoDate, number[]>();
+  sets.forEach((s, i) => byDate.set(s.date, [...(byDate.get(s.date) ?? []), i]));
+  return points.map((best) => {
+    const own = byDate.get(best.date) ?? [];
+    return {
+      date: best.date,
+      best,
+      sets: own,
+      bestSet: own.find((i) => sets[i].set_id === best.set_id) ?? -1,
+      singles: own
+        .filter((i) => sets[i].kind === 'single')
+        .sort((a, b) => sets[b].e1rm - sets[a].e1rm),
+    };
+  });
+}
+
+export interface DayText {
+  /** "e1RM 172": the day's best. */
+  best: string;
+  /** The set it came from, "150 × 3 @ 8"; null when that set is no longer in the log. */
+  from: string | null;
+  /** "Single 165 @ 9", or "Singles 165 @ 9, 160" for several; null when none was lifted. */
+  single: string | null;
+  /** "2 Oct", with the year when it is not this one. */
+  date: string;
+  /** All of it in one sentence for a screen reader. */
+  spoken: string;
+}
+
+/** What the readout says of a day: the best and its source set, then the single, then the date. */
+export function dayText(
+  day: StrengthDay,
+  sets: readonly SetE1rmPoint[],
+  sessions: readonly Session[],
+  exercise: Exercise,
+  today: IsoDate,
+): DayText {
+  const find = (point: { session_id: Id; exercise_instance_id: Id; set_id: Id }) =>
+    sessions
+      .find((s) => s.id === point.session_id)
+      ?.exercises.find((e) => e.id === point.exercise_instance_id)
+      ?.performed.find((p) => p.id === point.set_id);
+  const source = find(day.best);
+  const from = source ? formatSet(source, exercise) : null;
+  const singles = day.singles.map((i) => {
+    const rpe = find(sets[i])?.rpe ?? null;
+    return `${formatKg(sets[i].e1rm)}${rpe === null ? '' : ` @ ${rpe}`}`;
+  });
+  const single =
+    singles.length === 0
+      ? null
+      : `${singles.length > 1 ? 'Singles' : 'Single'} ${singles.join(', ')}`;
+  const best = `e1RM ${formatE1rm(day.best.e1rm)}`;
+  const date = dateInYear(day.date, today);
+  const count = `${day.sets.length} ${day.sets.length === 1 ? 'set' : 'sets'}`;
+  return {
+    best,
+    from,
+    single,
+    date,
+    spoken: [date, from ? `${best} from ${from}` : best, single?.toLowerCase(), count]
+      .filter(Boolean)
+      .join(', '),
+  };
+}
+
 export interface SparseNote {
   text: string;
   /** Offer to show the whole history: there is more of it outside the range. */

@@ -9,6 +9,7 @@ import {
   COUNTING_OPTIONS,
   dateInYear,
   dayLabel,
+  dayText,
   formatCount,
   formatE1rm,
   formatKg,
@@ -25,6 +26,7 @@ import {
   recordRows,
   resolveTab,
   sparseNote,
+  strengthDays,
   strengthTabs,
 } from '../src/ui/athloi';
 import { newSession } from '../src/ui/session';
@@ -303,6 +305,84 @@ describe('pointText', () => {
   it('keeps the date when the set is gone', () => {
     const [p] = e1rmSets(sessions, squat);
     expect(pointText(p, [], squat, today)).toMatchObject({ detail: '6 Apr', set: null });
+  });
+});
+
+describe('a day of the hill', () => {
+  // 150 × 3 @ 8 is the best estimate of the day; the single is 165 at RPE 9 and a lighter one at 160.
+  const week = [
+    day('2026-10-03', [
+      [
+        squat,
+        [
+          { amount: 150, reps: 3, rpe: 8 },
+          { amount: 165, reps: 1, rpe: 9 },
+          { amount: 130, reps: 5, rpe: 7 },
+          { amount: 160, reps: 1, rpe: 8 },
+        ],
+      ],
+    ]),
+    day('2026-10-04', [[squat, [{ amount: 140, reps: 5, rpe: 8 }]]]),
+  ];
+  const points = e1rmSeries(week, squat);
+  const sets = e1rmSets(week, squat);
+  const days = strengthDays(points, sets);
+
+  it('gathers each day with its sets, the source of its best and its singles', () => {
+    expect(days.map((d) => d.date)).toEqual(['2026-10-03', '2026-10-04']);
+    expect(days[0].sets).toEqual([0, 1, 2, 3]);
+    expect(days[1].sets).toEqual([4]);
+    expect(sets[days[0].bestSet].set_id).toBe(points[0].set_id);
+    // The heaviest single first.
+    expect(days[0].singles).toEqual([1, 3]);
+    expect(days[1].singles).toEqual([]);
+  });
+
+  it('leaves out a set on a day the line does not reach, and finds no source for a missing best', () => {
+    expect(strengthDays([points[1]], sets)[0].sets).toEqual([4]);
+    expect(strengthDays([points[0]], sets.slice(2))[0].bestSet).toBe(-1);
+    expect(strengthDays([], sets)).toEqual([]);
+  });
+
+  it('reads the best and its set, then the single, then the date', () => {
+    const text = dayText(days[0], sets, week, squat, today);
+    expect(text.best).toBe(`e1RM ${formatE1rm(points[0].e1rm)}`);
+    expect(['150 × 3 @ 8', '165 × 1 @ 9']).toContain(text.from);
+    expect(text.single).toBe('Singles 165 @ 9, 160 @ 8');
+    expect(text.date).toBe('3 Oct');
+  });
+
+  it('says the single once when there is one, and none when there is none', () => {
+    const one = [
+      day('2026-10-03', [
+        [
+          squat,
+          [
+            { amount: 150, reps: 3, rpe: 8 },
+            { amount: 165, reps: 1, rpe: 9 },
+          ],
+        ],
+      ]),
+    ];
+    const [d] = strengthDays(e1rmSeries(one, squat), e1rmSets(one, squat));
+    expect(dayText(d, e1rmSets(one, squat), one, squat, today)).toMatchObject({
+      single: 'Single 165 @ 9',
+      spoken: expect.stringContaining('single 165 @ 9, 2 sets'),
+    });
+    expect(dayText(days[1], sets, week, squat, today)).toMatchObject({
+      single: null,
+      from: '140 × 5 @ 8',
+      date: '4 Oct',
+    });
+  });
+
+  it('names the year of an old day, and drops the source when the set is gone', () => {
+    const text = dayText(days[0], sets, [], squat, '2027-01-02');
+    expect(text.date).toBe('3 Oct 2026');
+    expect(text.from).toBeNull();
+    expect(text.spoken).toBe(
+      '3 Oct 2026, e1RM ' + formatE1rm(points[0].e1rm) + ', singles 165, 160, 4 sets',
+    );
   });
 });
 
