@@ -20,8 +20,8 @@
   /**
    * One lift's best e1RM per day as the hill the boulder climbs: the line, the
    * ground beneath it incised with strata and the stone resting on the latest.
-   * Over the line, every working set: hollow for an estimate, filled for a
-   * single (the weight lifted), gilded on a record day. A finger or pointer
+   * Behind the line, every working set as a faint dot; over it, each
+   * single solid at the weight lifted, and a gilded mark on a record day. A finger or pointer
    * draws a crosshair that snaps to a set, the arrow keys step through them.
    * The geometry is `ui/chart.ts`; this only paints it.
    */
@@ -54,25 +54,14 @@
   const strata = $derived(strataPaths(xy));
   const months = $derived(points.length < 2 ? [] : monthMarks(span.from, span.to));
   const latest = $derived(xy.at(-1)!);
-  // The sets that are a day's best, and of those the ones that set a record.
-  const best = $derived(new Map(points.map((p) => [p.set_id, p])));
-  // Every set is drawn, until there are so many they would be a rash: then only each
-  // day's best, the singles and the records. The rest are still reached by hover and keys.
-  const crowded = $derived(sets.length > 45);
-  const drawn = $derived(
-    sets.flatMap((p, i) =>
-      // The stone rests on the latest day's best, not in it: that one has no dot.
-      p.set_id === points.at(-1)!.set_id || (crowded && p.kind !== 'single' && !best.has(p.set_id))
-        ? []
-        : [
-            {
-              ...setXy[i],
-              key: p.set_id,
-              kind: p.kind,
-              record: best.get(p.set_id)?.record ?? false,
-            },
-          ],
-    ),
+  // Every set is drawn, always: faint dots behind the line. The singles are marked again,
+  // solid, over it, at the weight actually lifted; the records are gilded on the line.
+  const scatter = $derived(setXy.map((p, i) => ({ ...p, key: sets[i].set_id })));
+  const singles = $derived(
+    sets.flatMap((p, i) => (p.kind === 'single' ? [{ ...setXy[i], key: p.set_id }] : [])),
+  );
+  const records = $derived(
+    points.flatMap((p, i) => (p.record ? [{ ...xy[i], key: p.set_id }] : [])),
   );
 
   let hover = $state<number | null>(null);
@@ -153,6 +142,13 @@
       <g clip-path="url(#{id}-ground)">
         {#each strata as d, i (i)}<path class="stratum" {d} />{/each}
       </g>
+    {/if}
+
+    {#each scatter as d (d.key)}
+      <circle class="scatter" cx={d.x} cy={d.y} r="3" />
+    {/each}
+
+    {#if points.length > 1}
       <path class="line" d={line} />
     {/if}
 
@@ -161,14 +157,12 @@
       >
     {/each}
 
-    {#each drawn as d (d.key)}
-      <circle
-        class="dot {d.kind}"
-        class:record={d.record}
-        cx={d.x}
-        cy={d.y}
-        r={d.record ? 4.5 : 3.5}
-      />
+    {#each records as d (d.key)}
+      <circle class="record" cx={d.x} cy={d.y} r="4.5" />
+    {/each}
+
+    {#each singles as d (d.key)}
+      <circle class="single" cx={d.x} cy={d.y} r="3.5" />
     {/each}
 
     <!-- The stone rests on the latest point, not in it. -->
@@ -197,8 +191,9 @@
 </div>
 
 <ul class="legend" aria-hidden="true">
-  <li><i class="key single"></i>Single</li>
-  <li><i class="key estimate"></i>Estimate</li>
+  <li><i class="key line"></i>best e1RM</li>
+  <li><i class="key sets"></i>sets (e1RM)</li>
+  <li><i class="key single"></i>single</li>
 </ul>
 
 <style>
@@ -254,25 +249,23 @@
     stroke-linecap: round;
   }
 
-  /* A single is a weight lifted, so it is solid; an estimate is only a guess at one, so it is a ring. */
-  .dot.single {
+  /* Every set, as a whisper of a dot: many together show where the work was done. */
+  .scatter {
     fill: var(--chart-line);
+    opacity: 0.14;
+  }
+
+  .record {
+    fill: var(--laurel-fill);
     stroke: var(--surface);
     stroke-width: 2;
   }
 
-  .dot.estimate {
-    fill: var(--surface);
-    stroke: var(--chart-line);
-    stroke-width: 2;
-  }
-
-  .dot.single.record {
-    fill: var(--laurel-fill);
-  }
-
-  .dot.estimate.record {
-    stroke: var(--laurel-fill);
+  /* A single is a weight lifted, so it is solid and dark enough to read over the scatter. */
+  .single {
+    fill: var(--figure);
+    stroke: var(--surface);
+    stroke-width: 1.5;
   }
 
   .boulder {
@@ -324,7 +317,7 @@
   .legend {
     display: flex;
     justify-content: flex-end;
-    gap: var(--space-4);
+    gap: var(--space-3);
     margin: var(--space-1) var(--space-2) 0;
     padding: 0;
     list-style: none;
@@ -342,15 +335,22 @@
     box-sizing: border-box;
     width: 9px;
     height: 9px;
-    border: 2px solid var(--chart-line);
     border-radius: 50%;
   }
 
-  .key.single {
+  .key.line {
+    width: 14px;
+    height: 2px;
+    border-radius: 1px;
     background: var(--chart-line);
   }
 
-  .key.estimate {
-    background: var(--surface);
+  .key.sets {
+    background: var(--chart-line);
+    opacity: 0.25;
+  }
+
+  .key.single {
+    background: var(--figure);
   }
 </style>
