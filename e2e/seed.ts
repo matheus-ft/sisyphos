@@ -79,11 +79,16 @@ interface SeedTemplate {
 
 /** What a test reads back from the log: only the fields it asks about. */
 interface StoredSession {
+  date: string;
+  ended_at: string | null;
   exercises: { performed: { state: string }[] }[];
 }
 interface StoredTemplate {
-  label: { week: number | null };
-  exercises: { prescribed: { reps: [number | null, number | null] | null }[] }[];
+  label: { name: string | null; week: number | null };
+  exercises: {
+    exercise_id: string;
+    prescribed: { reps: [number | null, number | null] | null }[];
+  }[];
 }
 
 /** The slice of the app (`src/ui/app.svelte.ts`) the seeding touches. */
