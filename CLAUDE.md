@@ -10,6 +10,7 @@
 | What the lifter is told about keeping their data safe            | `docs/DURABILITY.md` |
 | Why each muscle group covers what it does                        | `docs/MUSCLES.md`    |
 | What the lifter wants from each screen: the v1 designer's brief  | `docs/UI.md`         |
+| Getting weigh-ins from Apple Health                              | `docs/HEALTH.md`     |
 | How anything works                                               | The code             |
 
 The exercises and muscle groups are `src/library/exercises.csv` and
