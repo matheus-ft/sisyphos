@@ -6,21 +6,19 @@ import type {
   IsoDate,
   PersonalRecord,
   Session,
-  Tier,
 } from '../model';
 import { MONTH_NAMES } from '../metrics/dates';
-import { e1rmSeries, type E1rmPoint, type StrengthRange } from '../metrics/e1rm';
-import { flattenSets } from '../metrics/flatten';
+import { e1rmSeries, type E1rmPoint, type SetE1rmPoint, type StrengthRange } from '../metrics/e1rm';
 import { isRecentRecord, recordAt } from '../metrics/records';
-import { RECORD_MAX_REPS } from '../metrics/definitions';
+import { CONFIG, MUSCLE_PRESET_NAMES, RECORD_MAX_REPS } from '../metrics/definitions';
 import type { MuscleSet, MuscleVolume, VolumeWindow } from '../metrics/weekly';
 import { weekdayShort } from './format';
 import { formatSet } from './session';
 
 /**
  * What the Progress tab (Athloi) works out before it draws: the body's levels
- * and list, the lifts that have a hill, the strength headline, and the rows of
- * the record book. The screens only paint these.
+ * and list, the four lifts that keep a record book, the strength headline, and
+ * the rows of the record book. The screens only paint these.
  */
 
 /** "16", "11.5": half sets are real (an auxiliary muscle counts half), nothing finer is. */
@@ -79,15 +77,37 @@ export function levelsOf(volume: readonly MuscleVolume[]): Map<string, number> {
 /** What each shade stands for, in weekly sets: the thresholds in `metrics/weekly.ts`. */
 export const LEGEND_LABELS = ['0', '1–4', '5–9', '10–14', '15+'] as const;
 
+/** What each counting preset (`muscle_roles.presets` in `definitions.json`) is called on the toggle. */
+const COUNTING_LABELS: Record<string, string> = {
+  fractional: 'Fractional',
+  direct: 'Direct',
+  '1:1': '1:1',
+};
+
+/** The counting presets the Body view offers: every preset in `definitions.json`, in its order. */
+export const COUNTING_OPTIONS: { value: string; label: string }[] = MUSCLE_PRESET_NAMES.map(
+  (value) => ({ value, label: COUNTING_LABELS[value] ?? value }),
+);
+
+/** How the caption says a preset counts the muscles an exercise only assists. */
+function countingPhrase(counting: string): string {
+  const aux = CONFIG.muscleWeightPresets[counting]?.aux ?? 0;
+  if (aux === 0) return 'only the muscles a lift is for count';
+  return aux === 1 ? 'auxiliary muscles count in full' : 'auxiliary muscles count half';
+}
+
 /**
  * Under the figures. Over four weeks the shade is the weekly average, which
  * the caption says, because the list's numbers are the window's whole total.
  */
-export function legendCaption(window: VolumeWindow): string {
+export function legendCaption(
+  window: VolumeWindow,
+  counting: string = CONFIG.activeMuscleWeights,
+): string {
   return window === 'this_week'
-    ? 'working sets this week, auxiliary muscles count half'
+    ? `working sets this week, ${countingPhrase(counting)}`
     : // The no-break space keeps "4 weeks" whole when the caption wraps.
-      'working sets a week, averaged over 4 weeks, auxiliary muscles count half';
+      `working sets a week, averaged over 4\u00a0weeks, ${countingPhrase(counting)}`;
 }
 
 export function volumeHeading(window: VolumeWindow): string {
@@ -196,62 +216,59 @@ export function bodyweightAtFrom(
   };
 }
 
-export interface LiftChoice {
+/** What a record-keeping lift is called on its tab; one added to `records` falls back to its name. */
+const LIFT_LABELS: Record<string, string> = {
+  low_bar_squat: 'Squat',
+  bench: 'Bench',
+  sumo_deadlift: 'Sumo',
+  conventional_deadlift: 'Conv.',
+};
+
+export interface LiftTab {
   exercise: Exercise;
-  /** Days it has an e1RM, over the whole history. */
-  days: number;
-  last: IsoDate;
+  /** "Squat", "Conv.". */
+  label: string;
+  /** The newest day with data to show, or null when the tab would be empty. */
+  last: IsoDate | null;
 }
 
-const TIER_ORDER: Record<Tier, number> = { comp: 0, high_spec: 1, low_spec: 2, acc: 3 };
-
 /**
- * The exercises with an e1RM history, the ones the hill can draw: the
- * competition lifts first, then by tier, the most recently trained first within
- * a tier. Only exercises actually logged are measured.
+ * The tabs of Strength and Labours: the lifts that keep a record book
+ * (`records` in `definitions.json`), always all of them, data or none.
  */
-export function liftChoices(
+export function liftTabs(
+  library: readonly Exercise[],
+  lastOf: (exercise: Exercise) => IsoDate | null,
+): LiftTab[] {
+  return CONFIG.recordExercises.flatMap((id) => {
+    const exercise = library.find((e) => e.id === id);
+    return exercise
+      ? [{ exercise, label: LIFT_LABELS[id] ?? exercise.name, last: lastOf(exercise) }]
+      : [];
+  });
+}
+
+/** Strength's tabs: each lift's last day with an e1RM. */
+export function strengthTabs(
   sessions: readonly Session[],
   library: readonly Exercise[],
   bodyweightAt: (date: IsoDate) => number | null,
-): LiftChoice[] {
-  const logged = new Set(flattenSets(sessions, library).map((s) => s.exercise.id));
-  const choices: LiftChoice[] = [];
-  for (const exercise of library) {
-    if (!logged.has(exercise.id)) continue;
-    const series = e1rmSeries(sessions, exercise, { bodyweightAt });
-    if (series.length === 0) continue;
-    choices.push({ exercise, days: series.length, last: series[series.length - 1].date });
-  }
-  return choices.sort(
-    (a, b) =>
-      TIER_ORDER[a.exercise.tier] - TIER_ORDER[b.exercise.tier] ||
-      b.last.localeCompare(a.last) ||
-      a.exercise.name.localeCompare(b.exercise.name),
+): LiftTab[] {
+  return liftTabs(
+    library,
+    (exercise) => e1rmSeries(sessions, exercise, { bodyweightAt }).at(-1)?.date ?? null,
   );
 }
 
-/**
- * Where the lifter lands: the competition lift trained most recently, or, with
- * no competition lift logged, whatever was trained most recently.
- */
-export function defaultLift<T extends { exercise: Exercise; last: IsoDate }>(
-  choices: readonly T[],
-): T | null {
-  const newest = (list: readonly T[]) =>
-    list.reduce<T | null>((best, c) => (!best || c.last > best.last ? c : best), null);
-  return (
-    newest(choices.filter((c) => c.exercise.tier === 'comp' && c.exercise.base_lift)) ??
-    newest(choices)
+/** The tab picked when it is on offer; else the one trained most recently, else the first. */
+export function resolveTab(tabs: readonly LiftTab[], picked: string | null): LiftTab | null {
+  const found = tabs.find((t) => t.exercise.id === picked);
+  if (found) return found;
+  const newest = tabs.reduce<LiftTab | null>(
+    (best, t) => (t.last && (!best?.last || t.last > best.last) ? t : best),
+    null,
   );
-}
-
-/** The picked exercise when it is on offer, else the default one. */
-export function resolvePick<T extends { exercise: Exercise; last: IsoDate }>(
-  choices: readonly T[],
-  picked: string | null,
-): T | null {
-  return choices.find((c) => c.exercise.id === picked) ?? defaultLift(choices);
+  return newest ?? tabs[0] ?? null;
 }
 
 export interface Headline {
@@ -295,11 +312,16 @@ export interface HoverText {
   detail: string;
   /** The set alone, "140 × 5 @ 8.5"; null when it is no longer in the log. */
   set: string | null;
+  /** A single is the weight lifted; the rest are estimates of a single. */
+  kind: 'Single' | 'Estimate';
 }
 
-/** What the tooltip and the table say of a point: its figure, its date and the set behind it. */
+/**
+ * What the tooltip and the table say of a set's point: its figure (a single's
+ * weight as plated, an estimate in whole kilograms), its date and the set behind it.
+ */
 export function pointText(
-  point: E1rmPoint,
+  point: SetE1rmPoint,
   sessions: readonly Session[],
   exercise: Exercise,
   today: IsoDate,
@@ -310,10 +332,12 @@ export function pointText(
     ?.performed.find((p) => p.id === point.set_id);
   const date = dateInYear(point.date, today);
   const text = set ? formatSet(set, exercise) : null;
+  const single = point.kind === 'single';
   return {
-    value: `${formatE1rm(point.e1rm)} kg`,
+    value: `${single ? formatKg(point.e1rm) : formatE1rm(point.e1rm)} kg`,
     detail: text ? `${date} · ${text}` : date,
     set: text,
+    kind: single ? 'Single' : 'Estimate',
   };
 }
 
@@ -345,32 +369,18 @@ export function sparseNote(
 
 // --- Labours -------------------------------------------------------------------------
 
-/**
- * The exercises with a record or a meet's best, ordered as the lift choices
- * are. `count` is their records alone: a meet's best is not one.
- */
-export function recordedExercises(
+/** Labours' tabs: each lift's last day with a record or a meet's best. */
+export function labourTabs(
   book: readonly PersonalRecord[],
   library: readonly Exercise[],
   bests: readonly CompetitionBest[] = [],
-): { exercise: Exercise; last: IsoDate; count: number }[] {
-  const by = new Map<string, { last: IsoDate; count: number }>();
+): LiftTab[] {
+  const last = new Map<string, IsoDate>();
   for (const r of [...book, ...bests]) {
-    const held = by.get(r.exercise_id);
-    by.set(r.exercise_id, {
-      last: held && held.last > r.date ? held.last : r.date,
-      count: (held?.count ?? 0) + ('reps' in r ? 1 : 0),
-    });
+    const held = last.get(r.exercise_id);
+    if (!held || r.date > held) last.set(r.exercise_id, r.date);
   }
-  return library
-    .filter((e) => by.has(e.id))
-    .map((exercise) => ({ exercise, ...by.get(exercise.id)! }))
-    .sort(
-      (a, b) =>
-        TIER_ORDER[a.exercise.tier] - TIER_ORDER[b.exercise.tier] ||
-        b.last.localeCompare(a.last) ||
-        a.exercise.name.localeCompare(b.exercise.name),
-    );
+  return liftTabs(library, (exercise) => last.get(exercise.id) ?? null);
 }
 
 /** The heaviest an exercise was ever lifted at a meet, the earlier on a tie; null if never. */

@@ -146,15 +146,22 @@ export function strataPaths(
   return offsets.map((dy) => monotonePath(points.map((p) => ({ x: p.x, y: p.y + dy }))));
 }
 
-/** The index of the point whose x is nearest `x`; -1 when there are none. Ties go left. */
-export function nearestIndex(xs: readonly number[], x: number): number {
+/**
+ * The index of the point nearest `x` across the plot, and among the points of
+ * that same x (several sets on one day) the one nearest `y`; -1 when there are
+ * none. Ties go left.
+ */
+export function nearestPoint(points: readonly Point[], x: number, y: number): number {
   let best = -1;
   let gap = Infinity;
-  xs.forEach((value, i) => {
-    const d = Math.abs(value - x);
-    if (d < gap) {
-      gap = d;
+  let rise = Infinity;
+  points.forEach((p, i) => {
+    const dx = Math.abs(p.x - x);
+    const dy = Math.abs(p.y - y);
+    if (dx < gap || (dx === gap && dy < rise)) {
       best = i;
+      gap = dx;
+      rise = dy;
     }
   });
   return best;
@@ -163,6 +170,11 @@ export function nearestIndex(xs: readonly number[], x: number): number {
 /** Where a pointer at `clientX` falls in the drawing's own units. */
 export function toChartX(clientX: number, boxLeft: number, boxWidth: number): number {
   return boxWidth === 0 ? 0 : ((clientX - boxLeft) / boxWidth) * CHART.width;
+}
+
+/** Where a pointer at `clientY` falls in the drawing's own units. */
+export function toChartY(clientY: number, boxTop: number, boxHeight: number): number {
+  return boxHeight === 0 ? 0 : ((clientY - boxTop) / boxHeight) * CHART.height;
 }
 
 const SHORT_MONTHS = MONTH_NAMES.map((m) => m.slice(0, 3));

@@ -149,21 +149,36 @@ lifter leaves it.
 - **Body:** a marble statue of Sisyphos, front and back, on a plinth: a
   mature, bearded, heavy-set hero standing square, lit as carved stone. Its
   muscles are stained from bare marble toward terracotta by working sets this
-  week or over the last four, auxiliary muscles counting half (the active
-  counting preset). Each muscle opens the sets behind it. It must read as a
+  week or over the last four. A Fractional / Direct / 1:1 toggle sets how
+  muscles count: auxiliary muscles half, not at all, or in full. It is a
+  device preference (`muscleCounting` in `src/ui/prefs.ts`) that starts at
+  the active preset in `src/metrics/definitions.json`, and it feeds the
+  statue, the list and the table alike. The table lists each muscle's sets
+  and nothing more: the shade is the statue's to show. Each muscle opens the
+  sets behind it. It must read as a
   Greek sculpture of a strong man: the first drawing, an archaic kouros, read
   as Egyptian, the slender youth after it read soft, and a contrapposto that
   broke at the hips was not wanted. The figure's regions are in
   `src/ui/statue.ts`, its drawing, build and stance in
   `src/ui/progress/statue-art.ts`, its marble and lighting in
   `src/ui/progress/Statue.svelte`.
-- **Strength:** each lift's best e1RM over time, drawn as the hill the boulder
-  climbs, record days gilded. e1RM comes from the RPE chart when a set has an
-  RPE, and from Epley otherwise (`src/metrics/e1rm.ts`).
-- **Labours:** per competition lift, the best weight at 1 to 10 reps, from
+- **Strength:** the four lifts that keep a record book (`records` in
+  `src/metrics/definitions.json`) as tabs, Squat / Bench / Sumo / Conv., in
+  place of a picker: no other exercise has a hill. Each tab draws that lift's
+  best e1RM per day as the hill the boulder climbs, with the day's record
+  gilded, and the headline reads from those daily bests. Over the line sits
+  every working set: an estimate hollow, a single (one rep) filled, since a
+  single is the weight lifted and not an estimate of it. A small legend
+  names the two. Several sets may share a day; the crosshair, the arrow keys,
+  the spoken text and the table all cover every set, each told as single or
+  estimate. A lift with no data shows the empty state under its tab. e1RM
+  comes from the RPE chart when a set has an RPE, and from Epley otherwise
+  (`src/metrics/e1rm.ts`).
+- **Labours:** the same four tabs, kept when switching between Strength and
+  Labours. For the chosen lift, the best weight at 1 to 10 reps, from
   sessions and entered by hand together (`src/metrics/records.ts`); a record
   from the last 30 days carries the laurel. Above them, the lift's best at a
-  meet, which is none of them.
+  meet, which is none of them. A lift with nothing yet shows the empty state.
 
 **Agora (More).** The lifter's data: weigh-ins; reference maxes, set by hand and
 dated, with the best recent e1RM beside each as a suggestion that is never
