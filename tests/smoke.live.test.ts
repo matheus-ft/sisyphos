@@ -31,7 +31,7 @@ import { githubRemote, maskToken, parseRepo, remoteFromSettings } from '../src/s
 import { SyncError } from '../src/storage/errors';
 import { blobSha } from '../src/storage/hash';
 import { Log } from '../src/storage/log';
-import { conflictPath, sessionPath, TABLE_PATHS } from '../src/storage/paths';
+import { conflictPath, FORMAT_PATH, sessionPath, TABLE_PATHS } from '../src/storage/paths';
 import type { Remote } from '../src/storage/remote/remote';
 import { setUp } from '../src/storage/setup';
 import { MemoryStore } from '../src/storage/store/memory';
@@ -89,6 +89,38 @@ const EMPTY_BLOB = blobSha('');
 
 function say(message: string): void {
   console.log(`[smoke ${RUN}] ${message}`);
+}
+
+// --- what GitHub reads back ----------------------------------------------------------------
+
+/** A plain remote for looking at what GitHub holds, outside both devices' counts; set by step 1. */
+let probe: Remote;
+/** The head the latest sync left, which GitHub's reads must come to show. */
+let latest: string | null = null;
+
+/**
+ * Whether `check` holds within ten seconds. GitHub's reads of a branch can trail
+ * a move of it for a moment (github.ts, `headLeaves`): a check made straight
+ * after a write would otherwise fail on a read that is only early.
+ */
+async function eventually(check: () => Promise<boolean>): Promise<boolean> {
+  for (let tries = 0; tries < 20; tries++) {
+    if (await check()) return true;
+    await new Promise((resolve) => setTimeout(resolve, 500));
+  }
+  return check();
+}
+
+/**
+ * The head, once GitHub's reads show the one the latest sync left. A lifter's
+ * next sync comes seconds after the last, not milliseconds; one made sooner can
+ * read the old head and spend a round on it, which is no failure of the sync.
+ */
+async function settled(): Promise<string> {
+  let head: string | null = null;
+  await eventually(async () => (head = await probe.head()) === latest);
+  expect(head).toBe(latest);
+  return head!;
 }
 
 const muscles = new Set(parseMuscles(musclesCsv).map((m) => m.id));
@@ -176,8 +208,10 @@ async function setUpDevice(d: Device) {
 
 /** One full sync, and what it cost. */
 async function sync(d: Device): Promise<SyncResult & { requests: number; commits: number }> {
+  if (latest !== null) await settled();
   const before = { requests: d.requests.length, commits: d.commits, moves: d.moves.length };
   const result = await runSync({ store: d.store, remote: d.remote!, deviceId: d.id }, 'full');
+  latest = (await d.store.meta()).last_synced_head;
   const cost = {
     requests: d.requests.length - before.requests,
     commits: d.commits - before.commits,
@@ -236,8 +270,6 @@ function testSession(): Session {
 describe.skipIf(!CONFIGURED)('live smoke test against GitHub', { timeout: 120_000 }, () => {
   const A = device('A');
   const B = device('B');
-  /** A plain remote for looking at what GitHub holds, outside both devices' counts. */
-  let probe: Remote;
   let branch: string;
   /** The head after step 2, an ancestor of every later one. */
   let earlier: string;
@@ -256,7 +288,7 @@ describe.skipIf(!CONFIGURED)('live smoke test against GitHub', { timeout: 120_00
 
   /** A file's content at the head, or null when it is not there. */
   async function remoteText(path: string): Promise<string | null> {
-    const head = (await probe.head())!;
+    const head = await settled();
     const file = (await probe.tree(head)).files.find((f) => f.path === path);
     return file ? probe.blob(file.sha) : null;
   }
@@ -279,10 +311,17 @@ describe.skipIf(!CONFIGURED)('live smoke test against GitHub', { timeout: 120_00
     expect(result).toMatchObject({ ok: true });
     branch = (await A.store.settings()).branch!;
     probe = remoteFromSettings(await A.store.settings())!;
+    if (result.ok && result.initialised) {
+      // The sync must read the marker the setup just committed.
+      const marked = await eventually(async () =>
+        (await probe.tree((await probe.head())!)).files.some((f) => f.path === FORMAT_PATH),
+      );
+      expect(marked).toBe(true);
+    }
 
     const first = await sync(A);
     expect(first.conflicts).toEqual([]);
-    expect((await A.store.meta()).last_synced_head).toBe(await probe.head());
+    expect((await A.store.meta()).last_synced_head).toBe(await settled());
   });
 
   it('2. A pushes a session and a weigh-in; B sets up and takes them', async () => {
@@ -294,7 +333,7 @@ describe.skipIf(!CONFIGURED)('live smoke test against GitHub', { timeout: 120_00
     expect(await remoteText(sessionPath(SESSION))).toBe(
       await A.store.content(sessionPath(SESSION)),
     );
-    earlier = (await probe.head())!;
+    earlier = await settled();
 
     const result = await setUpDevice(B);
     say(`B set up: ${result.ok ? 'found the log' : `${result.reason}: ${result.message}`}`);
@@ -382,7 +421,7 @@ describe.skipIf(!CONFIGURED)('live smoke test against GitHub', { timeout: 120_00
   });
 
   it('7. contains, and the edge cases of trees, behave as the adapter expects', async () => {
-    const head = (await probe.head())!;
+    const head = await settled();
     const tree = await probe.tree(head);
     const message = `Sisyphos smoke test ${RUN} (never on the branch)`;
 

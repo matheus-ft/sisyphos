@@ -370,10 +370,56 @@ describe('GitHubRemote: a refused move', () => {
     expect(await remote.moveBranch(HEAD, NEW_COMMIT)).toBe('raced');
   });
 
+  /** GitHub's reads of a ref trail its writes: the reads that still show `HEAD` after another device moved it. */
+  const stale = (reads: number) => Array.from({ length: reads }, () => headAt(HEAD));
+  /** Every read `moveBranch` makes before it gives up on the head moving. */
+  const READS = 5;
+  const compare = (status: string): Exchange => ({
+    method: 'GET',
+    url: `${REPO}/compare/${HEAD}...${NEW_COMMIT}`,
+    reply: { ...compareJson, status },
+  });
+
+  /** `moveBranch` run to its end, its pauses between reads skipped; returns how long they would have been. */
+  async function settled<T>(moving: Promise<T>): Promise<{ result: T; waited: number }> {
+    const start = Date.now();
+    await vi.runAllTimersAsync();
+    return { result: await moving, waited: Date.now() - start };
+  }
+
+  it('is a race when a read made after a pause shows the head moved', async () => {
+    vi.useFakeTimers({ toFake: ['setTimeout', 'Date'] });
+    const { remote } = github([patch(422, notFastForwardJson), ...stale(2), headAt(OTHER)]);
+    const { result, waited } = await settled(remote.moveBranch(HEAD, NEW_COMMIT));
+    expect(result).toBe('raced');
+    expect(waited).toBe(250 + 500);
+  });
+
+  it('is a race when not a fast forward of a descendant, though every read still shows the old head', async () => {
+    vi.useFakeTimers({ toFake: ['setTimeout'] });
+    const { remote } = github([patch(422, notFastForwardJson), ...stale(READS), compare('ahead')]);
+    expect((await settled(remote.moveBranch(HEAD, NEW_COMMIT))).result).toBe('raced');
+  });
+
+  it('is a real refusal when not a fast forward of a commit off the old head', async () => {
+    vi.useFakeTimers({ toFake: ['setTimeout'] });
+    const { remote } = github([
+      patch(422, notFastForwardJson),
+      ...stale(READS),
+      compare('diverged'),
+    ]);
+    const moving = failure(remote.moveBranch(HEAD, NEW_COMMIT), 'repo');
+    await settled(moving);
+    expect((await moving).message).toContain('Update is not a fast forward');
+  });
+
   it("is a real refusal, carrying GitHub's message, when the head has not moved", async () => {
-    const { remote } = github([patch(422, referenceUpdateFailedJson), headAt(HEAD)]);
-    const error = await failure(remote.moveBranch(HEAD, NEW_COMMIT), 'repo');
-    expect(error.message).toContain('Reference update failed');
+    vi.useFakeTimers({ toFake: ['setTimeout', 'Date'] });
+    const { remote } = github([patch(422, referenceUpdateFailedJson), ...stale(READS)]);
+    const moving = failure(remote.moveBranch(HEAD, NEW_COMMIT), 'repo');
+    // Bounded: a refusal that is not a race is reported, not retried forever.
+    expect((await settled(moving)).waited).toBe(250 + 500 + 1000 + 2000);
+    expect((await moving).message).toContain('Reference update failed');
   });
 
   it('is a missing branch on 404', async () => {

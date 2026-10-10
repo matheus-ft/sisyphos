@@ -82,8 +82,10 @@ export interface Remote {
    * against the head as it is, not against `from`: the move succeeds whenever
    * `to` descends from the current head, even if the head is no longer `from`
    * (another client force-reset it to an ancestor of `from`, say). Returns
-   * 'raced' only when the move was refused and a fresh read of the head shows it
-   * is no longer `from`: another device got there first. Any other refusal is
+   * 'raced' only when the move was refused and the head is no longer `from`:
+   * another device got there first. A fresh read of the head says so, or, while
+   * reads still trail the other device's write, the refusal itself does (one of a
+   * `to` that descends from `from`, as not a fast forward). Any other refusal is
    * thrown as the error it is.
    */
   moveBranch(from: string, to: string): Promise<'moved' | 'raced'>;
