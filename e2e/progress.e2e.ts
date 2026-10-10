@@ -133,8 +133,11 @@ test('strength draws the hill, with every set over it, and switches range', asyn
   expect(days).toBeGreaterThan(5);
   expect(sets).toBeGreaterThan(days);
   expect(summary).toContain(`${sets} sets`);
-  await expect(page.getByText('Single', { exact: true })).toBeVisible();
-  await expect(page.getByText('Estimate', { exact: true })).toBeVisible();
+  await expect(page.getByText('best e1RM', { exact: true })).toBeVisible();
+  await expect(page.getByText('sets (e1RM)', { exact: true })).toBeVisible();
+  await expect(page.getByText('single', { exact: true })).toBeVisible();
+  // Every set is a faint dot, however many there are.
+  await expect(chart.locator('circle.scatter')).toHaveCount(sets);
 
   // A touch on the hill moves the crosshair off the latest set.
   await expect(chart).toHaveAttribute('aria-valuenow', String(sets));

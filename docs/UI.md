@@ -178,10 +178,10 @@ lifter leaves it.
   `src/metrics/definitions.json`) as tabs, Squat / Bench / Sumo / Conv., in
   place of a picker: no other exercise has a hill. Each tab draws that lift's
   best e1RM per day as the hill the boulder climbs, with the day's record
-  gilded, and the headline reads from those daily bests. Over the line sits
-  every working set: an estimate hollow, a single (one rep) filled, since a
-  single is the weight lifted and not an estimate of it. A small legend
-  names the two. Several sets may share a day; the crosshair, the arrow keys,
+  gilded, and the headline reads from those daily bests. Behind the line,
+  every working set is a faint dot, however many there are; over it, each
+  single (one rep) is a solid mark at the weight lifted, which may sit off
+  the line. A small legend names line, sets and single. Several sets may share a day; the crosshair, the arrow keys,
   the spoken text and the table all cover every set, each told as single or
   estimate. A lift with no data shows the empty state under its tab. e1RM
   comes from the RPE chart when a set has an RPE, and from Epley otherwise
