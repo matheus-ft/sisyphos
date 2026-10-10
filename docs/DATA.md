@@ -186,7 +186,9 @@ it starts as the template's and changes when the rest timer is nudged.
 the program label and target rests it hands on.
 
 `lifter/bodyweight.csv` — `date, weight_kg, source`. Key: `date`, since there is
-at most one weigh-in a day. Needed for `bw_plus` loads. `source` is `manual` when typed in the app and `import` when written from outside it (see [`HEALTH.md`](HEALTH.md)).
+at most one weigh-in a day. Needed for `bw_plus` loads. `source` is `manual` when
+typed in the app and `import` when written from outside it (see
+[`HEALTH.md`](HEALTH.md)).
 
 `lifter/one-rm-history.csv` — `date, lift, weight_kg, note`. Key: `date, lift`.
 Effective-dated reference maxes that resolve percentage prescriptions. Always set
