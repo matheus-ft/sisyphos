@@ -121,19 +121,31 @@ the session as a red-figure image for the phone's share sheet.
 ## Outside the gym
 
 **Askēsis (Train).** A session in progress comes first. Otherwise today's plan
-with the screen's one primary button, plans for later in the week, start an
-empty session, plan one ahead, log a past session, and the templates.
+with the screen's one primary button, plans for later in the week, then one
+group of quiet rows: start an empty session, plan one ahead, log a past
+session. The templates follow, in folders by program.
 
 **Planning ahead.** A planned session is filled in without starting the clock;
 Start sets the time. "Do this again" copies a past session as a plan; a
-template starts or plans one; "Plan one ahead" asks for the day, then whether
-to start fresh or from a template.
+template starts or plans one. "Plan one ahead" and "Log a past session" ask for
+the day in the app's own calendar, a sheet showing one month at a time: days
+with a session carry a disc, days with a plan a dashed ring, today an accent
+ring. Planning allows today and later and logging today and earlier, the days
+outside greyed and the arrows stopping at the edge. Planning then asks whether
+to start fresh or from a template; logging opens the session on the day.
 
 **Templates** carry a program label (name, block, week, day, weekday), which a
 session started from them copies, since "block 2, week 3" belongs to the plan,
-not to each session. Targets take rep ranges (3–5, 5+), loads absolute, as a
-percentage of a reference max, RPE-driven or bodyweight plus, a target RPE or
-range, and a target rest per exercise.
+not to each session. Starting or planning a session from one is at the top,
+under the name; deleting is at the bottom. Each exercise is one line saying
+what it asks for (name, sets and reps, RPE, rest), and a tap opens its editor,
+one at a time; moving an exercise needs no opening. Targets take rep ranges
+(3–5, 5+), loads absolute, as a percentage of a reference max, RPE-driven or
+bodyweight plus, a target RPE or range, and a target rest per exercise. Lists of
+templates, on Train and in Agora, are folders by the label's program name with
+the blocks set apart inside, each folding to a line; templates with no program
+come last under "No program", and when none has a program there are no folders.
+The folders are a view: nothing is stored for them.
 
 **Historia (History).** Every session by week, newest first, marking any still
 holding pending sets; filtered by exercise, each row shows that exercise's best
