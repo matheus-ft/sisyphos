@@ -61,6 +61,25 @@ test("a meet's best stands beside the reference max, apart from the records", as
   await expect(page.getByRole('button', { name: /^1 rep, 155 kilograms/ })).toBeVisible();
 });
 
+test('the library starts a blank new exercise, and filters by variation', async ({ page }) => {
+  await page.getByRole('link', { name: /^Library/ }).click();
+  await expect(page).toHaveURL(/#\/more\/library$/);
+
+  await page.getByRole('button', { name: '+ New exercise' }).click();
+  await expect(page.getByRole('textbox', { name: 'Name' })).toHaveValue('');
+  await page.getByRole('button', { name: 'Back', exact: true }).click();
+  await expect(page).toHaveURL(/#\/more\/library$/);
+
+  await page.getByRole('button', { name: 'Tier', exact: true }).click();
+  await page
+    .getByRole('dialog', { name: 'Tier' })
+    .getByRole('button', { name: 'Variation' })
+    .click();
+  const tiers = page.locator('.tier');
+  await expect(tiers.first()).toHaveText('Variation');
+  await expect(tiers.last()).toHaveText('Variation');
+});
+
 test('settings survive a reload', async ({ page }) => {
   await page.getByRole('link', { name: /^Settings/ }).click();
   await expect(page).toHaveURL(/#\/more\/settings$/);
