@@ -1,7 +1,7 @@
 import exercisesCsv from '../src/library/exercises.csv?raw';
 import musclesCsv from '../src/library/muscles.csv?raw';
 import { parseExercises, parseMuscles } from '../src/library/parse';
-import type { Exercise, LoadUnit, Session } from '../src/model';
+import type { Exercise, LoadUnit, Meet, MeetAttempt, Session } from '../src/model';
 import {
   addExercise,
   addSet,
@@ -64,4 +64,38 @@ export function withSets(
     s = editSet(s, instanceId, setId, edit, 'weight', 'kg');
   });
   return s;
+}
+
+/** A good attempt, the exercise left to the lift it sits in unless named. */
+export const good = (weight_kg: number, exercise_id: string): MeetAttempt => ({
+  exercise_id,
+  weight_kg,
+  good: true,
+});
+
+export const missed = (weight_kg: number, exercise_id: string): MeetAttempt => ({
+  exercise_id,
+  weight_kg,
+  good: false,
+});
+
+/** A meet with nothing taken yet; `over` fills in what a test is about. */
+export function meetOf(id: string, over: Partial<Meet> = {}): Meet {
+  return {
+    id,
+    date: id.slice(0, 10),
+    name: null,
+    location: null,
+    federation: null,
+    weight_class: null,
+    equipment: null,
+    bodyweight_kg: null,
+    placing: null,
+    notes: null,
+    lifts: { squat: [null, null, null], bench: [null, null, null], deadlift: [null, null, null] },
+    created_at: '2026-05-17T09:00:00.000Z',
+    updated_at: '2026-05-17T09:00:00.000Z',
+    device_id: 'phone',
+    ...over,
+  };
 }

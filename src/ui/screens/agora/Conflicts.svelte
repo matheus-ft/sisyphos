@@ -1,7 +1,7 @@
 <script lang="ts">
   import type { LibraryConflict } from '../../../library/assemble';
   import { submissionUrl } from '../../../library/submission';
-  import type { ConflictRecord, Session, TableRow, Template } from '../../../model';
+  import type { ConflictRecord, Meet, Session, TableRow, Template } from '../../../model';
   import { TABLES } from '../../../storage/formats';
   import { classify } from '../../../storage/paths';
   import { app } from '../../app.svelte';
@@ -61,12 +61,17 @@
   }
 
   /** What the data holds now for the record a conflict is about. */
-  async function currentOf(record: ConflictRecord): Promise<Session | Template | TableRow | null> {
+  async function currentOf(
+    record: ConflictRecord,
+  ): Promise<Session | Template | Meet | TableRow | null> {
     const storage = app.storage!;
     const kind = classify(record.path);
     if (kind.kind === 'session') return storage.log.getSession(kind.id);
     if (kind.kind === 'template') {
       return (await storage.log.getTemplates()).find((t) => t.id === kind.id) ?? null;
+    }
+    if (kind.kind === 'meet') {
+      return (await storage.log.getMeets()).find((m) => m.id === kind.id) ?? null;
     }
     if (kind.kind === 'table' && record.key) {
       const schema = TABLES[kind.table] as unknown as { toRow: (r: unknown) => TableRow };

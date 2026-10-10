@@ -31,7 +31,7 @@ import {
 import { newSession } from '../src/ui/session';
 import { parseMuscles } from '../src/library/parse';
 import musclesCsv from '../src/library/muscles.csv?raw';
-import { byId, ids, library, withSets, type Lifted } from './ui-fixtures';
+import { byId, good, ids, library, meetOf, missed, withSets, type Lifted } from './ui-fixtures';
 
 const muscles = parseMuscles(musclesCsv);
 const squat = byId('low_bar_squat');
@@ -398,22 +398,59 @@ describe('the record book rows', () => {
     expect(labourTabs([], library).every((t) => t.last === null)).toBe(true);
   });
 
-  it('dates a lift with only a meet best by that meet', () => {
-    const meet = { date: '2026-05-16', exercise_id: 'sumo_deadlift', weight_kg: 200, meet: null };
+  it('dates a lift with only a meet attempt by that meet', () => {
+    const meet = meetOf('2026-05-16-8mzt', {
+      lifts: {
+        squat: [null, null, null],
+        bench: [null, null, null],
+        deadlift: [good(200, 'sumo_deadlift'), null, null],
+      },
+    });
     const sumo = labourTabs([], library, [meet]).find((t) => t.exercise.id === 'sumo_deadlift');
     expect(sumo?.last).toBe('2026-05-16');
   });
 
-  it("finds an exercise's heaviest meet single, the earlier on a tie", () => {
-    const at = (date: string, weight_kg: number) => ({
-      date,
-      exercise_id: 'bench',
-      weight_kg,
-      meet: null,
+  it('does not count a missed attempt as a day with data', () => {
+    const meet = meetOf('2026-05-16-8mzt', {
+      lifts: {
+        squat: [null, null, null],
+        bench: [missed(120, 'bench'), null, null],
+        deadlift: [null, null, null],
+      },
     });
-    expect(
-      meetBest([at('2026-05-16', 120), at('2025-11-02', 120), at('2026-03-01', 115)], 'bench'),
-    ).toEqual(at('2025-11-02', 120));
-    expect(meetBest([at('2026-05-16', 120)], 'sumo_deadlift')).toBeNull();
+    expect(labourTabs([], library, [meet]).every((t) => t.last === null)).toBe(true);
+  });
+
+  it("finds an exercise's heaviest good meet attempt, the earlier on a tie", () => {
+    const at = (id: string, weight: number) =>
+      meetOf(id, {
+        name: id,
+        lifts: {
+          squat: [null, null, null],
+          bench: [good(weight, 'bench'), null, null],
+          deadlift: [null, null, null],
+        },
+      });
+    const meets = [
+      at('2026-05-16-aaaa', 120),
+      at('2025-11-02-bbbb', 120),
+      at('2026-03-01-cccc', 115),
+      // Heavier, but missed: not a best.
+      meetOf('2026-06-01-dddd', {
+        lifts: {
+          squat: [null, null, null],
+          bench: [missed(130, 'bench'), null, null],
+          deadlift: [null, null, null],
+        },
+      }),
+    ];
+    expect(meetBest(meets, 'bench')).toEqual({
+      kg: 120,
+      exercise_id: 'bench',
+      date: '2025-11-02',
+      meet_id: '2025-11-02-bbbb',
+      meet: '2025-11-02-bbbb',
+    });
+    expect(meetBest(meets, 'sumo_deadlift')).toBeNull();
   });
 });

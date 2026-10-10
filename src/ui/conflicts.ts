@@ -1,8 +1,10 @@
 import type { LibraryConflict } from '../library/assemble';
-import type { ConflictRecord, Exercise, Session, TableRow, Template } from '../model';
+import type { ConflictRecord, Exercise, Meet, Session, TableRow, Template } from '../model';
 import type { ConflictChoice } from '../storage/log';
 import { classify } from '../storage/paths';
 import { longDate } from './format';
+import { LIFTS, kgText } from './lifter';
+import { LIFT_NAMES } from './meets';
 import { formatSet } from './session';
 
 /**
@@ -183,7 +185,7 @@ export function markedLines(rows: readonly DiffRow[]): { current: Span[][]; save
   return { current, saved };
 }
 
-type Version = Session | Template | TableRow | null;
+type Version = Session | Template | Meet | TableRow | null;
 
 /** "This phone" or the lifter's own name for this device; any other is "Another device". */
 export function deviceLabel(deviceId: string | null, device: DeviceNames): string {
@@ -191,14 +193,14 @@ export function deviceLabel(deviceId: string | null, device: DeviceNames): strin
   return 'Another device';
 }
 
-/** When a version was last changed; only sessions and templates say. */
+/** When a version was last changed; only sessions, templates and meets say. */
 function whenOf(version: Version): string | null {
   return version !== null && 'updated_at' in version && typeof version.updated_at === 'string'
     ? version.updated_at
     : null;
 }
 
-/** The device that made a version, when the record says (sessions and templates do). */
+/** The device that made a version, when the record says (sessions and meets do). */
 function deviceOf(version: Version): string | null {
   return version !== null && 'device_id' in version && typeof version.device_id === 'string'
     ? version.device_id
@@ -210,7 +212,6 @@ const TABLE_NOUN: Record<string, string> = {
   bodyweight: 'weigh-in',
   oneRm: 'reference max',
   manualRecords: 'record',
-  competitionBests: 'competition best',
   additions: 'exercise',
 };
 
@@ -241,12 +242,27 @@ function wording(
     const name = field('name');
     return about('template', name ? `The template "${name}"` : 'This template');
   }
+  if (kind.kind === 'meet') {
+    return about(
+      'meet',
+      meetSubject(field('name'), field('date') ?? dateOfId(kind.id), 'This meet'),
+    );
+  }
   if (kind.kind === 'table') {
     const noun = TABLE_NOUN[kind.table] ?? 'entry';
     const key = keyText(record, names);
     return about(noun, key ? `The ${noun} for ${key}` : `This ${noun}`);
   }
   return about('record', 'This record');
+}
+
+/** A meet's id starts with its date, which outlives a deleted version. */
+const dateOfId = (id: string): string | null => /^\d{4}-\d\d-\d\d/.exec(id)?.[0] ?? null;
+
+/** "The meet Nationals 2026", or by its day when it has no name: "The meet of Saturday 16 May". */
+function meetSubject(name: string | null, date: string | null, fallback: string): string {
+  if (name) return `The meet ${name}`;
+  return date ? `The meet of ${longDate(date)}` : fallback;
 }
 
 /** A table row's key in words: "Sunday 4 October", "Saturday 14 March, Low-Bar Squat, 1 rep". */
@@ -401,6 +417,9 @@ export function conflictSubject(record: ConflictRecord, names: Map<string, strin
     const name = text('name');
     return name ? `The template "${name}"` : 'A template';
   }
+  if (kind.kind === 'meet') {
+    return meetSubject(text('name'), text('date') ?? dateOfId(kind.id), 'A meet');
+  }
   if (kind.kind === 'table') {
     const noun = TABLE_NOUN[kind.table] ?? 'entry';
     const key = keyText(record, names);
@@ -449,6 +468,7 @@ function linesOf(version: Version, names: Map<string, string>, key: TableRow | n
       ...(version.notes ? [`Notes: ${version.notes}`] : []),
     ];
   }
+  if (isMeet(version)) return meetLines(version, names);
   if (isTemplate(version)) {
     return [
       version.name,
@@ -462,6 +482,42 @@ function linesOf(version: Version, names: Map<string, string>, key: TableRow | n
   return Object.entries(version)
     .filter(([column, value]) => !(key && column in key) && value !== '')
     .map(([column, value]) => cellLine(column, value, names));
+}
+
+/**
+ * A meet as lines to compare: what is known about it, then one line per
+ * attempt taken, "Squat 2 · Low-Bar Squat · 205 kg · missed". An attempt not
+ * taken has no line, so a version that has it shows the line the other lacks.
+ * The name is in the card's title, so it is not repeated.
+ */
+function meetLines(meet: Meet, names: Map<string, string>): string[] {
+  const facts: Array<[string, string | number | null]> = [
+    ['Date', meet.date],
+    ['Location', meet.location],
+    ['Federation', meet.federation],
+    ['Weight class', meet.weight_class],
+    ['Equipment', meet.equipment],
+    ['Bodyweight', meet.bodyweight_kg === null ? null : `${kgText(meet.bodyweight_kg)} kg`],
+    ['Placing', meet.placing],
+    ['Notes', meet.notes],
+  ];
+  return [
+    ...facts.flatMap(([label, value]) => (value === null ? [] : [`${label}: ${value}`])),
+    ...LIFTS.flatMap((lift) =>
+      meet.lifts[lift].flatMap((slot, i) =>
+        slot
+          ? [
+              [
+                `${LIFT_NAMES[lift]} ${i + 1}`,
+                names.get(slot.exercise_id) ?? slot.exercise_id,
+                `${kgText(slot.weight_kg)} kg`,
+                slot.good ? 'good' : 'missed',
+              ].join(' · '),
+            ]
+          : [],
+      ),
+    ),
+  ];
 }
 
 /** A table row's cell as the lifter would say it: "83.4 kg", "5 reps", "entered by hand". */
@@ -487,13 +543,17 @@ function cellLine(column: string, value: string, names: Map<string, string>): st
   }
 }
 
-/** A session has exercises and a start; a template has exercises only; a table row neither. */
-function isSession(v: Session | Template | TableRow): v is Session {
+/** A session has exercises and a start; a template has exercises only; a meet has lifts; a table row none. */
+function isSession(v: Session | Template | Meet | TableRow): v is Session {
   return 'exercises' in v && 'started_at' in v;
 }
 
-function isTemplate(v: Session | Template | TableRow): v is Template {
+function isTemplate(v: Session | Template | Meet | TableRow): v is Template {
   return 'exercises' in v && !('started_at' in v);
+}
+
+function isMeet(v: Session | Template | Meet | TableRow): v is Meet {
+  return 'lifts' in v;
 }
 
 /** Names by id, for showing exercises in a conflict. */

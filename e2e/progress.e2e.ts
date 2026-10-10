@@ -186,12 +186,12 @@ test('labours lists the best weight at each rep count', async ({ page }) => {
   await expect(page.getByRole('group', { name: /^10 reps/ })).toBeVisible();
   await expect(page.getByRole('group', { name: /^9 reps, no record yet/ })).toBeVisible();
 
-  // The single is the hand-entered one, edited under Agora; the five is from a session.
-  const single = page.getByRole('button', { name: /^1 rep, 155 kilograms, .*by hand/ });
+  // The single is the hand-entered one, edited under Records; the five is from a session.
+  const single = page.getByRole('link', { name: /^1 rep, 155 kilograms, .*by hand/ });
   const five = page.getByRole('button', { name: /^5 reps, 142\.5 kilograms, .*Open the session$/ });
   await expect(five).toBeVisible();
   await single.click();
-  await expect(page).toHaveURL(/#\/more\/lifter$/);
+  await expect(page).toHaveURL(/#\/more\/records$/);
   // The pick is not remembered across a visit elsewhere.
   await page.goBack();
   await pickSquat(page);
