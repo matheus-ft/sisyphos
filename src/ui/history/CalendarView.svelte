@@ -2,7 +2,7 @@
   import type { IsoDate, Session } from '../../model';
   import { app } from '../app.svelte';
   import { longDate, programLabel } from '../format';
-  import { monthGrid, shiftMonth } from '../history';
+  import { monthGrid, monthOf, shiftMonth, WEEKDAY_INITIALS } from '../history';
   import { dayAria, dayTap, exerciseSummary, sessionWhen } from '../history-view';
   import Icon from '../kit/Icon.svelte';
   import Sheet from '../kit/Sheet.svelte';
@@ -18,7 +18,7 @@
   }
   let { sessions, today, recordDays }: Props = $props();
 
-  const here = $derived({ year: Number(today.slice(0, 4)), month: Number(today.slice(5, 7)) });
+  const here = $derived(monthOf(today));
   // svelte-ignore state_referenced_locally
   let at = $state({ ...here });
   let chosen = $state<{ title: string; ids: string[] } | null>(null);
@@ -53,7 +53,7 @@
   </header>
 
   <div class="wds caps" aria-hidden="true">
-    {#each ['M', 'T', 'W', 'T', 'F', 'S', 'S'] as w, i (i)}<span>{w}</span>{/each}
+    {#each WEEKDAY_INITIALS as w, i (i)}<span>{w}</span>{/each}
   </div>
 
   <div class="days" role="group" aria-label={grid.title}>

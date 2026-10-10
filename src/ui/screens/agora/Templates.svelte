@@ -1,12 +1,11 @@
 <script lang="ts">
   import { app } from '../../app.svelte';
   import EmptyState from '../../kit/EmptyState.svelte';
-  import Icon from '../../kit/Icon.svelte';
   import ScreenHeader from '../../kit/ScreenHeader.svelte';
   import { routeHash } from '../../route';
-  import { templateLine } from '../../train';
+  import TemplateFolders from '../../train/TemplateFolders.svelte';
 
-  /** Every template, to open and edit, and a new one. */
+  /** Every template, in folders by program, to open and edit, and a new one. */
 </script>
 
 <ScreenHeader title="Templates" back={{ href: routeHash({ name: 'more', page: null }) }} />
@@ -18,31 +17,13 @@
     action={{ label: 'New template', onclick: () => void app.createTemplate() }}
   />
 {:else}
-  <ul class="group list">
-    {#each app.templates as template (template.id)}
-      <li class="row-link">
-        <button onclick={() => app.openTemplate(template)}>
-          <span class="grow">
-            <span class="t">{template.name}</span>
-            <span class="s">{templateLine(template)}</span>
-          </span>
-          <Icon name="chev" size="sm" />
-        </button>
-      </li>
-    {/each}
-    <li class="row-link">
-      <button class="new" onclick={app.createTemplate}><span class="t">+ New template</span></button
-      >
-    </li>
-  </ul>
+  <div class="list">
+    <TemplateFolders templates={app.templates} />
+  </div>
 {/if}
 
 <style>
   .list {
     margin-top: var(--space-2);
-  }
-
-  .new {
-    color: var(--accent);
   }
 </style>
