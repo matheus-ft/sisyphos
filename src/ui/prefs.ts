@@ -1,4 +1,5 @@
 import type { LoadUnit } from '../model';
+import { CONFIG, MUSCLE_PRESET_NAMES } from '../metrics/definitions';
 import type { Settings } from '../storage/store/store';
 
 /**
@@ -13,6 +14,8 @@ export interface Prefs {
   plateLb: number;
   keepAwake: boolean;
   chime: boolean;
+  /** The muscle-counting preset the Body view uses: a name in `muscle_roles.presets` of `definitions.json`. */
+  muscleCounting: string;
 }
 
 /** The increments the settings screen offers to pick, per unit. */
@@ -53,6 +56,7 @@ export const DEFAULT_PREFS: Prefs = {
   plateLb: 5,
   keepAwake: false,
   chime: false,
+  muscleCounting: CONFIG.activeMuscleWeights,
 };
 
 type Stored = Partial<Pick<Settings, keyof Prefs>>;
@@ -66,6 +70,10 @@ export function readPrefs(settings: Stored | null | undefined): Prefs {
     plateLb: plateIncrement(s.plateLb, 'lb') ?? DEFAULT_PREFS.plateLb,
     keepAwake: s.keepAwake === true,
     chime: s.chime === true,
+    muscleCounting:
+      typeof s.muscleCounting === 'string' && MUSCLE_PRESET_NAMES.includes(s.muscleCounting)
+        ? s.muscleCounting
+        : DEFAULT_PREFS.muscleCounting,
   };
 }
 
