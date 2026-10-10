@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { LibraryConflict } from '../src/library/assemble';
-import type { ConflictRecord, Exercise, Session } from '../src/model';
+import type { ConflictRecord, Exercise, Meet, Session } from '../src/model';
 import {
   conflictSubject,
   describeConflict,
@@ -14,7 +14,11 @@ import {
   whenLabel,
 } from '../src/ui/conflicts';
 
-const names = new Map([['low_bar_squat', 'Low-Bar Squat']]);
+const names = new Map([
+  ['low_bar_squat', 'Low-Bar Squat'],
+  ['bench', 'Bench Press'],
+  ['sumo_deadlift', 'Sumo Deadlift'],
+]);
 /** A set as a version's line holds it: kept whole with no-break spaces. */
 const set = (text: string) => text.replaceAll(' ', ' ');
 
@@ -338,6 +342,136 @@ describe('the card of a conflict', () => {
     );
     expect(view.sides.every((s) => s.when === null)).toBe(true);
     expect(view.sides.map((s) => s.device).sort()).toEqual(['Another device', 'This phone']);
+  });
+});
+
+describe('a conflict on a meet', () => {
+  const here = { id: 'phone', name: '' };
+  const meet = (over: Partial<Meet> = {}): Meet => ({
+    id: '2026-05-16-8mzt',
+    date: '2026-05-16',
+    name: 'Nationals 2026',
+    location: 'Lisbon',
+    federation: null,
+    weight_class: null,
+    equipment: 'raw',
+    bodyweight_kg: 82.6,
+    placing: 2,
+    notes: null,
+    lifts: {
+      squat: [
+        { exercise_id: 'low_bar_squat', weight_kg: 200, good: true },
+        { exercise_id: 'low_bar_squat', weight_kg: 205, good: false },
+        null,
+      ],
+      bench: [null, null, null],
+      deadlift: [{ exercise_id: 'sumo_deadlift', weight_kg: 240, good: true }, null, null],
+    },
+    created_at: '2026-05-17T09:00:00.000Z',
+    updated_at: '2026-05-17T09:00:00.000Z',
+    device_id: 'phone',
+    ...over,
+  });
+  const about = (version: Meet | null) =>
+    record({ path: 'meets/2026-05-16-8mzt.json', key: null, version, device_id: 'laptop' });
+
+  it('names the meet in its title line', () => {
+    const view = describeConflict(about(meet()), meet({ placing: 1 }), names, here);
+    expect(view.what).toBe('meet 2026-05-16-8mzt');
+    expect(view.title).toBe('Two versions of one meet');
+    expect(view.line).toBe('The meet Nationals 2026 was changed on two devices. Keep one.');
+  });
+
+  it('names a meet with no name by its day, even when deleted', () => {
+    const unnamed = describeConflict(
+      about(meet({ name: null })),
+      meet({ name: null }),
+      names,
+      here,
+    );
+    expect(unnamed.line).toBe('The meet of Saturday 16 May was changed on two devices. Keep one.');
+    const gone = describeConflict(about(null), meet({ name: null }), names, here);
+    expect(gone.line).toBe(
+      'The meet of Saturday 16 May was deleted on one device and changed on another. Keep one.',
+    );
+    expect(conflictSubject(about(null), names)).toBe('The meet of Saturday 16 May');
+  });
+
+  it('says a meet from the record alone', () => {
+    expect(conflictSubject(about(meet()), names)).toBe('The meet Nationals 2026');
+    expect(conflictSubject(about(meet({ name: null })), names)).toBe('The meet of Saturday 16 May');
+  });
+
+  it('gives one line for each attempt taken, as lift, number, exercise, weight and verdict', () => {
+    const view = describeConflict(about(meet()), meet(), names, here);
+    expect(view.current).toEqual([
+      'Date: 2026-05-16',
+      'Location: Lisbon',
+      'Equipment: raw',
+      'Bodyweight: 82.6 kg',
+      'Placing: 2',
+      'Squat 1 · Low-Bar Squat · 200 kg · good',
+      'Squat 2 · Low-Bar Squat · 205 kg · missed',
+      'Deadlift 1 · Sumo Deadlift · 240 kg · good',
+    ]);
+    expect(view.diff.every((row) => row.same)).toBe(true);
+  });
+
+  it('marks the attempt that differs, and only that', () => {
+    const changed = meet({
+      lifts: {
+        ...meet().lifts,
+        squat: [
+          { exercise_id: 'low_bar_squat', weight_kg: 200, good: true },
+          { exercise_id: 'low_bar_squat', weight_kg: 205, good: true },
+          null,
+        ],
+      },
+    });
+    const view = describeConflict(about(changed), meet(), names, here);
+    expect(view.diff.filter((row) => !row.same)).toEqual([
+      {
+        current: 'Squat 2 · Low-Bar Squat · 205 kg · missed',
+        saved: 'Squat 2 · Low-Bar Squat · 205 kg · good',
+        same: false,
+      },
+    ]);
+    const marked = (lines: { text: string; changed: boolean }[][]) =>
+      lines
+        .flat()
+        .filter((s) => s.changed)
+        .map((s) => s.text);
+    expect(marked(view.sides[0].lines)).toEqual(['missed']);
+    expect(marked(view.sides[1].lines)).toEqual(['good']);
+  });
+
+  it('shows an attempt taken on one side only as a line the other lacks', () => {
+    const third = meet({
+      lifts: {
+        ...meet().lifts,
+        squat: [
+          ...meet().lifts.squat.slice(0, 2),
+          { exercise_id: 'low_bar_squat', weight_kg: 210, good: true },
+        ] as Meet['lifts']['squat'],
+      },
+    });
+    const view = describeConflict(about(third), meet(), names, here);
+    expect(view.diff.filter((row) => !row.same)).toEqual([
+      { current: null, saved: 'Squat 3 · Low-Bar Squat · 210 kg · good', same: false },
+    ]);
+  });
+
+  it('says when each version was changed, and by which device', () => {
+    const view = describeConflict(
+      about(meet({ device_id: 'laptop', updated_at: '2026-05-18T10:00:00.000Z' })),
+      meet(),
+      names,
+      here,
+    );
+    expect(view.sides.map((s) => [s.device, s.when])).toEqual([
+      ['This phone', '2026-05-17T09:00:00.000Z'],
+      ['Another device', '2026-05-18T10:00:00.000Z'],
+    ]);
   });
 });
 

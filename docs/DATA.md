@@ -11,10 +11,10 @@ sisyphos-log/                      ← your own PRIVATE repo. Your training.
 ├── sisyphos.json                  format marker
 ├── sessions/2026/2026-09-14-k3f9.json
 ├── templates/squat-day-a-k3f9.json
+├── meets/2026-05-16-8mzt.json
 ├── lifter/bodyweight.csv
 ├── lifter/one-rm-history.csv
 ├── lifter/manual-records.csv
-├── lifter/competition-bests.csv
 ├── library/additions.csv          exercises you made or changed
 └── conflicts/                     versions waiting for you to choose
 ```
@@ -109,13 +109,14 @@ in `conflicts/` until you choose; no file carries any marker for it.
 
 ### Ids
 
-Sessions, templates and conflict records are named by their ids, so those ids
-are meant to be read.
+Sessions, templates, meets and conflict records are named by their ids, so those
+ids are meant to be read.
 
 | Record          | Id                                                                   | Example            |
 | --------------- | -------------------------------------------------------------------- | ------------------ |
 | Session         | The session's date when it was created, then four random characters  | `2026-09-14-k3f9`  |
 | Template        | Its name when it was created, as a slug, then four random characters | `squat-day-a-k3f9` |
+| Meet            | The meet's date when it was created, then four random characters     | `2026-05-16-8mzt`  |
 | Conflict record | The date it was found, then four random characters                   | `2026-09-27-7xq2`  |
 
 - Dates are `YYYY-MM-DD`, so file listings sort chronologically.
@@ -127,8 +128,9 @@ are meant to be read.
   letters and digits replaced by one hyphen, trimmed of hyphens, and cut to 40
   characters (then trimmed again). A name that leaves nothing has the slug
   `template`.
-- An id never changes. A session moved to another date, or a template renamed,
-  keeps its id: the file name is a label, and the record's fields are the truth.
+- An id never changes. A session or meet moved to another date, or a template
+  renamed, keeps its id: the file name is a label, and the record's fields are
+  the truth.
   A path therefore depends only on the id.
 - Ids that never appear in a path (exercise instances, sets) are random UUIDs.
 
@@ -185,8 +187,44 @@ it starts as the template's and changes when the rest timer is nudged.
 `templates/<id>.json` — one template: the skeleton a session starts from, with
 the program label and target rests it hands on.
 
+`meets/<id>.json` — one meet, in a flat folder, written after the fact. Keys, in
+this order, every one present, absent values `null`:
+
+| Key             | Meaning                                                                    |
+| --------------- | -------------------------------------------------------------------------- |
+| `id`            | See Ids                                                                    |
+| `date`          | The day of the meet; changing it does not rename the file                  |
+| `name`          | "Nationals 2026"                                                           |
+| `location`      |                                                                            |
+| `federation`    |                                                                            |
+| `weight_class`  | Free text                                                                  |
+| `equipment`     | Free text; the app suggests raw, wraps, single-ply and multi-ply           |
+| `bodyweight_kg` | At the weigh-in, above zero                                                |
+| `placing`       | A whole number from 1                                                      |
+| `notes`         |                                                                            |
+| `lifts`         | `{ squat, bench, deadlift }`, each exactly three slots, in the order taken |
+| `created_at`    |                                                                            |
+| `updated_at`    |                                                                            |
+| `device_id`     |                                                                            |
+
+A slot is `null` (not taken, or not known) or `{ exercise_id, weight_kg, good }`:
+the weight is above zero and `good` is a boolean, never null, because a meet is
+entered afterwards and every attempt that was taken was judged. `exercise_id`
+is on the attempt, so sumo and conventional stay apart on one platform; the
+reader does not check it against the library, the screen that enters it does
+(a competition-tier exercise of that lift).
+
+Nothing derived is stored: a lift's best is its heaviest good attempt, the total
+is the sum of the three bests and is nothing while any lift has no good attempt,
+and every best across meets (per exercise, per lift, the total) is worked out
+from the meets (`src/ui/meets.ts`). Added after format 2 without changing the
+format: an older app treats `meets/` as files that are not its own and leaves
+them alone, so nothing it writes can lose one.
+
 `lifter/bodyweight.csv` — `date, weight_kg, source`. Key: `date`, since there is
-at most one weigh-in a day. Needed for `bw_plus` loads.
+at most one weigh-in a day. Needed for `bw_plus` loads. `source` is `manual` when
+typed in the app and `import` when written from outside it (see
+[`HEALTH.md`](HEALTH.md)).
 
 `lifter/one-rm-history.csv` — `date, lift, weight_kg, note`. Key: `date, lift`.
 Effective-dated reference maxes that resolve percentage prescriptions. Always set
@@ -205,6 +243,12 @@ stands apart from the record book and from the reference max. Added after
 format 2 without changing the format: an older app leaves a file it does not
 know alone, so nothing it writes can lose one.
 
+`lifter/competition-bests.csv` is no longer read. It held the heaviest single of
+each lift at a meet, and a meet is a record of its own now (above). The app does
+not migrate it: the file in the log repo stays where it is, as one of yours that
+the app leaves alone, and the copy on a device is dropped when the app opens
+(`src/storage/retire.ts`).
+
 Records that _do_ come from logged sets are not stored at all. They're derived by
 scanning sessions, exactly like tonnage and e1RM, and each one points at the set
 that made it (`session_id`, `exercise_instance_id`, `set_id`) so the UI can open
@@ -213,7 +257,7 @@ fall out of agreement with the set that produced it.
 
 Note this is a different thing again from the 1RM history. The 1RM history drives
 prescriptions and is a decision you make; records are observations in training,
-and a meet's bests are observations on the platform.
+and a meet is what happened on the platform.
 
 `library/additions.csv` — the columns of the shipped `src/library/exercises.csv`,
 then `based_on`: empty for an exercise the shipped library didn't have, or the
@@ -230,7 +274,7 @@ deleted. Nothing that reads your data needs to look here.
 | ----------- | ----------------------------------------------------------------------------------------------------- |
 | `id`        | See Ids                                                                                               |
 | `path`      | The file in conflict                                                                                  |
-| `key`       | For a table, the row's key as `{ column: value }`; null for sessions and templates                    |
+| `key`       | For a table, the row's key as `{ column: value }`; null for sessions, templates and meets             |
 | `found_at`  | When the sync found it                                                                                |
 | `device_id` | The device whose version this is                                                                      |
 | `version`   | That device's version: the whole record, or the row as `{ column: value }`; null if it had deleted it |
@@ -250,12 +294,22 @@ truth table.
 sets.csv       session_id, date, exercise_id, set_n, reps, rpe, load_kg, is_warmup, state
 sessions.csv   session_id, date, tz, duration_min, program_name, program_block,
                program_week, program_day, program_weekday, bodyweight_kg, notes
+meets.csv      meet_id, date, name, location, federation, weight_class, equipment,
+               bodyweight_kg, placing, squat_kg, bench_kg, deadlift_kg, total_kg, notes
+attempts.csv   meet_id, date, lift, attempt, exercise_id, weight_kg, good
 ```
 
 Cells follow Serialisation above. `load_kg` is the weight in kilograms (pounds
 converted), the load added for a bodyweight-plus set, and empty for pins, timed
 and distance sets, whose numbers stay in the log. `set_n` counts an exercise's
 sets through its session, so session, exercise and `set_n` identify a set.
+
+`meets.csv` has a row for each meet, oldest first. Its `squat_kg`, `bench_kg` and
+`deadlift_kg` are worked out for the export, since the log does not store them:
+the heaviest good attempt of the lift, empty when it has none, and `total_kg` is
+their sum, empty unless all three are there. `attempts.csv` has a row for each
+attempt taken, missed ones included (`good` is `true` or empty), `attempt` being
+1 to 3, so meet, lift and attempt identify one.
 
 In a notebook that's one join:
 
@@ -269,7 +323,7 @@ df = pd.read_csv('sets.csv').merge(pd.read_csv('exercises.csv'), on='exercise_id
 | ------------------------ | -------------------------------------------------------------------------------- |
 | `model/primitives.ts`    | Scalars: ids, instants, dates, intervals, load units                             |
 | `model/taxonomy.ts`      | Muscles and exercises: what `src/library/*.csv` describes                        |
-| `model/records.ts`       | What you record: sessions, sets, templates, reference maxes, records, bodyweight |
+| `model/records.ts`       | What you record: sessions, sets, templates, meets, maxes, records and bodyweight |
 | `model/index.ts`         | Re-exports the three; import from here, not from the parts                       |
 | `csv.ts`                 | The CSV reader and writer (RFC 4180). No dependency                              |
 | `library/parse.ts`       | CSV rows → `Muscle` and `Exercise`, with validation and defaults                 |
@@ -291,7 +345,8 @@ df = pd.read_csv('sets.csv').merge(pd.read_csv('exercises.csv'), on='exercise_id
 | `ui/template.ts`         | The same for the template screen                                                 |
 | `ui/*.ts`                | Every other rule and number a screen shows, one tested pure module per concern   |
 | `storage/app.ts`         | What the UI calls: `startStorage()` wires everything below                       |
-| `storage/log.ts`         | Sessions, templates, rows and conflicts, read and written as records             |
+| `storage/log.ts`         | Sessions, templates, meets, rows and conflicts, read and written as records      |
+| `storage/retire.ts`      | What a retired kind left on the device, dropped when the app opens               |
 | `storage/formats.ts`     | Every log-repo file to and from its record (see Serialisation above)             |
 | `storage/paths.ts`       | Which path holds what; `ids.ts` makes the readable ids; `hash.ts` the blob hash  |
 | `storage/store/`         | The device's copy of the log repo, in IndexedDB, behind one write queue          |

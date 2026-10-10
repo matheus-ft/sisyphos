@@ -1,34 +1,22 @@
 import { describe, expect, it } from 'vitest';
-import type { BodyweightEntry, CompetitionBest, ManualRecord, OneRmEntry } from '../src/model';
+import type { BodyweightEntry, ManualRecord, OneRmEntry } from '../src/model';
 import { recordBook } from '../src/metrics/records';
 import {
-  bestsNewestFirst,
-  bestsSummary,
+  bestSingle,
   bodyweightAt,
   bodyweightSummary,
   changeText,
   competitionExercises,
-  competitionFrom,
-  competitionLine,
-  competitionProblem,
   kgText,
-  liftBests,
   maxesSummary,
   maxProblem,
   maxViews,
   parseKg,
-  recordFigures,
-  recordFrom,
-  recordLine,
-  recordProblem,
-  recordsNewestFirst,
   recordsSummary,
   validDate,
   weighInProblem,
   weighIns,
   whenText,
-  type CompetitionForm,
-  type RecordForm,
 } from '../src/ui/lifter';
 import { byId, library, sessionOf, squat } from './analysis-fixtures';
 
@@ -191,77 +179,9 @@ describe('reference maxes', () => {
 });
 
 describe('records by hand', () => {
-  const form = (over: Partial<RecordForm> = {}): RecordForm => ({
-    exerciseId: 'low_bar_squat',
-    reps: '1',
-    kg: '155',
-    date: '2026-03-14',
-    rpe: '9.5',
-    context: ' Gym mock meet ',
-    ...over,
-  });
-
-  it('turns a valid form into the record, with empty optionals as null', () => {
-    expect(recordFrom(form())).toEqual(hand());
-    expect(recordFrom(form({ rpe: '', context: '  ' }))).toEqual(
-      hand({ rpe: null, context: null }),
-    );
-  });
-
-  it('names what is missing or out of range, in the order a lifter fills it in', () => {
-    expect(recordProblem(form(), today)).toBeNull();
-    expect(recordProblem(form({ exerciseId: null }), today)).toMatch(/exercise/);
-    expect(recordProblem(form({ reps: '0' }), today)).toMatch(/Reps/);
-    expect(recordProblem(form({ reps: '11' }), today)).toMatch(/Reps/);
-    expect(recordProblem(form({ reps: '2.5' }), today)).toMatch(/Reps/);
-    expect(recordProblem(form({ kg: 'heavy' }), today)).toMatch(/kilograms/);
-    expect(recordProblem(form({ date: '2027-01-01' }), today)).toMatch(/future/);
-  });
-
-  it('takes a competition lift from an empty bar up', () => {
-    expect(recordProblem(form({ kg: '20' }), today)).toBeNull();
-    expect(recordProblem(form({ kg: '12.5' }), today)).toMatch(/between 20 and 700/);
-  });
-
-  it('lists newest first, then the heavier', () => {
-    const rows = recordsNewestFirst([
-      hand({ date: '2026-03-14', weight_kg: 150 }),
-      hand({ date: '2026-05-01', weight_kg: 140 }),
-      hand({ date: '2026-03-14', weight_kg: 155 }),
-    ]);
-    expect(rows.map((r) => `${r.date} ${r.weight_kg}`)).toEqual([
-      '2026-05-01 140',
-      '2026-03-14 155',
-      '2026-03-14 150',
-    ]);
-  });
-
-  it('writes a record as figures and a line of when, how hard and where', () => {
-    expect(recordFigures(hand())).toBe('1 × 155 kg');
-    expect(recordLine(hand(), today)).toBe('14 March · @ 9.5 · Gym mock meet');
-    expect(recordLine(hand({ rpe: null, context: null }), today)).toBe('14 March');
-  });
-
   it('counts them for the index', () => {
     expect(recordsSummary([hand()])).toBe('1 by hand');
     expect(recordsSummary([])).toBe('None by hand');
-  });
-});
-
-describe('bests at meets', () => {
-  const best = (over: Partial<CompetitionBest> = {}): CompetitionBest => ({
-    date: '2026-05-16',
-    exercise_id: 'sumo_deadlift',
-    weight_kg: 200,
-    meet: 'Nationals 2026',
-    ...over,
-  });
-  const form = (over: Partial<CompetitionForm> = {}): CompetitionForm => ({
-    exerciseId: 'sumo_deadlift',
-    kg: '200',
-    date: '2026-05-16',
-    meet: ' Nationals 2026 ',
-    ...over,
   });
 
   it('can be of the lifts taken to the platform only, each stance its own', () => {
@@ -271,25 +191,6 @@ describe('bests at meets', () => {
       'conventional_deadlift',
       'sumo_deadlift',
     ]);
-  });
-
-  it('turns a valid form into the best, and says what is wrong with any other', () => {
-    expect(competitionProblem(form(), library, today)).toBeNull();
-    expect(competitionFrom(form())).toEqual(best());
-    expect(competitionFrom(form({ meet: ' ' })).meet).toBeNull();
-    expect(competitionProblem(form({ exerciseId: 'dips' }), library, today)).toBe('Pick the lift.');
-    expect(competitionProblem(form({ kg: '12' }), library, today)).toMatch(/between 20 and 700/);
-    expect(competitionProblem(form({ date: '2026-12-01' }), library, today)).toMatch(/future/);
-  });
-
-  it('lists newest first, counts meets by day, and says when and where', () => {
-    const bench = best({ exercise_id: 'bench', weight_kg: 120 });
-    const older = best({ date: '2025-11-02', meet: null });
-    expect(bestsNewestFirst([older, bench, best()])).toEqual([best(), bench, older]);
-    expect(bestsSummary([older, bench, best()])).toBe('2 meets');
-    expect(bestsSummary([])).toBe('None yet');
-    expect(competitionLine(best(), today)).toBe('16 May · Nationals 2026');
-    expect(competitionLine(older, today)).toBe('2 November 2025');
   });
 });
 
@@ -303,30 +204,34 @@ describe('beside a reference max', () => {
     work: [[byId('sumo_deadlift'), [{ load: 200, reps: 1, rpe: 9.5 }]]],
   });
   const book = recordBook([conventional, sumo], library, []);
-  const meet: CompetitionBest = {
-    date: '2026-05-16',
-    exercise_id: 'conventional_deadlift',
-    weight_kg: 205,
-    meet: 'Nationals 2026',
-  };
 
-  it('finds the heaviest training single and meet single across the stances', () => {
-    expect(liftBests('deadlift', book, [meet], library)).toEqual({
-      single: { kg: 200, date: '2026-09-08', exercise: 'Sumo Deadlift', meet: null },
-      competition: {
-        kg: 205,
-        date: '2026-05-16',
-        exercise: 'Conventional Deadlift',
-        meet: 'Nationals 2026',
-      },
+  it('finds the heaviest training single across the stances, naming the one it was in', () => {
+    expect(bestSingle('deadlift', book, library)).toEqual({
+      kg: 200,
+      date: '2026-09-08',
+      exercise: 'Sumo Deadlift',
+      meet: null,
     });
   });
 
-  it('keeps a meet single out of training, and names no stance for a lift with one', () => {
-    const benchMeet = { ...meet, exercise_id: 'bench', weight_kg: 130 };
-    expect(liftBests('bench', book, [benchMeet], library)).toEqual({
-      single: null,
-      competition: { kg: 130, date: '2026-05-16', exercise: null, meet: 'Nationals 2026' },
+  it('counts a hand-entered single, and names no stance for a lift with one', () => {
+    const entered = recordBook([], library, [hand({ exercise_id: 'low_bar_squat' })]);
+    expect(bestSingle('squat', entered, library)).toEqual({
+      kg: 155,
+      date: '2026-03-14',
+      exercise: null,
+      meet: null,
     });
+    expect(bestSingle('bench', book, library)).toBeNull();
+  });
+
+  it('keeps the earlier of two equal singles', () => {
+    const later = sessionOf({
+      date: '2026-09-20',
+      work: [[byId('sumo_deadlift'), [{ load: 200, reps: 1, rpe: 9.5 }]]],
+    });
+    expect(bestSingle('deadlift', recordBook([sumo, later], library, []), library)?.date).toBe(
+      '2026-09-08',
+    );
   });
 });

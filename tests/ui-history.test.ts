@@ -1,6 +1,14 @@
 import { describe, expect, it } from 'vitest';
 import { loadFactor } from '../src/metrics/rpe-chart';
-import { bestSetOf, historyWeeks, monthGrid, shiftMonth } from '../src/ui/history';
+import {
+  bestSetOf,
+  canShiftMonth,
+  historyWeeks,
+  inRange,
+  monthGrid,
+  monthOf,
+  shiftMonth,
+} from '../src/ui/history';
 import { byId, library, sessionOf, squat } from './analysis-fixtures';
 
 const plank = byId('plank');
@@ -289,5 +297,38 @@ describe('the month calendar', () => {
     expect(shiftMonth({ year: 2026, month: 12 }, 1)).toEqual({ year: 2027, month: 1 });
     expect(shiftMonth({ year: 2026, month: 1 }, -1)).toEqual({ year: 2025, month: 12 });
     expect(shiftMonth({ year: 2026, month: 10 }, -13)).toEqual({ year: 2025, month: 9 });
+  });
+
+  it('names the month a date falls in', () => {
+    expect(monthOf('2026-10-04')).toEqual({ year: 2026, month: 10 });
+    expect(monthOf('2027-01-31')).toEqual({ year: 2027, month: 1 });
+  });
+});
+
+describe('the days a picker allows', () => {
+  it('includes both ends of the range and leaves an open end open', () => {
+    const range = { min: '2026-10-04', max: '2026-10-10' };
+    expect(inRange('2026-10-03', range)).toBe(false);
+    expect(inRange('2026-10-04', range)).toBe(true);
+    expect(inRange('2026-10-10', range)).toBe(true);
+    expect(inRange('2026-10-11', range)).toBe(false);
+    expect(inRange('1999-01-01', { max: '2026-10-04' })).toBe(true);
+    expect(inRange('2099-01-01', { min: '2026-10-04' })).toBe(true);
+    expect(inRange('2099-01-01', {})).toBe(true);
+  });
+
+  it('stops at the month holding the last day it may pick', () => {
+    const at = { year: 2026, month: 10 };
+    // Planning ahead: nothing before today, so no month before October.
+    expect(canShiftMonth(at, -1, { min: '2026-10-04' })).toBe(false);
+    expect(canShiftMonth(at, 1, { min: '2026-10-04' })).toBe(true);
+    // Logging a past session: nothing after today, so no month after October.
+    expect(canShiftMonth(at, 1, { max: '2026-10-04' })).toBe(false);
+    expect(canShiftMonth(at, -1, { max: '2026-10-04' })).toBe(true);
+    // A bound on the first or last day of a month keeps that month in reach.
+    expect(canShiftMonth(at, -1, { min: '2026-09-30' })).toBe(true);
+    expect(canShiftMonth(at, 1, { max: '2026-11-01' })).toBe(true);
+    expect(canShiftMonth(at, 1, { max: '2026-10-31' })).toBe(false);
+    expect(canShiftMonth({ year: 2026, month: 12 }, 1, {})).toBe(true);
   });
 });

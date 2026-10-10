@@ -29,9 +29,9 @@ function unused(prefix: string, taken: (id: Id) => boolean, random: () => number
 }
 
 /**
- * A session's path takes its year from the id's first four characters, so an id
- * that does not start with a real date would file the session where sync never
- * looks for one.
+ * A session's path takes its year from the id's first four characters, and a
+ * meet's file is named by an id of this shape, so an id that does not start
+ * with a real date would file the record where sync never looks for one.
  */
 function datePrefix(date: IsoDate): string {
   if (!ISO_DATE.test(date)) throw new Error(`not a YYYY-MM-DD date: "${date}"`);
@@ -40,6 +40,15 @@ function datePrefix(date: IsoDate): string {
 
 /** `2026-09-14-k3f9`: the session's date when created, then four random characters. */
 export function newSessionId(
+  date: IsoDate,
+  taken: (id: Id) => boolean,
+  random: () => number = Math.random,
+): Id {
+  return unused(datePrefix(date), taken, random);
+}
+
+/** `2026-05-16-8mzt`: the meet's date when created, then four random characters. */
+export function newMeetId(
   date: IsoDate,
   taken: (id: Id) => boolean,
   random: () => number = Math.random,

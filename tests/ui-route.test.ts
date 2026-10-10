@@ -40,6 +40,20 @@ describe('a route and its hash', () => {
     expect(routeHash({ name: 'more', page: 'sync' })).toBe('#/more/sync');
   });
 
+  it('gives each of the lifter’s data its own page under More', () => {
+    for (const page of ['bodyweight', 'maxes', 'meets', 'records'] as const) {
+      expect(AGORA_PAGES).toContain(page);
+      expect(routeHash({ name: 'more', page })).toBe(`#/more/${page}`);
+      expect(parseRoute(`#/more/${page}`)).toEqual({ name: 'more', page });
+      expect(tabOf({ name: 'more', page })).toBe('more');
+    }
+  });
+
+  it('no longer has the one Lifter page, whose old address lands on the index', () => {
+    expect(AGORA_PAGES).not.toContain('lifter');
+    expect(parseRoute('#/more/lifter')).toEqual({ name: 'more', page: null });
+  });
+
   it('nests the finish screen under its session', () => {
     expect(routeHash({ name: 'finish', id: 'a' })).toBe('#/session/a/finish');
     expect(parseRoute('#/session/a/finish')).toEqual({ name: 'finish', id: 'a' });

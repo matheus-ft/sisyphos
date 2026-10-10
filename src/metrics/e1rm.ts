@@ -113,6 +113,50 @@ export function e1rmSeries(
   );
 }
 
+export interface SetE1rmPoint {
+  date: IsoDate;
+  /** The set's e1RM; for a single, the weight lifted. */
+  e1rm: number;
+  session_id: Id;
+  exercise_instance_id: Id;
+  set_id: Id;
+  /** A single is one rep, a thing lifted; anything else is only an estimate of one. */
+  kind: 'single' | 'estimate';
+}
+
+/**
+ * Every working set's e1RM, oldest day first and in the order lifted within a
+ * day: what the hill draws over its line of daily bests. A single (one rep) is
+ * the weight itself, not an estimate of it, so it reads as exactly what was
+ * lifted whatever RPE it was logged at; the set still has to be one that
+ * `setE1rm` can price, so a warm-up single is no point. Bounds as in `e1rmSeries`.
+ */
+export function e1rmSets(
+  sessions: readonly Session[],
+  exercise: Exercise,
+  options: E1rmOptions = {},
+): SetE1rmPoint[] {
+  const points: SetE1rmPoint[] = [];
+  for (const { session, instance, set } of flattenSets(sessions, [exercise])) {
+    if (options.from && session.date < options.from) continue;
+    if (options.to && session.date > options.to) continue;
+    const bodyweight = bodyweightOf(session, options);
+    const estimate = setE1rm(set, exercise, bodyweight);
+    if (estimate === null) continue;
+    const single = set.reps === 1;
+    points.push({
+      date: session.date,
+      e1rm: single ? effectiveLoadKg(set, exercise, bodyweight)! : estimate,
+      session_id: session.id,
+      exercise_instance_id: instance.id,
+      set_id: set.id,
+      kind: single ? 'single' : 'estimate',
+    });
+  }
+  // Stable: sets of one day keep the order they were lifted in.
+  return points.sort((a, b) => a.date.localeCompare(b.date));
+}
+
 /** The ranges the Strength screen offers. */
 export type StrengthRange = '3M' | '6M' | '1Y' | 'all';
 

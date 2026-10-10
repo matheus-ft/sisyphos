@@ -17,13 +17,19 @@ export const TABLE_PATHS = {
   bodyweight: 'lifter/bodyweight.csv',
   oneRm: 'lifter/one-rm-history.csv',
   manualRecords: 'lifter/manual-records.csv',
-  competitionBests: 'lifter/competition-bests.csv',
   additions: 'library/additions.csv',
 } as const;
 
 export type TableKind = keyof typeof TABLE_PATHS;
 
 export const TABLE_KINDS = Object.keys(TABLE_PATHS) as TableKind[];
+
+/**
+ * Files an earlier build wrote and this one no longer reads (DATA.md, The
+ * files). Foreign now: sync leaves the remote copy where it is, and a copy on
+ * the device is dropped at launch (`retire.ts`).
+ */
+export const RETIRED_PATHS: readonly string[] = ['lifter/competition-bests.csv'];
 
 /** `sessions/<YYYY>/<id>.json`, the year being the first four characters of the id (DATA.md, Ids). */
 export function sessionPath(id: Id): string {
@@ -34,6 +40,10 @@ export function templatePath(id: Id): string {
   return `templates/${id}.json`;
 }
 
+export function meetPath(id: Id): string {
+  return `meets/${id}.json`;
+}
+
 export function conflictPath(id: Id): string {
   return `conflicts/${id}.json`;
 }
@@ -42,6 +52,7 @@ export type PathKind =
   | { kind: 'format' }
   | { kind: 'session'; id: Id }
   | { kind: 'template'; id: Id }
+  | { kind: 'meet'; id: Id }
   | { kind: 'conflict'; id: Id }
   | { kind: 'table'; table: TableKind }
   /** Not the app's: a README, the lifter's notes. Never read, written or deleted. */
@@ -57,6 +68,7 @@ export type PathKind =
 const SUFFIX = '[0-9a-hjkmnp-tv-z]{4}';
 const SESSION = new RegExp(`^sessions/(\\d{4})/(\\1-\\d{2}-\\d{2}-${SUFFIX})\\.json$`);
 const TEMPLATE = new RegExp(`^templates/([a-z0-9]+(?:-[a-z0-9]+)*-${SUFFIX})\\.json$`);
+const MEET = new RegExp(`^meets/(\\d{4}-\\d{2}-\\d{2}-${SUFFIX})\\.json$`);
 const CONFLICT = new RegExp(`^conflicts/(\\d{4}-\\d{2}-\\d{2}-${SUFFIX})\\.json$`);
 
 /** What a log-repo path holds. Anything the app did not name is foreign. */
@@ -69,6 +81,9 @@ export function classify(path: string): PathKind {
 
   const template = TEMPLATE.exec(path);
   if (template) return { kind: 'template', id: template[1] };
+
+  const meet = MEET.exec(path);
+  if (meet) return { kind: 'meet', id: meet[1] };
 
   const conflict = CONFLICT.exec(path);
   if (conflict) return { kind: 'conflict', id: conflict[1] };

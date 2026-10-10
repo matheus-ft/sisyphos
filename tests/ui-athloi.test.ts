@@ -1,13 +1,14 @@
 import { describe, expect, it } from 'vitest';
 import type { ManualRecord, Session } from '../src/model';
-import { e1rmSeries } from '../src/metrics/e1rm';
+import { e1rmSeries, e1rmSets } from '../src/metrics/e1rm';
+import { muscleWeights } from '../src/metrics/definitions';
 import { recordBook } from '../src/metrics/records';
 import { setsBehindMuscle, weeklyVolume } from '../src/metrics/weekly';
 import {
   bodyweightAtFrom,
+  COUNTING_OPTIONS,
   dateInYear,
   dayLabel,
-  defaultLift,
   formatCount,
   formatE1rm,
   formatKg,
@@ -15,21 +16,22 @@ import {
   headlineOf,
   legendCaption,
   levelsOf,
-  liftChoices,
+  labourTabs,
+  liftTabs,
   muscleRowText,
   openingWindow,
   pointText,
   meetBest,
-  recordedExercises,
   recordRows,
-  resolvePick,
+  resolveTab,
   sparseNote,
+  strengthTabs,
   topMuscles,
 } from '../src/ui/athloi';
 import { newSession } from '../src/ui/session';
 import { parseMuscles } from '../src/library/parse';
 import musclesCsv from '../src/library/muscles.csv?raw';
-import { byId, ids, library, withSets, type Lifted } from './ui-fixtures';
+import { byId, good, ids, library, meetOf, missed, withSets, type Lifted } from './ui-fixtures';
 
 const muscles = parseMuscles(musclesCsv);
 const squat = byId('low_bar_squat');
@@ -119,6 +121,30 @@ describe('the body', () => {
     expect(legendCaption('last_4_weeks')).toContain('averaged');
   });
 
+  it('says how the chosen counting treats the auxiliary muscles', () => {
+    expect(legendCaption('this_week')).toContain('count half');
+    expect(legendCaption('this_week', 'fractional')).toContain('count half');
+    expect(legendCaption('this_week', 'direct')).toContain('only the muscles a lift is for');
+    expect(legendCaption('last_4_weeks', '1:1')).toContain('count in full');
+  });
+
+  it('offers every counting preset of the definitions, named', () => {
+    expect(COUNTING_OPTIONS).toEqual([
+      { value: 'fractional', label: 'Fractional' },
+      { value: 'direct', label: 'Direct' },
+      { value: '1:1', label: '1:1' },
+    ]);
+  });
+
+  it('counts the same sets under each preset: fewer muscles when direct, more when 1:1', () => {
+    const total = (counting: string) =>
+      weeklyVolume(sessions, library, muscles, 'last_4_weeks', today, muscleWeights(counting))
+        .map((v) => v.sets)
+        .reduce((a, b) => a + b, 0);
+    expect(total('direct')).toBeLessThan(total('fractional'));
+    expect(total('fractional')).toBeLessThan(total('1:1'));
+  });
+
   it('groups the sets behind a muscle by session and exercise, and the groups add up to its number', () => {
     const behind = setsBehindMuscle(sessions, library, 'quads', 'last_4_weeks', today);
     const groups = groupMuscleSets(behind, library);
@@ -145,36 +171,56 @@ describe('the body', () => {
   });
 });
 
-describe('the lifts with a hill', () => {
+describe('the four lifts', () => {
   const none = () => null;
-  const choices = liftChoices(sessions, library, none);
+  const tabs = strengthTabs(sessions, library, none);
 
-  it('offers the exercises with an e1RM history, competition lifts first', () => {
-    expect(choices.map((c) => c.exercise.id)).toEqual(['low_bar_squat', 'bench']);
-    expect(choices[0]).toMatchObject({ days: 3, last: '2026-10-02' });
+  it('is the lifts that keep a record book, each with its short name, data or none', () => {
+    expect(tabs.map((t) => [t.exercise.id, t.label])).toEqual([
+      ['low_bar_squat', 'Squat'],
+      ['bench', 'Bench'],
+      ['sumo_deadlift', 'Sumo'],
+      ['conventional_deadlift', 'Conv.'],
+    ]);
+    expect(strengthTabs([], library, none).map((t) => t.last)).toEqual([null, null, null, null]);
   });
 
-  it('leaves out an exercise whose sets cannot be priced', () => {
-    const open = day('2026-10-01', [[row, [{ amount: 60, reps: 40 }]]]);
-    expect(liftChoices([open], library, none)).toEqual([]);
+  it('knows the last day each lift has an e1RM', () => {
+    expect(tabs.map((t) => t.last)).toEqual(['2026-10-02', '2026-10-01', null, null]);
   });
 
-  it('defaults to the competition lift trained most recently', () => {
-    expect(defaultLift(choices)?.exercise.id).toBe('low_bar_squat');
-    const later = [...sessions, day('2026-10-04', [[bench, [{ amount: 92.5, reps: 5, rpe: 8 }]]])];
-    expect(defaultLift(liftChoices(later, library, none))?.exercise.id).toBe('bench');
-  });
-
-  it('falls back to any exercise when no competition lift was logged', () => {
+  it('leaves out every other exercise, however much it was trained', () => {
     const only = [day('2026-10-01', [[row, [{ amount: 80, reps: 8, rpe: 8 }]]])];
-    expect(defaultLift(liftChoices(only, library, none))?.exercise.id).toBe('barbell_row');
-    expect(defaultLift([])).toBeNull();
+    expect(strengthTabs(only, library, none).every((t) => t.last === null)).toBe(true);
+    expect(strengthTabs(only, library, none)).toHaveLength(4);
   });
 
-  it('keeps a pick that is on offer and drops one that is not', () => {
-    expect(resolvePick(choices, 'bench')?.exercise.id).toBe('bench');
-    expect(resolvePick(choices, 'deadlift')?.exercise.id).toBe('low_bar_squat');
-    expect(resolvePick(choices, null)?.exercise.id).toBe('low_bar_squat');
+  it('leaves a lift whose sets cannot be priced without a last day', () => {
+    const open = day('2026-10-01', [[squat, [{ amount: 60, reps: 40 }]]]);
+    expect(strengthTabs([open], library, none)[0].last).toBeNull();
+  });
+
+  it('opens on the lift trained most recently, the first when none was', () => {
+    expect(resolveTab(tabs, null)?.exercise.id).toBe('low_bar_squat');
+    const later = [...sessions, day('2026-10-04', [[bench, [{ amount: 92.5, reps: 5, rpe: 8 }]]])];
+    expect(resolveTab(strengthTabs(later, library, none), null)?.exercise.id).toBe('bench');
+    expect(resolveTab(strengthTabs([], library, none), null)?.exercise.id).toBe('low_bar_squat');
+    expect(resolveTab([], null)).toBeNull();
+  });
+
+  it('keeps a pick that is a tab and drops one that is not', () => {
+    expect(resolveTab(tabs, 'bench')?.exercise.id).toBe('bench');
+    expect(resolveTab(tabs, 'sumo_deadlift')?.exercise.id).toBe('sumo_deadlift');
+    expect(resolveTab(tabs, 'barbell_row')?.exercise.id).toBe('low_bar_squat');
+  });
+
+  it('skips a record lift the library does not have', () => {
+    expect(
+      liftTabs(
+        library.filter((e) => e.id !== 'bench'),
+        none,
+      ).map((t) => t.label),
+    ).toEqual(['Squat', 'Sumo', 'Conv.']);
   });
 });
 
@@ -249,16 +295,27 @@ describe('sparseNote', () => {
 
 describe('pointText', () => {
   it('writes the figure, the date and the set behind it', () => {
-    const points = e1rmSeries(sessions, squat);
+    const points = e1rmSets(sessions, squat);
     expect(pointText(points[1], sessions, squat, today)).toEqual({
       value: `${formatE1rm(points[1].e1rm)} kg`,
       detail: '12 Aug · 140 × 5 @ 8.5',
       set: '140 × 5 @ 8.5',
+      kind: 'Estimate',
+    });
+  });
+
+  it('gives a single as the weight lifted, to the plate', () => {
+    const heavy = [day('2026-10-03', [[squat, [{ amount: 182.5, reps: 1, rpe: 9 }]]])];
+    expect(pointText(e1rmSets(heavy, squat)[0], heavy, squat, today)).toEqual({
+      value: '182.5 kg',
+      detail: '3 Oct · 182.5 × 1 @ 9',
+      set: '182.5 × 1 @ 9',
+      kind: 'Single',
     });
   });
 
   it('keeps the date when the set is gone', () => {
-    const [p] = e1rmSeries(sessions, squat);
+    const [p] = e1rmSets(sessions, squat);
     expect(pointText(p, [], squat, today)).toMatchObject({ detail: '6 Apr', set: null });
   });
 });
@@ -331,31 +388,69 @@ describe('the record book rows', () => {
     expect(rows[2].spoken).toContain('a recent record');
   });
 
-  it('lists the exercises that have a record, competition lifts first', () => {
-    expect(recordedExercises(book, library).map((r) => r.exercise.id)).toEqual([
-      'low_bar_squat',
-      'bench',
+  it('dates each lift tab by its newest record, and leaves one with none empty', () => {
+    expect(labourTabs(book, library).map((t) => [t.exercise.id, t.last])).toEqual([
+      ['low_bar_squat', '2026-10-02'],
+      ['bench', '2026-10-01'],
+      ['sumo_deadlift', null],
+      ['conventional_deadlift', null],
     ]);
-    expect(recordedExercises([], library)).toEqual([]);
+    expect(labourTabs([], library).every((t) => t.last === null)).toBe(true);
   });
 
-  it('lists an exercise with only a meet best, and counts no record for it', () => {
-    const meet = { date: '2026-05-16', exercise_id: 'sumo_deadlift', weight_kg: 200, meet: null };
-    const [only] = recordedExercises([], library, [meet]);
-    expect(only).toMatchObject({ last: '2026-05-16', count: 0 });
-    expect(only.exercise.id).toBe('sumo_deadlift');
-  });
-
-  it("finds an exercise's heaviest meet single, the earlier on a tie", () => {
-    const at = (date: string, weight_kg: number) => ({
-      date,
-      exercise_id: 'bench',
-      weight_kg,
-      meet: null,
+  it('dates a lift with only a meet attempt by that meet', () => {
+    const meet = meetOf('2026-05-16-8mzt', {
+      lifts: {
+        squat: [null, null, null],
+        bench: [null, null, null],
+        deadlift: [good(200, 'sumo_deadlift'), null, null],
+      },
     });
-    expect(
-      meetBest([at('2026-05-16', 120), at('2025-11-02', 120), at('2026-03-01', 115)], 'bench'),
-    ).toEqual(at('2025-11-02', 120));
-    expect(meetBest([at('2026-05-16', 120)], 'sumo_deadlift')).toBeNull();
+    const sumo = labourTabs([], library, [meet]).find((t) => t.exercise.id === 'sumo_deadlift');
+    expect(sumo?.last).toBe('2026-05-16');
+  });
+
+  it('does not count a missed attempt as a day with data', () => {
+    const meet = meetOf('2026-05-16-8mzt', {
+      lifts: {
+        squat: [null, null, null],
+        bench: [missed(120, 'bench'), null, null],
+        deadlift: [null, null, null],
+      },
+    });
+    expect(labourTabs([], library, [meet]).every((t) => t.last === null)).toBe(true);
+  });
+
+  it("finds an exercise's heaviest good meet attempt, the earlier on a tie", () => {
+    const at = (id: string, weight: number) =>
+      meetOf(id, {
+        name: id,
+        lifts: {
+          squat: [null, null, null],
+          bench: [good(weight, 'bench'), null, null],
+          deadlift: [null, null, null],
+        },
+      });
+    const meets = [
+      at('2026-05-16-aaaa', 120),
+      at('2025-11-02-bbbb', 120),
+      at('2026-03-01-cccc', 115),
+      // Heavier, but missed: not a best.
+      meetOf('2026-06-01-dddd', {
+        lifts: {
+          squat: [null, null, null],
+          bench: [missed(130, 'bench'), null, null],
+          deadlift: [null, null, null],
+        },
+      }),
+    ];
+    expect(meetBest(meets, 'bench')).toEqual({
+      kg: 120,
+      exercise_id: 'bench',
+      date: '2025-11-02',
+      meet_id: '2025-11-02-bbbb',
+      meet: '2025-11-02-bbbb',
+    });
+    expect(meetBest(meets, 'sumo_deadlift')).toBeNull();
   });
 });

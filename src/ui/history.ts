@@ -208,3 +208,39 @@ export function shiftMonth(
   const index = at.year * 12 + (at.month - 1) + by;
   return { year: Math.floor(index / 12), month: (index % 12) + 1 };
 }
+
+/** The month a date falls in. */
+export function monthOf(date: IsoDate): { year: number; month: number } {
+  return { year: Number(date.slice(0, 4)), month: Number(date.slice(5, 7)) };
+}
+
+/** The weekday heads over a month grid, Monday first. */
+export const WEEKDAY_INITIALS = ['M', 'T', 'W', 'T', 'F', 'S', 'S'] as const;
+
+/** A range of days that may be picked; an end left out is open. */
+export interface DayRange {
+  min?: IsoDate;
+  max?: IsoDate;
+}
+
+/** Whether a day lies within the range, ends included. */
+export function inRange(date: IsoDate, range: DayRange): boolean {
+  return (
+    (range.min === undefined || date >= range.min) && (range.max === undefined || date <= range.max)
+  );
+}
+
+/** Whether the month `by` months from `at` holds a day in the range, so that a picker can stop at its edge. */
+export function canShiftMonth(
+  at: { year: number; month: number },
+  by: number,
+  range: DayRange,
+): boolean {
+  const next = shiftMonth(at, by);
+  const first = dateOf(next.year, next.month, 1);
+  const last = dateOf(next.year, next.month, daysInMonth(next.year, next.month));
+  return (
+    (range.min === undefined || last >= range.min) &&
+    (range.max === undefined || first <= range.max)
+  );
+}
