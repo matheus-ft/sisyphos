@@ -119,7 +119,9 @@ test('strength has a tab for each of the four lifts, and an empty one says so', 
   await expect(page.getByRole('dialog')).toBeHidden();
 });
 
-test('strength draws the hill, with every set over it, and switches range', async ({ page }) => {
+test('strength draws the hill, with every set over it, and picks a day at a time', async ({
+  page,
+}) => {
   await page.getByRole('button', { name: 'Strength' }).click();
   await expect(page).toHaveURL(/#\/progress\/strength$/);
 
@@ -127,32 +129,45 @@ test('strength draws the hill, with every set over it, and switches range', asyn
   const chart = page.getByRole('slider', { name: /^Low-Bar Squat, e1RM/ });
   await expect(chart).toBeVisible();
   // Each set is a point, so there are more of them than days.
-  const sets = Number(await chart.getAttribute('aria-valuemax'));
+  const days = Number(await chart.getAttribute('aria-valuemax'));
   const summary = (await chart.getAttribute('aria-label'))!;
-  const days = Number(/(\d+) days/.exec(summary)![1]);
+  const sets = Number(/(\d+) sets/.exec(summary)![1]);
+  expect(summary).toContain(`${days} days`);
   expect(days).toBeGreaterThan(5);
   expect(sets).toBeGreaterThan(days);
-  expect(summary).toContain(`${sets} sets`);
   await expect(page.getByText('best e1RM', { exact: true })).toBeVisible();
   await expect(page.getByText('sets (e1RM)', { exact: true })).toBeVisible();
   await expect(page.getByText('single', { exact: true })).toBeVisible();
-  // Every set is a faint dot, however many there are.
-  await expect(chart.locator('circle.scatter')).toHaveCount(sets);
+  // Every set is a faint dot, however many there are, and with no day picked none is dimmed.
+  const dots = chart.locator('circle.scatter');
+  await expect(dots).toHaveCount(sets);
+  await expect(chart.locator('circle.scatter.day, circle.scatter.away')).toHaveCount(0);
+  await expect(chart.locator('circle.ring')).toHaveCount(0);
 
-  // A touch on the hill moves the crosshair off the latest set.
-  await expect(chart).toHaveAttribute('aria-valuenow', String(sets));
+  // A touch on the hill picks the nearest day, whatever the height it lands at: the
+  // readout leads with the day's best and the set it came from, and ends on the date.
+  await expect(chart).toHaveAttribute('aria-valuenow', String(days));
   await chart.tap({ position: { x: 20, y: 60 } });
-  await expect(chart).not.toHaveAttribute('aria-valuenow', String(sets));
+  await expect(chart).not.toHaveAttribute('aria-valuenow', String(days));
+  const tip = chart.locator('.tip');
+  await expect(tip).toContainText(/^e1RM \d+\s+·\s+from\s+[\d.]+\s+×\s+\d+/);
+  await expect(chart.locator('circle.ring')).toHaveCount(1);
+  // The day's own sets are dimmed and every other day's are dimmer still.
+  const own = await chart.locator('circle.scatter.day').count();
+  expect(own).toBeGreaterThan(0);
+  await expect(chart.locator('circle.scatter.away')).toHaveCount(sets - own);
 
-  // The arrow keys step through every set, and read each out as single or estimate.
+  // The arrow keys step through the days, and read each out in a sentence.
   await chart.focus();
   await page.keyboard.press('Home');
   await expect(chart).toHaveAttribute('aria-valuenow', '1');
-  await expect(chart).toHaveAttribute('aria-valuetext', /, (single|estimate), /);
+  await expect(chart).toHaveAttribute('aria-valuetext', /e1RM \d+ from .*, \d+ sets?$/);
   await page.keyboard.press('ArrowRight');
   await expect(chart).toHaveAttribute('aria-valuenow', '2');
   await page.keyboard.press('End');
-  await expect(chart).toHaveAttribute('aria-valuenow', String(sets));
+  await expect(chart).toHaveAttribute('aria-valuenow', String(days));
+  await page.keyboard.press('Escape');
+  await expect(chart.locator('circle.ring')).toHaveCount(0);
 
   // The range buttons switch; ten weeks of training fit in all of them.
   const ranges = page.getByRole('group', { name: 'Range' });
@@ -162,17 +177,20 @@ test('strength draws the hill, with every set over it, and switches range', asyn
   await expect(ranges.getByRole('button', { name: '6M' })).toHaveAttribute('aria-pressed', 'false');
   await expect(page.getByRole('slider', { name: /^Low-Bar Squat, e1RM/ })).toHaveAttribute(
     'aria-valuemax',
-    String(sets),
+    String(days),
   );
   await ranges.getByRole('button', { name: 'All', exact: true }).click();
   await expect(chart).toBeVisible();
 
-  // The same numbers as a table: a row for every set.
+  // The same numbers as a table, day first: a row for the day's best, then a row for
+  // each of its sets.
   await page.getByRole('button', { name: 'Show as table' }).click();
-  await expect(page.getByRole('table').getByRole('row')).toHaveCount(sets + 1);
-  await expect(
-    page.getByRole('table').getByRole('cell', { name: 'Estimate' }).first(),
-  ).toBeVisible();
+  const table = page.getByRole('table');
+  await expect(table.getByRole('row')).toHaveCount(days + sets + 1);
+  await expect(table.getByRole('columnheader')).toHaveText(['Day', 'e1RM', 'Set', 'Kind']);
+  await expect(table.locator('tbody')).toHaveCount(days);
+  await expect(table.getByRole('cell', { name: 'Estimate' }).first()).toBeVisible();
+  await expect(table.locator('tr.day').first().getByRole('cell').nth(1)).toHaveText(/× \d+/);
 });
 
 test('labours lists the best weight at each rep count', async ({ page }) => {
