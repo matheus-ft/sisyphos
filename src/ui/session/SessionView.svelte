@@ -833,10 +833,6 @@
     margin-left: calc(-1 * var(--space-2));
   }
 
-  textarea {
-    resize: vertical;
-  }
-
   /* Room below for the undo toast each set leaves for 5 s, so Finish can scroll clear of it. */
   .end {
     display: grid;
