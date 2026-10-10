@@ -13,6 +13,7 @@
   import Button from '../kit/Button.svelte';
   import Icon from '../kit/Icon.svelte';
   import Laurel from '../kit/Laurel.svelte';
+  import Notes from '../kit/Notes.svelte';
   import { longpress } from '../kit/longpress';
   import Sheet from '../kit/Sheet.svelte';
   import { confirmDialog, showToast } from '../overlays.svelte';
@@ -79,6 +80,8 @@
     /** A finished session not unlocked for editing: everything shows, nothing changes. */
     locked: boolean;
     onchange: (next: Session) => void;
+    /** A note saved, which a locked session allows. */
+    onnote: (next: Session) => void;
     onhidewarmups: () => void;
     /** Opens the exercise's history. */
     onhistory: (exercise: Exercise) => void;
@@ -99,6 +102,7 @@
     warmupsHidden,
     locked,
     onchange,
+    onnote,
     onhidewarmups,
     onhistory,
     onentry,
@@ -357,14 +361,17 @@
       <p class="meta last">Target {targetRpe}</p>
     {/if}
     {#if noting || instance.notes}
-      <input
-        class="note"
-        aria-label="Note on {name}"
-        placeholder="Note…"
-        readonly={locked}
-        value={instance.notes ?? ''}
-        onchange={(e) => onchange(setExerciseNotes(session, instance.id, e.currentTarget.value))}
-      />
+      <div class="note">
+        <Notes
+          id="note-{instance.id}"
+          label="Note on {name}"
+          rows={1}
+          placeholder="Note…"
+          saved={locked}
+          value={instance.notes ?? ''}
+          onchange={(text) => onnote(setExerciseNotes(session, instance.id, text))}
+        />
+      </div>
     {/if}
 
     {#if chip}
@@ -875,8 +882,7 @@
   }
 
   /* Locked, a set is read, not written on: no line where the caret would go, no pointer. */
-  .row input:read-only:focus,
-  .note:read-only:focus {
+  .row input:read-only:focus {
     border-bottom-color: transparent;
   }
 

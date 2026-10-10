@@ -27,6 +27,7 @@ import {
   parseOrdinal,
   parsePercent,
   parseRange,
+  pinFolder,
   READERS,
   removeTarget,
   removeTemplateExercise,
@@ -593,6 +594,26 @@ describe('templates in folders', () => {
       [1, ['Early', 'Tue', 'Wed']],
       [2, ['Alpha', 'Zed']],
     ]);
+  });
+
+  it('puts the pinned folder first, matching the program as grouping does', () => {
+    const folders = groupTemplates([
+      made('A', { name: 'Off-season' }),
+      made('B', { name: 'Rebuild' }),
+      made('C'),
+    ]);
+    const pinned = pinFolder(folders, ' rebuild ');
+    expect(pinned.folders.map((f) => f.name)).toEqual(['Rebuild', 'Off-season', null]);
+    expect(pinned.pinned?.name).toBe('Rebuild');
+  });
+
+  it('pins nothing for no pin or a program with no folder', () => {
+    const folders = groupTemplates([made('A', { name: 'Rebuild' }), made('B', { name: 'Press' })]);
+    for (const pin of [null, '', 'Gone']) {
+      const none = pinFolder(folders, pin);
+      expect(none.pinned).toBeNull();
+      expect(none.folders.map((f) => f.name)).toEqual(['Press', 'Rebuild']);
+    }
   });
 
   it('keeps unlabelled templates in blocks too, by name', () => {

@@ -64,7 +64,7 @@ test('a finished session opens locked, and Edit unlocks it until the lifter leav
   await expect(load).not.toBeEditable();
   await expect(card.getByRole('button', { name: /^Edit set/ }).first()).toBeDisabled();
   await expect(page.getByRole('button', { name: '+ Set' })).toHaveCount(0);
-  await expect(page.getByRole('textbox', { name: 'Notes' })).not.toBeEditable();
+  await expect(page.getByRole('textbox', { name: 'Notes' })).toHaveCount(0);
 
   // Unlocked, it edits as it always did.
   await page.getByRole('button', { name: 'Edit this session' }).click();

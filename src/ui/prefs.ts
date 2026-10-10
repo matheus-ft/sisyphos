@@ -16,6 +16,8 @@ export interface Prefs {
   chime: boolean;
   /** The muscle-counting preset the Body view uses: a name in `muscle_roles.presets` of `definitions.json`. */
   muscleCounting: string;
+  /** The program name of the template folder pinned at the top of Train; null for none. */
+  pinnedFolder: string | null;
 }
 
 /** The increments the settings screen offers to pick, per unit. */
@@ -57,6 +59,7 @@ export const DEFAULT_PREFS: Prefs = {
   keepAwake: false,
   chime: false,
   muscleCounting: CONFIG.activeMuscleWeights,
+  pinnedFolder: null,
 };
 
 type Stored = Partial<Pick<Settings, keyof Prefs>>;
@@ -74,6 +77,10 @@ export function readPrefs(settings: Stored | null | undefined): Prefs {
       typeof s.muscleCounting === 'string' && MUSCLE_PRESET_NAMES.includes(s.muscleCounting)
         ? s.muscleCounting
         : DEFAULT_PREFS.muscleCounting,
+    pinnedFolder:
+      typeof s.pinnedFolder === 'string' && s.pinnedFolder.trim() !== ''
+        ? s.pinnedFolder.trim()
+        : null,
   };
 }
 

@@ -3,10 +3,17 @@
 // from it; the templates in folders by program; and planning ahead from the
 // calendar.
 import { expect, test } from '@playwright/test';
-import { dayFromToday, openSeeded, pickCalendarDay, savedTemplates } from './seed.ts';
+import {
+  dayFromToday,
+  openSeeded,
+  pickCalendarDay,
+  savedSettings,
+  savedTemplates,
+} from './seed.ts';
 
 test('a template is edited and a session planned from it', async ({ page }) => {
   await openSeeded(page);
+  await page.getByRole('button', { name: 'Rebuild 1', exact: true }).click();
   await page.getByRole('button', { name: /^Squat and bench/ }).click();
   await expect(page).toHaveURL(/#\/template\//);
 
@@ -103,6 +110,7 @@ test('a template is edited and a session planned from it', async ({ page }) => {
 
 test('closed exercises are reordered, and the open one is followed', async ({ page }) => {
   await openSeeded(page);
+  await page.getByRole('button', { name: 'Rebuild 1', exact: true }).click();
   await page.getByRole('button', { name: /^Squat and bench/ }).click();
   const order = async () =>
     (await savedTemplates(page))[0].exercises.map((e) => e.exercise_id).join(' ');
@@ -124,24 +132,24 @@ test('templates sit in folders by program, which fold', async ({ page }) => {
   await openSeeded(page);
   // The seed's one template is of the program Rebuild, block 2.
   // (Today's plan, from the same template, is a button that starts with the label too.)
+  // Train's folders start closed and any one opens.
   const folder = page.getByRole('button', { name: 'Rebuild 1', exact: true });
-  await expect(folder).toHaveAttribute('aria-expanded', 'true');
-  await expect(page.getByText('Block 2', { exact: true })).toBeVisible();
   const row = page.getByRole('button', { name: /^Squat and bench/ });
-  await expect(row).toBeVisible();
-
-  await folder.click();
   await expect(folder).toHaveAttribute('aria-expanded', 'false');
   await expect(row).toHaveCount(0);
+  await folder.click();
+  await expect(folder).toHaveAttribute('aria-expanded', 'true');
+  await expect(page.getByText('Block 2', { exact: true })).toBeVisible();
+  await expect(row).toBeVisible();
   await expect(page.getByRole('button', { name: '+ New template' })).toBeVisible();
 
-  // Agora's list is the same folders, and what was folded stays folded.
+  // Agora's list keeps its plain folders, open, with no pin.
   await page.goto('/#/more/templates');
   await expect(page.getByRole('button', { name: 'Rebuild 1', exact: true })).toHaveAttribute(
     'aria-expanded',
-    'false',
+    'true',
   );
-  await page.getByRole('button', { name: 'Rebuild 1', exact: true }).click();
+  await expect(page.getByRole('button', { name: 'Pin Rebuild' })).toHaveCount(0);
   await page.getByRole('button', { name: /^Squat and bench/ }).click();
   await expect(page).toHaveURL(/#\/template\//);
 
@@ -186,4 +194,32 @@ test('a session planned ahead from Train starts fresh or from a template', async
   await expect(page).toHaveURL(new RegExp(`#/session/${day}-`));
   await expect(page.getByText('Planned', { exact: true })).toBeVisible();
   await expect(page.getByRole('region', { name: 'Low-Bar Squat' })).toHaveCount(0);
+});
+
+test('one template folder is pinned open at the top of Train, and unpinned again', async ({
+  page,
+}) => {
+  await openSeeded(page);
+  const pin = page.getByRole('button', { name: 'Pin Rebuild' });
+  expect((await pin.boundingBox())!.height).toBeGreaterThanOrEqual(44);
+  expect((await pin.boundingBox())!.width).toBeGreaterThanOrEqual(44);
+  await expect(page.getByRole('button', { name: /^Squat and bench/ })).toHaveCount(0);
+
+  await pin.click();
+  const pinned = page.getByRole('button', { name: /^Rebuild/ }).filter({ hasText: 'Pinned' });
+  await expect(pinned).toHaveAttribute('aria-expanded', 'true');
+  await expect(page.getByRole('button', { name: /^Squat and bench/ })).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Unpin Rebuild' })).toHaveAttribute(
+    'aria-pressed',
+    'true',
+  );
+  await expect.poll(async () => (await savedSettings(page)).pinnedFolder).toBe('Rebuild');
+
+  // It is a device pref: it survives a reload.
+  await page.reload();
+  await expect(page.getByRole('button', { name: /^Squat and bench/ })).toBeVisible();
+
+  await page.getByRole('button', { name: 'Unpin Rebuild' }).click();
+  await expect(page.getByRole('button', { name: /^Squat and bench/ })).toHaveCount(0);
+  await expect(page.getByText('Pinned', { exact: true })).toHaveCount(0);
 });

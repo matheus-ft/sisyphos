@@ -98,6 +98,8 @@ export interface Settings {
   chime?: boolean;
   /** How the Body view counts muscles: a preset of `muscle_roles` in `definitions.json`. */
   muscleCounting?: string;
+  /** The template folder (a program's name) pinned open at the top of Train; null for none. */
+  pinnedFolder?: string | null;
 }
 
 /**
