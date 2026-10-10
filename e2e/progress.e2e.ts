@@ -150,7 +150,7 @@ test('strength draws the hill, with every set over it, and picks a day at a time
   await chart.tap({ position: { x: 20, y: 60 } });
   await expect(chart).not.toHaveAttribute('aria-valuenow', String(days));
   const tip = chart.locator('.tip');
-  await expect(tip).toContainText(/^e1RM \d+\s+·\s+from\s+[\d.]+\s+×\s+\d+/);
+  await expect(tip).toContainText(/^e1RM \d+\s+from\s+[\d.]+\s+×\s+\d+/);
   await expect(chart.locator('circle.ring')).toHaveCount(1);
   // The day's own sets are dimmed and every other day's are dimmer still.
   const own = await chart.locator('circle.scatter.day').count();

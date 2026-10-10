@@ -90,9 +90,6 @@
   const ownSets = $derived(new Set(at === null ? [] : days[at].sets));
   const ownSingles = $derived(new Set(at === null ? [] : days[at].singles));
 
-  /** Spaces that do not wrap, so a narrow readout breaks before "· from" and never inside it. */
-  const unbroken = (text: string): string => text.replaceAll(' ', '\u00a0');
-
   function aim(event: PointerEvent): void {
     if (!box) return;
     const rect = box.getBoundingClientRect();
@@ -209,8 +206,7 @@
       aria-hidden="true"
     >
       <strong class="figure-num"
-        >{texts[at].best}{#if texts[at].from}<span class="from"
-            >{` ${unbroken(`· from ${texts[at].from}`)}`}</span
+        >{texts[at].best}{#if texts[at].from}{' '}<span class="from">from {texts[at].from}</span
           >{/if}</strong
       >
       {#if texts[at].single}<span class="single-text figure-num">{texts[at].single}</span>{/if}
@@ -358,7 +354,10 @@
     white-space: nowrap;
   }
 
+  /* The set the best came from, on its own line under it. */
   .tip .from {
+    display: block;
+    white-space: nowrap;
     font-weight: var(--fw-text);
     color: var(--ink-2);
   }

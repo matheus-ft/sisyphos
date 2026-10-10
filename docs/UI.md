@@ -193,7 +193,7 @@ it and returns to text. A session in progress and a new meet keep the field.
   the line. A small legend names line, sets and single. Selection is by day,
   never by set: a tap, hover or crosshair move anywhere on the chart picks the
   nearest day, and the arrow keys move day by day. The readout gives that
-  day's best e1RM and the set it came from ("e1RM 172 · from 150 × 3 @ 8"),
+  day's best e1RM and the set it came from ("e1RM 172", and under it "from 150 × 3 @ 8"),
   then the single lifted that day if any ("Single 165 @ 9"), then the date.
   The day's best on the line is haloed and its single is ringed; its other sets
   stay as dots, dimmed, as the day's volume, and every other day's dots fade
