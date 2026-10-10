@@ -5,12 +5,13 @@ import {
   dateScale,
   monotonePath,
   monthMarks,
-  nearestIndex,
+  nearestPoint,
   niceTicks,
   scaleLinear,
   strataPaths,
   STRATA_OFFSETS,
   toChartX,
+  toChartY,
   tooltipLeft,
   valueScale,
 } from '../src/ui/chart';
@@ -144,12 +145,26 @@ describe('areaPath and strata', () => {
   });
 });
 
-describe('nearestIndex', () => {
+describe('nearestPoint', () => {
+  const at = (x: number, y = 0) => ({ x, y });
+
   it('finds the closest x, the left one on a tie', () => {
-    expect(nearestIndex([10, 50, 90], 60)).toBe(1);
-    expect(nearestIndex([10, 50, 90], 70)).toBe(1);
-    expect(nearestIndex([10, 50, 90], 71)).toBe(2);
-    expect(nearestIndex([], 5)).toBe(-1);
+    const line = [at(10), at(50), at(90)];
+    expect(nearestPoint(line, 60, 0)).toBe(1);
+    expect(nearestPoint(line, 70, 0)).toBe(1);
+    expect(nearestPoint(line, 71, 0)).toBe(2);
+    expect(nearestPoint([], 5, 0)).toBe(-1);
+  });
+
+  it('tells the sets of one day apart by height', () => {
+    const day = [at(50, 20), at(50, 60), at(50, 100), at(90, 30)];
+    expect(nearestPoint(day, 52, 25)).toBe(0);
+    expect(nearestPoint(day, 48, 70)).toBe(1);
+    expect(nearestPoint(day, 50, 160)).toBe(2);
+  });
+
+  it('goes to the nearest day first, whatever the height', () => {
+    expect(nearestPoint([at(50, 20), at(90, 100)], 80, 20)).toBe(1);
   });
 });
 
@@ -158,6 +173,14 @@ describe('toChartX', () => {
     expect(toChartX(200, 100, 343)).toBe(100);
     expect(toChartX(300, 0, 686)).toBeCloseTo(150);
     expect(toChartX(5, 0, 0)).toBe(0);
+  });
+});
+
+describe('toChartY', () => {
+  it('turns a pointer height into the drawing own units', () => {
+    expect(toChartY(150, 50, 204)).toBe(100);
+    expect(toChartY(100, 0, 408)).toBeCloseTo(50);
+    expect(toChartY(5, 0, 0)).toBe(0);
   });
 });
 

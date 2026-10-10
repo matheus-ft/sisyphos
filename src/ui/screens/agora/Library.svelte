@@ -1,7 +1,7 @@
 <script lang="ts">
   import musclesCsv from '../../../library/muscles.csv?raw';
   import { parseMuscles } from '../../../library/parse';
-  import type { Exercise, LoadType, Tier } from '../../../model';
+  import type { Exercise, LoadType } from '../../../model';
   import PickSheet from '../../agora/PickSheet.svelte';
   import { app } from '../../app.svelte';
   import Button from '../../kit/Button.svelte';
@@ -17,8 +17,9 @@
     LIFT_FILTERS,
     muscleLine,
     NO_FILTER,
+    TIER_DETAIL,
+    TIER_FILTERS,
     TIER_LABEL,
-    TIERS,
     type LibraryFilter,
   } from '../../librarySearch';
   import { routeHash } from '../../route';
@@ -40,7 +41,7 @@
   const offerCreate = $derived(canCreate(app.library, filter.query));
 
   const liftLabel = $derived(LIFT_FILTERS.find((o) => o.value === filter.lift)?.label ?? 'Lift');
-  const tierLabel = $derived(filter.tier ? TIER_LABEL[filter.tier] : 'Tier');
+  const tierLabel = $derived(TIER_FILTERS.find((o) => o.value === filter.tier)?.label ?? 'Tier');
   const muscleLabel = $derived(filter.muscle ? (muscleNames.get(filter.muscle) ?? '') : 'Muscle');
 
   const LOAD: Record<LoadType, string> = {
@@ -79,6 +80,10 @@
     enterkeyhint="search"
   />
 </label>
+
+<div class="new">
+  <Button variant="quiet" onclick={() => app.startCreating('')}>+ New exercise</Button>
+</div>
 
 <div class="chips" role="group" aria-label="Filters">
   <Chip
@@ -159,7 +164,7 @@
   open={picker === 'tier'}
   title="Tier"
   anyLabel="Any tier"
-  options={TIERS.map((value: Tier) => ({ value, label: TIER_LABEL[value] }))}
+  options={TIER_FILTERS}
   value={filter.tier}
   onpick={(value) => {
     filter.tier = value;
@@ -185,7 +190,7 @@
     <div class="detail">
       <div class="head">
         <h2>{shown.name}</h2>
-        <span class="tier">{TIER_LABEL[shown.tier]}</span>
+        <span class="tier">{TIER_DETAIL[shown.tier]}</span>
       </div>
       <dl>
         <dt class="caps">Serves</dt>
@@ -193,7 +198,7 @@
         <dt class="caps">Primary</dt>
         <dd>{names(shown.muscles.primary)}</dd>
         {#if shown.muscles.aux.length}
-          <dt class="caps">Also works</dt>
+          <dt class="caps">Auxiliary</dt>
           <dd>{names(shown.muscles.aux)}</dd>
         {/if}
         <dt class="caps">Loaded by</dt>
@@ -232,6 +237,10 @@
     flex: 1;
     border: 0;
     color: var(--ink);
+  }
+
+  .new {
+    margin: 0 var(--gutter) var(--space-2);
   }
 
   .chips {

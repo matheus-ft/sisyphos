@@ -1,22 +1,26 @@
 <script lang="ts">
   import { app } from '../app.svelte';
-  import { aimAt, countOf, libraryValue, settingsSummary, type LifterSection } from '../agoraIndex';
+  import { countOf, libraryValue, settingsSummary } from '../agoraIndex';
   import Icon from '../kit/Icon.svelte';
   import ScreenHeader from '../kit/ScreenHeader.svelte';
-  import { bestsSummary, bodyweightSummary, maxesSummary, recordsSummary } from '../lifter';
+  import { bodyweightSummary, maxesSummary, recordsSummary } from '../lifter';
+  import { meetsLine } from '../meets';
   import { routeHash, type AgoraPage } from '../route';
   import { localDate } from '../session';
   import { statusLine } from '../status';
+  import Bodyweight from './agora/Bodyweight.svelte';
   import Conflicts from './agora/Conflicts.svelte';
   import Library from './agora/Library.svelte';
-  import Lifter from './agora/Lifter.svelte';
+  import Maxes from './agora/Maxes.svelte';
+  import Meets from './agora/Meets.svelte';
+  import Records from './agora/Records.svelte';
   import Settings from './agora/Settings.svelte';
   import Sync from './agora/Sync.svelte';
   import Templates from './agora/Templates.svelte';
 
   /**
-   * Agora, the More tab: the lifter's data, templates, the library, settings,
-   * sync and conflicts, each its own page under `#/more/<page>`. Every row of
+   * Agora, the More tab: the lifter's data (bodyweight, reference maxes, meets,
+   * records), templates, the library, settings, sync and conflicts, each its own page under `#/more/<page>`. Every row of
    * the index says what is behind it, so most visits end here.
    */
   interface Props {
@@ -35,9 +39,9 @@
   const href = (p: AgoraPage) => routeHash({ name: 'more', page: p });
 </script>
 
-{#snippet lifterRow(section: LifterSection, label: string, line: string)}
+{#snippet lifterRow(page: AgoraPage, label: string, line: string)}
   <li class="row-link">
-    <a href={href('lifter')} onclick={() => aimAt(section)}>
+    <a href={href(page)}>
       <span class="grow">
         <span class="t">{label}</span>
         <span class="s">{line}</span>
@@ -47,8 +51,14 @@
   </li>
 {/snippet}
 
-{#if page === 'lifter'}
-  <Lifter />
+{#if page === 'bodyweight'}
+  <Bodyweight />
+{:else if page === 'maxes'}
+  <Maxes />
+{:else if page === 'meets'}
+  <Meets />
+{:else if page === 'records'}
+  <Records />
 {:else if page === 'templates'}
   <Templates />
 {:else if page === 'library'}
@@ -66,7 +76,7 @@
   <ul class="group">
     {@render lifterRow('bodyweight', 'Bodyweight', bodyweightSummary(app.bodyweights))}
     {@render lifterRow('maxes', 'Reference maxes', maxesSummary(app.oneRms, today))}
-    {@render lifterRow('competition', 'Competition', bestsSummary(app.competitionBests))}
+    {@render lifterRow('meets', 'Meets', meetsLine(app.meets))}
     {@render lifterRow('records', 'Records', recordsSummary(app.manualRecords))}
   </ul>
 

@@ -1,5 +1,12 @@
 import { describe, expect, it } from 'vitest';
-import { bestRecentE1rm, e1rmSeries, epley, rangeStart, setE1rm } from '../src/metrics/e1rm';
+import {
+  bestRecentE1rm,
+  e1rmSeries,
+  e1rmSets,
+  epley,
+  rangeStart,
+  setE1rm,
+} from '../src/metrics/e1rm';
 import { loadFactor } from '../src/metrics/rpe-chart';
 import type { PerformedSet } from '../src/model';
 import { bench, byId, deadlift, library, sessionOf, squat } from './analysis-fixtures';
@@ -162,6 +169,97 @@ describe('the best e1RM per day', () => {
     });
     const [point] = e1rmSeries([dip], bwPlus, { bodyweightAt: () => 50 });
     expect(point.e1rm).toBeCloseTo(100 / loadFactor(8, 5)!, 6);
+  });
+});
+
+describe('every working set', () => {
+  const lifted = (date: string, ...sets: { load: number; reps: number; rpe?: number }[]) =>
+    sessionOf({ date, work: [[squat, sets]] });
+
+  it('gives each set its own point, oldest day first and in the order lifted', () => {
+    const sessions = [
+      lifted('2026-09-10', { load: 100, reps: 5, rpe: 8 }, { load: 120, reps: 5, rpe: 8 }),
+      lifted('2026-09-01', { load: 90, reps: 5, rpe: 8 }),
+    ];
+    const sets = e1rmSets(sessions, squat);
+    expect(sets.map((p) => p.date)).toEqual(['2026-09-01', '2026-09-10', '2026-09-10']);
+    expect(sets[1].e1rm).toBeCloseTo(100 / loadFactor(8, 5)!, 6);
+    expect(sets[2].e1rm).toBeCloseTo(120 / loadFactor(8, 5)!, 6);
+    expect(sets.map((p) => p.kind)).toEqual(['estimate', 'estimate', 'estimate']);
+  });
+
+  it('reads a single as the weight lifted, at any RPE', () => {
+    const [none, nine] = e1rmSets(
+      [lifted('2026-09-01', { load: 182.5, reps: 1, rpe: 10 }, { load: 180, reps: 1, rpe: 9 })],
+      squat,
+    );
+    expect(none).toMatchObject({ e1rm: 182.5, kind: 'single' });
+    expect(nine).toMatchObject({ e1rm: 180, kind: 'single' });
+  });
+
+  it('counts a double as an estimate, and a single in pounds by its weight in kilograms', () => {
+    const [double] = e1rmSets([lifted('2026-09-01', { load: 180, reps: 2, rpe: 9 })], squat);
+    expect(double.kind).toBe('estimate');
+    const [pounds] = e1rmSets(
+      [
+        sessionOf({
+          date: '2026-09-01',
+          work: [[squat, [{ load: 225, unit: 'lb', reps: 1, rpe: 9 }]]],
+        }),
+      ],
+      squat,
+    );
+    expect(pounds.kind).toBe('single');
+    expect(pounds.e1rm).toBeCloseTo(225 * 0.45359237, 4);
+  });
+
+  it('leaves out what setE1rm leaves out: warm-ups, skipped sets, other exercises', () => {
+    const s = sessionOf({
+      date: '2026-09-01',
+      work: [
+        [
+          squat,
+          [
+            { load: 60, reps: 1, rpe: 6, warmup: true },
+            { load: 100, reps: 1, rpe: 8, skip: true },
+            { load: 110, reps: 1, rpe: 9 },
+          ],
+        ],
+        [bench, [{ load: 80, reps: 1, rpe: 9 }]],
+      ],
+    });
+    expect(e1rmSets([s], squat).map((p) => p.e1rm)).toEqual([110]);
+  });
+
+  it('points at the set behind it, and the best of a day is one of its sets', () => {
+    const s = lifted('2026-09-01', { load: 100, reps: 5, rpe: 8 }, { load: 120, reps: 5, rpe: 8 });
+    const sets = e1rmSets([s], squat);
+    expect(sets[0].set_id).toBe(s.exercises[0].performed[0].id);
+    expect(sets[0].session_id).toBe(s.id);
+    expect(sets[0].exercise_instance_id).toBe(s.exercises[0].id);
+    const [best] = e1rmSeries([s], squat);
+    expect(sets.map((p) => p.set_id)).toContain(best.set_id);
+  });
+
+  it('bounds the range inclusively, and takes an outside bodyweight like the daily series', () => {
+    const sessions = [
+      lifted('2026-09-01', { load: 100, reps: 5, rpe: 8 }),
+      lifted('2026-09-08', { load: 100, reps: 5, rpe: 8 }),
+      lifted('2026-09-15', { load: 100, reps: 5, rpe: 8 }),
+    ];
+    expect(e1rmSets(sessions, squat, { from: '2026-09-02', to: '2026-09-15' })).toHaveLength(2);
+    const dip = sessionOf({
+      date: '2026-09-01',
+      work: [[bwPlus, [{ load: 20, reps: 1, rpe: 9 }]]],
+    });
+    expect(e1rmSets([dip], bwPlus)).toEqual([]);
+    expect(e1rmSets([dip], bwPlus, { bodyweightAt: () => 80 })[0].e1rm).toBe(100);
+  });
+
+  it('leaves the daily series as it was: one best per day, however many sets', () => {
+    const s = lifted('2026-09-01', { load: 100, reps: 5, rpe: 8 }, { load: 120, reps: 1, rpe: 9 });
+    expect(e1rmSets([s], squat)).toHaveLength(2);
+    expect(e1rmSeries([s], squat)).toHaveLength(1);
   });
 });
 

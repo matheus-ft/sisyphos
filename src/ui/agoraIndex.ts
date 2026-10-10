@@ -42,22 +42,6 @@ export function plateChoice(unit: PlateUnit, current: number): string {
   return offered(unit, current) ? String(current) : OTHER_PLATE;
 }
 
-/** Which lifter section a row on the index opens at. */
-export type LifterSection = 'bodyweight' | 'maxes' | 'competition' | 'records';
-
-let pending: LifterSection | null = null;
-
-/** Remembered by the index row that was tapped, taken by the Lifter page as it opens. */
-export function aimAt(section: LifterSection): void {
-  pending = section;
-}
-
-export function takeAim(): LifterSection | null {
-  const aimed = pending;
-  pending = null;
-  return aimed;
-}
-
 /** What persistent storage reads as, for the settings row. */
 export function persistenceText(persisted: boolean | null): {
   line: string;

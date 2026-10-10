@@ -6,6 +6,7 @@ import type {
   Exercise,
   ExerciseAddition,
   ManualRecord,
+  Meet,
   OneRmEntry,
   Session,
   Template,
@@ -19,7 +20,7 @@ import {
 } from '../src/storage/formats';
 import { ID_ALPHABET } from '../src/storage/ids';
 import { Log, type LogOptions } from '../src/storage/log';
-import { conflictPath, sessionPath, templatePath } from '../src/storage/paths';
+import { conflictPath, meetPath, sessionPath, templatePath } from '../src/storage/paths';
 import { IndexedDbStore } from '../src/storage/store/indexeddb';
 import { MemoryStore } from '../src/storage/store/memory';
 import type { Exclusive, LocalStore } from '../src/storage/store/store';
@@ -122,6 +123,30 @@ function template(id: string, changes: Partial<Template> = {}): Template {
     ],
     created_at: '2026-09-01T10:00:00.000Z',
     updated_at: '2026-09-01T10:00:00.000Z',
+    ...changes,
+  };
+}
+
+function meet(id: string, changes: Partial<Meet> = {}): Meet {
+  return {
+    id,
+    date: id.slice(0, 10),
+    name: 'Nationals 2026',
+    location: 'Lisbon',
+    federation: null,
+    weight_class: null,
+    equipment: 'raw',
+    bodyweight_kg: 82.6,
+    placing: 2,
+    notes: null,
+    lifts: {
+      squat: [{ exercise_id: 'low_bar_squat', weight_kg: 200, good: true }, null, null],
+      bench: [null, null, null],
+      deadlift: [null, null, null],
+    },
+    created_at: '2026-09-14T08:00:00.000Z',
+    updated_at: '2026-09-14T08:00:00.000Z',
+    device_id: 'another-device',
     ...changes,
   };
 }
@@ -385,6 +410,100 @@ describe.each(BACKENDS)('Log over %s', (_name, backend) => {
       // Session ids are another namespace.
       expect(await log.newSessionId('2026-09-14')).toBe('2026-09-14-0000');
     });
+
+    it('gives a new meet its date and four characters no held id has', async () => {
+      const random = sequence(...drawing('0000111122223333'));
+      const { log, put, store } = await setup({ random });
+      // Held three ways: a file, a deletion not yet synced, a saved version.
+      await log.putMeet(meet('2026-05-16-0000'));
+      await store.exclusive((s) =>
+        s.apply([{ op: 'base', path: meetPath('2026-05-16-1111'), sha: 'b1' }]),
+      );
+      const saved: ConflictRecord = {
+        id: '2026-09-27-7xq2',
+        path: meetPath('2026-05-16-2222'),
+        key: null,
+        found_at: T0,
+        device_id: 'another-device',
+        version: meet('2026-05-16-2222'),
+      };
+      await put(conflictPath(saved.id), serializeConflict(saved));
+
+      expect(await log.newMeetId('2026-05-16')).toBe('2026-05-16-3333');
+    });
+  });
+
+  // --- meets --------------------------------------------------------------------------
+
+  describe('meets', () => {
+    it('writes a meet to its own file, stamped with the time and this device', async () => {
+      const { log, store } = await setup();
+      await log.putMeet(meet('2026-05-16-8mzt'));
+      expect(await store.content(meetPath('2026-05-16-8mzt'))).toContain('"id": "2026-05-16-8mzt"');
+      expect(await log.getMeets()).toEqual([
+        meet('2026-05-16-8mzt', { updated_at: T0, device_id: DEVICE }),
+      ]);
+    });
+
+    it('skips a write whose only change is the stamp', async () => {
+      const { log, clock, applies } = await setup();
+      const m = meet('2026-05-16-8mzt');
+      await log.putMeet(m);
+      expect(applies()).toBe(1);
+
+      clock.advance(60_000);
+      await log.putMeet({ ...m, updated_at: '2020-01-01T00:00:00.000Z' });
+      expect(applies()).toBe(1);
+
+      await log.putMeet({ ...m, placing: 1 });
+      expect(applies()).toBe(2);
+      expect(await log.getMeets()).toEqual([
+        meet('2026-05-16-8mzt', { placing: 1, updated_at: T1, device_id: DEVICE }),
+      ]);
+    });
+
+    it('lists meets newest first, and deletes them', async () => {
+      const { log, store } = await setup();
+      await log.putMeet(meet('2025-11-02-aaaa'));
+      await log.putMeet(meet('2026-05-16-aaaa'));
+      await log.putMeet(meet('2026-05-16-bbbb'));
+      expect((await log.getMeets()).map((m) => m.id)).toEqual([
+        '2026-05-16-bbbb',
+        '2026-05-16-aaaa',
+        '2025-11-02-aaaa',
+      ]);
+      await log.deleteMeet('2026-05-16-aaaa');
+      expect((await log.getMeets()).map((m) => m.id)).toEqual([
+        '2026-05-16-bbbb',
+        '2025-11-02-aaaa',
+      ]);
+      expect(await store.content(meetPath('2026-05-16-aaaa'))).toBeNull();
+      // Deleting what is not there changes nothing.
+      await log.deleteMeet('2026-05-16-aaaa');
+    });
+
+    it('keeps the meet’s file when its date is edited: the id is the name', async () => {
+      const { log } = await setup();
+      await log.putMeet(meet('2026-05-16-8mzt'));
+      await log.putMeet(meet('2026-05-16-8mzt', { date: '2026-05-17' }));
+      const meets = await log.getMeets();
+      expect(meets.map((m) => [m.id, m.date])).toEqual([['2026-05-16-8mzt', '2026-05-17']]);
+    });
+
+    it('refuses an id that would file a meet where sync never looks', async () => {
+      const { log } = await setup();
+      await expect(log.putMeet(meet('nationals'))).rejects.toThrow(/not a meet id/);
+      await expect(log.putMeet(meet('../2026-05-16-8mzt'))).rejects.toThrow(/not a meet id/);
+    });
+
+    it('leaves sessions, templates and tables out of its list', async () => {
+      const { log } = await setup();
+      await log.putSession(session('2026-09-14-k3f9'));
+      await log.putTemplate(template('squat-day-a-k3f9'));
+      await log.putRow('bodyweight', weighIn('2026-09-14', 82));
+      expect(await log.getMeets()).toEqual([]);
+      expect(await log.getSession('2026-09-14-k3f9')).not.toBeNull();
+    });
   });
 
   // --- templates ----------------------------------------------------------------------
@@ -428,13 +547,7 @@ describe.each(BACKENDS)('Log over %s', (_name, backend) => {
   describe('tables', () => {
     it('reads a missing file as an empty table', async () => {
       const { log } = await setup();
-      for (const kind of [
-        'bodyweight',
-        'oneRm',
-        'manualRecords',
-        'competitionBests',
-        'additions',
-      ] as const) {
+      for (const kind of ['bodyweight', 'oneRm', 'manualRecords', 'additions'] as const) {
         expect(await log.getRows(kind)).toEqual([]);
       }
     });
@@ -716,7 +829,7 @@ describe.each(BACKENDS)('Log over %s', (_name, backend) => {
         path: sessionPath('2026-09-14-k3f9'),
         logVersion: session('2026-09-14-k3f9', { notes: 'from the log' }),
         saved: session('2026-09-14-k3f9', { notes: 'from this device', device_id: 'phone' }),
-        write: (log: Log, s: Session | Template) => log.putSession(s as Session),
+        write: (log: Log, s: Session | Template | Meet) => log.putSession(s as Session),
         read: (log: Log) => log.getSession('2026-09-14-k3f9'),
       },
       {
@@ -724,8 +837,16 @@ describe.each(BACKENDS)('Log over %s', (_name, backend) => {
         path: templatePath('squat-day-a-k3f9'),
         logVersion: template('squat-day-a-k3f9', { name: 'From the log' }),
         saved: template('squat-day-a-k3f9', { name: 'From this device' }),
-        write: (log: Log, t: Session | Template) => log.putTemplate(t as Template),
+        write: (log: Log, t: Session | Template | Meet) => log.putTemplate(t as Template),
         read: async (log: Log) => (await log.getTemplates())[0] ?? null,
+      },
+      {
+        what: 'a meet',
+        path: meetPath('2026-05-16-8mzt'),
+        logVersion: meet('2026-05-16-8mzt', { placing: 1 }),
+        saved: meet('2026-05-16-8mzt', { placing: 3, device_id: 'phone' }),
+        write: (log: Log, m: Session | Template | Meet) => log.putMeet(m as Meet),
+        read: async (log: Log) => (await log.getMeets())[0] ?? null,
       },
     ])('on $what', ({ path, logVersion, saved, write, read }) => {
       it("keeps the log's version, deleting only the record, in one write", async () => {

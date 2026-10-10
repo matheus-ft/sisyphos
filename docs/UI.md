@@ -121,19 +121,31 @@ the session as a red-figure image for the phone's share sheet.
 ## Outside the gym
 
 **Askēsis (Train).** A session in progress comes first. Otherwise today's plan
-with the screen's one primary button, plans for later in the week, start an
-empty session, plan one ahead, log a past session, and the templates.
+with the screen's one primary button, plans for later in the week, then one
+group of quiet rows: start an empty session, plan one ahead, log a past
+session. The templates follow, in folders by program.
 
 **Planning ahead.** A planned session is filled in without starting the clock;
 Start sets the time. "Do this again" copies a past session as a plan; a
-template starts or plans one; "Plan one ahead" asks for the day, then whether
-to start fresh or from a template.
+template starts or plans one. "Plan one ahead" and "Log a past session" ask for
+the day in the app's own calendar, a sheet showing one month at a time: days
+with a session carry a disc, days with a plan a dashed ring, today an accent
+ring. Planning allows today and later and logging today and earlier, the days
+outside greyed and the arrows stopping at the edge. Planning then asks whether
+to start fresh or from a template; logging opens the session on the day.
 
 **Templates** carry a program label (name, block, week, day, weekday), which a
 session started from them copies, since "block 2, week 3" belongs to the plan,
-not to each session. Targets take rep ranges (3–5, 5+), loads absolute, as a
-percentage of a reference max, RPE-driven or bodyweight plus, a target RPE or
-range, and a target rest per exercise.
+not to each session. Starting or planning a session from one is at the top,
+under the name; deleting is at the bottom. Each exercise is one line saying
+what it asks for (name, sets and reps, RPE, rest), and a tap opens its editor,
+one at a time; moving an exercise needs no opening. Targets take rep ranges
+(3–5, 5+), loads absolute, as a percentage of a reference max, RPE-driven or
+bodyweight plus, a target RPE or range, and a target rest per exercise. Lists of
+templates, on Train and in Agora, are folders by the label's program name with
+the blocks set apart inside, each folding to a line; templates with no program
+come last under "No program", and when none has a program there are no folders.
+The folders are a view: nothing is stored for them.
 
 **Historia (History).** Every session by week, newest first, marking any still
 holding pending sets; filtered by exercise, each row shows that exercise's best
@@ -149,34 +161,67 @@ lifter leaves it.
 - **Body:** a marble statue of Sisyphos, front and back, on a plinth: a
   mature, bearded, heavy-set hero standing square, lit as carved stone. Its
   muscles are stained from bare marble toward terracotta by working sets this
-  week or over the last four, auxiliary muscles counting half (the active
-  counting preset). Each muscle opens the sets behind it. It must read as a
+  week or over the last four. A Fractional / Direct / 1:1 toggle sets how
+  muscles count: auxiliary muscles half, not at all, or in full. It is a
+  device preference (`muscleCounting` in `src/ui/prefs.ts`) that starts at
+  the active preset in `src/metrics/definitions.json`, and it feeds the
+  statue, the list and the table alike. The table lists each muscle's sets
+  and nothing more: the shade is the statue's to show. Each muscle opens the
+  sets behind it. It must read as a
   Greek sculpture of a strong man: the first drawing, an archaic kouros, read
   as Egyptian, the slender youth after it read soft, and a contrapposto that
   broke at the hips was not wanted. The figure's regions are in
   `src/ui/statue.ts`, its drawing, build and stance in
   `src/ui/progress/statue-art.ts`, its marble and lighting in
   `src/ui/progress/Statue.svelte`.
-- **Strength:** each lift's best e1RM over time, drawn as the hill the boulder
-  climbs, record days gilded. e1RM comes from the RPE chart when a set has an
-  RPE, and from Epley otherwise (`src/metrics/e1rm.ts`).
-- **Labours:** per competition lift, the best weight at 1 to 10 reps, from
+- **Strength:** the four lifts that keep a record book (`records` in
+  `src/metrics/definitions.json`) as tabs, Squat / Bench / Sumo / Conv., in
+  place of a picker: no other exercise has a hill. Each tab draws that lift's
+  best e1RM per day as the hill the boulder climbs, with the day's record
+  gilded, and the headline reads from those daily bests. Behind the line,
+  every working set is a faint dot, however many there are; over it, each
+  single (one rep) is a solid mark at the weight lifted, which may sit off
+  the line. A small legend names line, sets and single. Several sets may share a day; the crosshair, the arrow keys,
+  the spoken text and the table all cover every set, each told as single or
+  estimate. A lift with no data shows the empty state under its tab. e1RM
+  comes from the RPE chart when a set has an RPE, and from Epley otherwise
+  (`src/metrics/e1rm.ts`).
+- **Labours:** the same four tabs, kept when switching between Strength and
+  Labours. For the chosen lift, the best weight at 1 to 10 reps, from
   sessions and entered by hand together (`src/metrics/records.ts`); a record
   from the last 30 days carries the laurel. Above them, the lift's best at a
-  meet, which is none of them.
+  meet, which is none of them and opens Meets; a record entered by hand opens
+  Records. A lift with nothing yet shows the empty state.
 
-**Agora (More).** The lifter's data: weigh-ins; reference maxes, set by hand and
-dated, with the best recent e1RM beside each as a suggestion that is never
-written by itself; under each, the two numbers it is not, the heaviest single
-in training and the heaviest at a meet; meet bests, entered by hand; records
-entered by hand. A lift has three different maxes and the app never mixes them:
-the reference programming reads, the best single in training, and the best
-single on a platform. The templates. The library: search filtered by base lift,
-tier and muscle; create an exercise; change one, which saves it and opens its
+**Agora (More).** The lifter's data, one page each, linked from the index with
+a line of what is behind it: **Bodyweight**, the weigh-ins; **Reference maxes**,
+set by hand and dated, with the best recent e1RM beside each as a suggestion
+that is never written by itself, and under each the two numbers it is not, the
+heaviest single in training and the heaviest at a meet (Edit max opens a dated
+entry filled with the max in force); **Meets**; **Records**. A lift has three
+different maxes and the app never mixes them: the reference programming reads,
+the best single in training, and the best single on a platform.
+
+- **Meets** lists them newest first, each with its date, name, location and
+  total, under a summary of each lift's all-time meet best and the most recent
+  meet's. A meet is entered afterwards, in an editor with its details and a
+  compact 3 × 3 grid of attempts: a row for each lift with one exercise to
+  choose (that lift's competition exercises, starting on the usual one), and for
+  each attempt a weight, left empty when it was not taken, and good or missed.
+  The best of a lift and the total follow from the grid; a meet can be deleted
+  from its editor.
+- **Records** is a table: rows are 1 to 10 reps, columns the four record lifts
+  under short heads, each cell the best there, logged and entered by hand
+  together. A logged value's date opens its session. Tapping a cell edits its
+  hand-entered value in place, weight and date, which can also be cleared;
+  logged values update themselves.
+
+Also in Agora: the templates. The library: search filtered by base lift, tier
+and muscle; create an exercise; change one, which saves it and opens its
 proposal on github.com. Settings: the device's name, screen awake, the bell,
 plate increments per unit (one of `PLATE_CHOICES` in `src/ui/prefs.ts`, or
-typed in), persistent storage, sync, and export of `sets.csv` and
-`sessions.csv`. Preferences stay on the device and never sync.
+typed in), persistent storage, sync, and export of `sets.csv`, `sessions.csv`,
+`meets.csv` and `attempts.csv`. Preferences stay on the device and never sync.
 
 **Conflicts.** When a sync finds or brings one, a full-screen notice says so,
 again at every launch, with a banner on every screen until none is left; during

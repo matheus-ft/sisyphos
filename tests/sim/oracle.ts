@@ -1,8 +1,9 @@
-import type { ConflictRecord, Session, TableRow, Template } from '../../src/model';
+import type { ConflictRecord, Meet, Session, TableRow, Template } from '../../src/model';
 import type { ConflictChoice } from '../../src/storage/log';
 import {
   parseConflict,
   parseSession,
+  parseMeet,
   parseTemplate,
   rowKey,
   TABLES,
@@ -20,8 +21,8 @@ import type { SyncEntry } from '../../src/storage/store/store';
  * the rest.
  *
  * **Places and versions.** A place is one unit of the decision: a session,
- * template or conflict file by its path, a table row as `path#key`. Every write
- * carries a version identity that survives the round trip: a session's notes, a
+ * template, meet or conflict file by its path, a table row as `path#key`. Every write
+ * carries a version identity that survives the round trip: a session's or meet's notes, a
  * template's intention, a weigh-in's weight, a 1RM's note, a manual record's
  * context, an addition's name. A conflict record's identity is what it saves,
  * for whom, and when. A place's value is that identity, or null when absent.
@@ -646,7 +647,6 @@ export const TOKEN_COLUMN: Record<TableKind, string> = {
   bodyweight: 'weight_kg',
   oneRm: 'note',
   manualRecords: 'context',
-  competitionBests: 'meet',
   additions: 'name',
 };
 
@@ -696,6 +696,8 @@ function recordValue(conflict: ConflictRecord): Value {
     version = (conflict.version as Session | null)?.notes ?? null;
   } else if (target.kind === 'template') {
     version = (conflict.version as Template | null)?.intention ?? null;
+  } else if (target.kind === 'meet') {
+    version = (conflict.version as Meet | null)?.notes ?? null;
   }
   return JSON.stringify([conflict.device_id, conflict.found_at, about, version]);
 }
@@ -760,6 +762,8 @@ function read(path: string, text: string): Array<[Place, Value]> {
       return [[path, parseSession(text).notes ?? '']];
     case 'template':
       return [[path, parseTemplate(text).intention ?? '']];
+    case 'meet':
+      return [[path, parseMeet(text).notes ?? '']];
     case 'conflict':
       return [[path, recordValue(parseConflict(text))]];
     case 'table': {

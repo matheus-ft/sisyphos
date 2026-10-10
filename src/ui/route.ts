@@ -12,7 +12,10 @@ export const PROGRESS_VIEWS = ['body', 'strength', 'labours'] as const;
 export type ProgressView = (typeof PROGRESS_VIEWS)[number];
 
 export const AGORA_PAGES = [
-  'lifter',
+  'bodyweight',
+  'maxes',
+  'meets',
+  'records',
   'templates',
   'library',
   'settings',

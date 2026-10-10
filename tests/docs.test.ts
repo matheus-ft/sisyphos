@@ -58,9 +58,9 @@ const basenames = new Set(files.map((f) => f.split('/').pop()));
 
 /** Paths in the lifter's log repo, which is not this repository. */
 const LOG_REPO =
-  /^(sessions|templates|lifter|conflicts)\/|^(library\/)?additions\.csv$|^sisyphos\.json$/;
-/** Named in a doc, not built yet: the exports (DATA.md, Exports). */
-const PLANNED = new Set(['sets.csv', 'sessions.csv']);
+  /^(sessions|templates|meets|lifter|conflicts)\/|^(library\/)?additions\.csv$|^sisyphos\.json$/;
+/** Files the exports make (DATA.md, Exports): they are produced, not kept in this repository. */
+const PLANNED = new Set(['sets.csv', 'sessions.csv', 'meets.csv', 'attempts.csv']);
 /** Names the design removed, kept in DECISIONS.md's account of why. */
 const REMOVED = new Set(['include_warmups', 'duration_s', 'distance_m']);
 

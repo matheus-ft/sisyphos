@@ -1,10 +1,10 @@
 import type {
   BodyweightEntry,
-  CompetitionBest,
   Exercise,
   Id,
   IsoDate,
   ManualRecord,
+  Meet,
   OneRmEntry,
   Session,
   Template,
@@ -536,11 +536,12 @@ class App {
 
   // --- the lifter and this device -----------------------------------------------------
 
-  /** Weigh-ins, reference maxes, records entered by hand, meet bests: the log's lifter tables. */
+  /** Weigh-ins, reference maxes, records entered by hand: the log's lifter tables. */
   bodyweights = $state.raw<BodyweightEntry[]>([]);
   oneRms = $state.raw<OneRmEntry[]>([]);
   manualRecords = $state.raw<ManualRecord[]>([]);
-  competitionBests = $state.raw<CompetitionBest[]>([]);
+  /** Every meet, newest first. */
+  meets = $state.raw<Meet[]>([]);
   /** This device's preferences; they stay on the device and never sync. */
   prefs = $state.raw<Prefs>(DEFAULT_PREFS);
 
@@ -551,17 +552,17 @@ class App {
   records = $derived(recordBook(this.current, this.library, this.manualRecords));
 
   async #loadLifter(s: AppStorage): Promise<void> {
-    const [bodyweights, oneRms, manualRecords, competitionBests, settings] = await Promise.all([
+    const [bodyweights, oneRms, manualRecords, meets, settings] = await Promise.all([
       s.log.getRows('bodyweight'),
       s.log.getRows('oneRm'),
       s.log.getRows('manualRecords'),
-      s.log.getRows('competitionBests'),
+      s.log.getMeets(),
       s.store.settings(),
     ]);
     this.bodyweights = bodyweights;
     this.oneRms = oneRms;
     this.manualRecords = manualRecords;
-    this.competitionBests = competitionBests;
+    this.meets = meets;
     this.prefs = readPrefs(settings);
   }
 
@@ -591,6 +592,39 @@ class App {
     if (!s) return false;
     try {
       await s.log.deleteRow(kind, record);
+      this.failure = null;
+    } catch (error) {
+      this.failure = `Not deleted: ${messageOf(error)}`;
+      return false;
+    }
+    await this.#loadLifter(s);
+    return true;
+  };
+
+  /** A free id for a meet on `date`, which the meet keeps whatever its date becomes. */
+  newMeetId = async (date: IsoDate): Promise<Id | null> =>
+    this.storage?.log.newMeetId(date) ?? null;
+
+  /** Adds or replaces a meet (same id), then rereads the lifter's data. */
+  saveMeet = async (meet: Meet): Promise<boolean> => {
+    const s = this.storage;
+    if (!s) return false;
+    try {
+      await s.log.putMeet(meet);
+      this.failure = null;
+    } catch (error) {
+      this.failure = `Not saved: ${messageOf(error)}`;
+      return false;
+    }
+    await this.#loadLifter(s);
+    return true;
+  };
+
+  removeMeet = async (meet: Meet): Promise<boolean> => {
+    const s = this.storage;
+    if (!s) return false;
+    try {
+      await s.log.deleteMeet(meet.id);
       this.failure = null;
     } catch (error) {
       this.failure = `Not deleted: ${messageOf(error)}`;

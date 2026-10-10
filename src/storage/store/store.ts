@@ -96,6 +96,8 @@ export interface Settings {
   keepAwake?: boolean;
   /** Chime when a rest reaches zero. */
   chime?: boolean;
+  /** How the Body view counts muscles: a preset of `muscle_roles` in `definitions.json`. */
+  muscleCounting?: string;
 }
 
 /**

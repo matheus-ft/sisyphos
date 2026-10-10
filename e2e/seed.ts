@@ -11,7 +11,7 @@
 // - A template "Squat and bench" labelled Rebuild, block 2, week 6, day 1, Monday.
 // - Weigh-ins, reference maxes (squat 150, bench 100, deadlift 180, in August)
 //   and one hand-entered record (low-bar squat, 1 rep, 155 kg, in March).
-import type { Page } from '@playwright/test';
+import type { Locator, Page } from '@playwright/test';
 
 /** What the seeding writes: only the shapes it fills, not the app's full model. */
 interface SeedSet {
@@ -79,11 +79,16 @@ interface SeedTemplate {
 
 /** What a test reads back from the log: only the fields it asks about. */
 interface StoredSession {
+  date: string;
+  ended_at: string | null;
   exercises: { performed: { state: string }[] }[];
 }
 interface StoredTemplate {
-  label: { week: number | null };
-  exercises: { prescribed: { reps: [number | null, number | null] | null }[] }[];
+  label: { name: string | null; week: number | null };
+  exercises: {
+    exercise_id: string;
+    prescribed: { reps: [number | null, number | null] | null }[];
+  }[];
 }
 
 /** The slice of the app (`src/ui/app.svelte.ts`) the seeding touches. */
@@ -465,4 +470,30 @@ export function savedSession(page: Page, id: string): Promise<StoredSession | nu
 /** Every template as written to the log. */
 export function savedTemplates(page: Page): Promise<StoredTemplate[]> {
   return page.evaluate(() => window.__sisyphos!.storage!.log.getTemplates());
+}
+
+/** The calendar date `days` from today in the browser's own zone, as the app reads it: "2026-10-13". */
+export function dayFromToday(days: number): string {
+  const d = new Date();
+  d.setDate(d.getDate() + days);
+  return [
+    d.getFullYear(),
+    String(d.getMonth() + 1).padStart(2, '0'),
+    String(d.getDate()).padStart(2, '0'),
+  ].join('-');
+}
+
+/**
+ * Picks a day in a calendar sheet (Train's "Plan one ahead" and "Log a past
+ * session"), turning a month first when the day is not on the one shown,
+ * which lists only whole weeks.
+ */
+export async function pickCalendarDay(
+  sheet: Locator,
+  date: string,
+  turn: 'Next month' | 'Previous month',
+): Promise<void> {
+  const cell = sheet.locator(`[data-date="${date}"]`);
+  if ((await cell.count()) === 0) await sheet.getByRole('button', { name: turn }).click();
+  await cell.click();
 }

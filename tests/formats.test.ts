@@ -4,7 +4,6 @@ import { parseExercises } from '../src/library/parse';
 import exercisesCsv from '../src/library/exercises.csv?raw';
 import type {
   BodyweightEntry,
-  CompetitionBest,
   CompetitionLift,
   ConflictRecord,
   ExerciseAddition,
@@ -14,6 +13,8 @@ import type {
   Load,
   LoadPrescription,
   ManualRecord,
+  Meet,
+  MeetSlot,
   OneRmEntry,
   PerformedSet,
   PrescribedSet,
@@ -33,12 +34,14 @@ import {
   migrateFile,
   parseConflict,
   parseFormatMarker,
+  parseMeet,
   parseSession,
   parseTemplate,
   rowKey,
   rowLine,
   serializeConflict,
   serializeFormatMarker,
+  serializeMeet,
   serializeSession,
   serializeTemplate,
   tableRows,
@@ -52,6 +55,7 @@ import { sha1Hex } from '../src/storage/hash';
 import {
   FORMAT_PATH,
   FORMAT_VERSION,
+  meetPath,
   sessionPath,
   templatePath,
   TABLE_KINDS,
@@ -275,6 +279,39 @@ function template(g: Gen): Template {
   };
 }
 
+/** An amount of weight: above zero, as a meet's attempt and bodyweight must be. */
+function positive(g: Gen): number {
+  return g.pick([1, 2, 5, 10, 82.5, 102.5, 0.1 + 0.2, 1e21, 5e-7, 1234567.891]);
+}
+
+function slot(g: Gen): MeetSlot {
+  return g.maybe(() => ({
+    exercise_id: g.string(),
+    weight_kg: positive(g),
+    good: g.bool(),
+  }));
+}
+
+function meet(g: Gen): Meet {
+  const slots = (): Meet['lifts']['squat'] => [slot(g), slot(g), slot(g)];
+  return {
+    id: `${g.date()}-8mzt`,
+    date: g.date(),
+    name: g.maybe(() => g.string()),
+    location: g.maybe(() => g.string()),
+    federation: g.maybe(() => g.string()),
+    weight_class: g.maybe(() => g.string()),
+    equipment: g.maybe(() => g.string()),
+    bodyweight_kg: g.maybe(() => positive(g)),
+    placing: g.maybe(() => g.int(1, 40)),
+    notes: g.maybe(() => g.string()),
+    lifts: { squat: slots(), bench: slots(), deadlift: slots() },
+    created_at: g.instant(),
+    updated_at: g.instant(),
+    device_id: g.string(),
+  };
+}
+
 /** A muscle id as a list cell can hold one: no `/`, nothing to trim, not empty. */
 function muscle(g: Gen): string {
   if (g.bool()) return g.pick(['quads', 'glutes', 'lats', 'upper_back']);
@@ -301,12 +338,6 @@ const records: { [K in TableKind]: (g: Gen) => RecordOf<K> } = {
     weight_kg: g.number(),
     rpe: g.maybe(() => g.number()),
     context: g.maybe(() => g.text()),
-  }),
-  competitionBests: (g): CompetitionBest => ({
-    date: g.date(),
-    exercise_id: g.pick(['bench', 'sumo_deadlift', g.text()]),
-    weight_kg: g.number(),
-    meet: g.maybe(() => g.text()),
   }),
   additions: (g): ExerciseAddition => ({
     id: g.pick(['bench', 'low_bar_squat', g.exerciseId()]),
@@ -1238,10 +1269,213 @@ describe('templates', () => {
   });
 });
 
+describe('meets', () => {
+  const sample: Meet = {
+    id: '2026-05-16-8mzt',
+    date: '2026-05-16',
+    name: 'Nationals 2026',
+    location: 'Lisbon',
+    federation: 'IPF',
+    weight_class: '83 kg',
+    equipment: 'raw',
+    bodyweight_kg: 82.6,
+    placing: 2,
+    notes: null,
+    lifts: {
+      squat: [
+        { exercise_id: 'low_bar_squat', weight_kg: 200, good: true },
+        { exercise_id: 'low_bar_squat', weight_kg: 210, good: false },
+        null,
+      ],
+      bench: [null, null, null],
+      deadlift: [
+        { exercise_id: 'sumo_deadlift', weight_kg: 250, good: true },
+        null,
+        { exercise_id: 'conventional_deadlift', weight_kg: 262.5, good: true },
+      ],
+    },
+    created_at: '2026-05-17T09:00:00.000Z',
+    updated_at: '2026-05-17T09:00:00.000Z',
+    device_id: 'phone',
+  };
+
+  it('read back what they wrote, and write back the same text', () => {
+    const g = new Gen(prng(36));
+    for (let run = 0; run < 300; run++) {
+      const m = meet(g);
+      const text = serializeMeet(m);
+      expect(parseMeet(text)).toEqual(m);
+      expect(serializeMeet(parseMeet(text))).toBe(text);
+      expect(serializeMeet(reversedKeys(m))).toBe(text);
+    }
+  });
+
+  it('write two-space JSON in the order of docs/DATA.md, every key present, absent as null', () => {
+    const text = serializeMeet(sample);
+    expect(text.endsWith('}\n')).toBe(true);
+    expect(text.startsWith('{\n  "id": "2026-05-16-8mzt",\n  "date": "2026-05-16",\n')).toBe(true);
+    const read = JSON.parse(text);
+    expect(Object.keys(read)).toEqual([
+      'id',
+      'date',
+      'name',
+      'location',
+      'federation',
+      'weight_class',
+      'equipment',
+      'bodyweight_kg',
+      'placing',
+      'notes',
+      'lifts',
+      'created_at',
+      'updated_at',
+      'device_id',
+    ]);
+    expect(read.notes).toBeNull();
+    expect(Object.keys(read.lifts)).toEqual(['squat', 'bench', 'deadlift']);
+    for (const lift of Object.values(read.lifts)) expect(lift).toHaveLength(3);
+    expect(read.lifts.squat[2]).toBeNull();
+    expect(Object.keys(read.lifts.squat[0])).toEqual(['exercise_id', 'weight_kg', 'good']);
+    // Sumo and conventional apart on one platform, which is why each attempt names its exercise.
+    expect(read.lifts.deadlift.map((a: { exercise_id?: string } | null) => a?.exercise_id)).toEqual(
+      ['sumo_deadlift', undefined, 'conventional_deadlift'],
+    );
+  });
+
+  it('write nothing the type does not have', () => {
+    const extra = { ...sample, mood: 'good' } as Meet;
+    expect(serializeMeet(extra)).toBe(serializeMeet(sample));
+  });
+
+  it('do not check an attempt’s exercise against the library', () => {
+    const odd: Meet = {
+      ...sample,
+      lifts: {
+        ...sample.lifts,
+        bench: [{ exercise_id: 'no_such', weight_kg: 100, good: true }, null, null],
+      },
+    };
+    expect(parseMeet(serializeMeet(odd))).toEqual(odd);
+  });
+
+  it('refuse to write what the reader would refuse', () => {
+    const bad: Array<[string, Meet, RegExp]> = [
+      ['a placing of 0', { ...sample, placing: 0 }, /placing/],
+      ['a placing of 1.5', { ...sample, placing: 1.5 }, /placing/],
+      ['a bodyweight of 0', { ...sample, bodyweight_kg: 0 }, /bodyweight/],
+      [
+        'an attempt of 0 kg',
+        {
+          ...sample,
+          lifts: {
+            ...sample.lifts,
+            bench: [{ exercise_id: 'bench', weight_kg: 0, good: true }, null, null],
+          },
+        },
+        /above zero/,
+      ],
+      [
+        'two attempts',
+        {
+          ...sample,
+          lifts: { ...sample.lifts, bench: [null, null] as unknown as Meet['lifts']['bench'] },
+        },
+        /3 attempts/,
+      ],
+      [
+        'four attempts',
+        {
+          ...sample,
+          lifts: {
+            ...sample.lifts,
+            squat: [null, null, null, null] as unknown as Meet['lifts']['squat'],
+          },
+        },
+        /3 attempts/,
+      ],
+      [
+        'a weight that is not finite',
+        {
+          ...sample,
+          lifts: {
+            ...sample.lifts,
+            bench: [{ exercise_id: 'bench', weight_kg: NaN, good: true }, null, null],
+          },
+        },
+        /above zero|finite/,
+      ],
+    ];
+    for (const [name, value, message] of bad) {
+      expect(() => serializeMeet(value), name).toThrow(message);
+      // A plain Error, never a FormatError, which would mean an unreadable file.
+      expect(() => serializeMeet(value), name).not.toThrow(FormatError);
+    }
+  });
+
+  it('fail to read what the format does not allow, with FormatError', () => {
+    const valid = JSON.parse(serializeMeet(sample));
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const edit = (change: (m: any) => void): string => {
+      const copy = structuredClone(valid);
+      change(copy);
+      return JSON.stringify(copy);
+    };
+    const bad: Array<[string, RegExp]> = [
+      ['not json', /not JSON/],
+      ['null', /meet: expected an object/],
+      [edit((m) => delete m.name), /meet.name: missing/],
+      [edit((m) => delete m.lifts), /meet.lifts: missing/],
+      [edit((m) => delete m.lifts.bench), /meet.lifts.bench: missing/],
+      [edit((m) => delete m.device_id), /meet.device_id: missing/],
+      [edit((m) => (m.date = 'May 16')), /meet.date: expected a YYYY-MM-DD date/],
+      [edit((m) => (m.name = 5)), /meet.name: expected a string/],
+      [edit((m) => (m.placing = 0)), /meet.placing: expected a whole number from 1/],
+      [edit((m) => (m.placing = 2.5)), /meet.placing: expected a whole number from 1/],
+      [edit((m) => (m.placing = '2')), /meet.placing: expected a whole number from 1/],
+      [edit((m) => (m.bodyweight_kg = 0)), /meet.bodyweight_kg: expected a number above zero/],
+      [edit((m) => m.lifts.bench.pop()), /meet.lifts.bench: expected 3 attempts/],
+      [edit((m) => m.lifts.bench.push(null)), /meet.lifts.bench: expected 3 attempts/],
+      [edit((m) => (m.lifts.bench = null)), /meet.lifts.bench: expected 3 attempts/],
+      [
+        edit((m) => (m.lifts.squat[0].weight_kg = 0)),
+        /squat\[0\].weight_kg: expected a number above zero/,
+      ],
+      [
+        edit((m) => (m.lifts.squat[0].weight_kg = '200')),
+        /squat\[0\].weight_kg: expected a number/,
+      ],
+      [edit((m) => (m.lifts.squat[0].good = 'yes')), /squat\[0\].good: expected a boolean/],
+      [edit((m) => (m.lifts.squat[0].good = null)), /squat\[0\].good: expected a boolean/],
+      [edit((m) => delete m.lifts.squat[0].good), /squat\[0\].good: missing/],
+      [edit((m) => delete m.lifts.squat[0].exercise_id), /squat\[0\].exercise_id: missing/],
+    ];
+    for (const [text, message] of bad) {
+      expect(() => parseMeet(text)).toThrow(FormatError);
+      expect(() => parseMeet(text)).toThrow(message);
+    }
+  });
+
+  it('but drop a field they do not know', () => {
+    const text = JSON.stringify({ ...JSON.parse(serializeMeet(sample)), mood: 'good' });
+    expect(parseMeet(text)).toEqual(sample);
+  });
+
+  it('are named by their path, and are not migrated', () => {
+    expect(meetPath(sample.id)).toBe('meets/2026-05-16-8mzt.json');
+    expect(isMigrated(meetPath(sample.id))).toBe(false);
+    const text = serializeMeet(sample);
+    expect(migrateFile(meetPath(sample.id), text, 1)).toBe(text);
+  });
+});
+
 describe('conflict records', () => {
   function conflict(g: Gen): ConflictRecord {
     const common = { id: '2026-09-27-7xq2', found_at: g.instant(), device_id: g.string() };
-    const which = g.int(0, 2);
+    const which = g.int(0, 3);
+    if (which === 3) {
+      const m = meet(g);
+      return { ...common, path: meetPath(m.id), key: null, version: g.bool() ? m : null };
+    }
     if (which === 0) {
       const s = session(g);
       return { ...common, path: sessionPath(s.id), key: null, version: g.bool() ? s : null };
@@ -1413,7 +1647,7 @@ describe('conflict records', () => {
     });
   });
 
-  it('fail to read a saved session or template that is not the one its path names', () => {
+  it('fail to read a saved session, template or meet that is not the one its path names', () => {
     const g = new Gen(prng(42));
     const record = (path: string, version: object) =>
       JSON.stringify({
@@ -1426,13 +1660,16 @@ describe('conflict records', () => {
       });
     const s = JSON.parse(serializeSession({ ...session(g), id: '2026-09-14-k3f9' }));
     const t = JSON.parse(serializeTemplate({ ...template(g), id: 'bench-k3f9' }));
+    const m = JSON.parse(serializeMeet({ ...meet(g), id: '2026-05-16-8mzt' }));
     expect(parseConflict(record(sessionPath('2026-09-14-k3f9'), s)).version).toEqual(s);
     expect(parseConflict(record(templatePath('bench-k3f9'), t)).version).toEqual(t);
+    expect(parseConflict(record(meetPath('2026-05-16-8mzt'), m)).version).toEqual(m);
 
     const bad: Array<[string, object, RegExp]> = [
       [sessionPath('2026-09-14-7xq2'), s, /conflict.version.id: expected "2026-09-14-7xq2"/],
       [sessionPath('2025-09-14-k3f9'), s, /conflict.version.id/],
       [templatePath('squat-k3f9'), t, /conflict.version.id: expected "squat-k3f9"/],
+      [meetPath('2026-05-16-7xq2'), m, /conflict.version.id: expected "2026-05-16-7xq2"/],
     ];
     for (const [path, version, message] of bad) {
       expect(() => parseConflict(record(path, version))).toThrow(FormatError);
@@ -1593,6 +1830,7 @@ describe('a file in format 1', () => {
     expect(isMigrated(sessionPath('2026-09-14-k3f9'))).toBe(true);
     expect(isMigrated(templatePath('bench-k3f9'))).toBe(true);
     expect(isMigrated('conflicts/2026-09-27-7xq2.json')).toBe(true);
+    expect(isMigrated(meetPath('2026-05-16-8mzt'))).toBe(false);
     expect(isMigrated(TABLES.bodyweight.path)).toBe(false);
     expect(isMigrated(FORMAT_PATH)).toBe(false);
     expect(isMigrated('notes.md')).toBe(false);

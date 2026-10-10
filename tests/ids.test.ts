@@ -1,6 +1,13 @@
 import { describe, it, expect } from 'vitest';
-import { ID_ALPHABET, newConflictId, newSessionId, newTemplateId, slug } from '../src/storage/ids';
-import { classify, sessionPath, templatePath } from '../src/storage/paths';
+import {
+  ID_ALPHABET,
+  newConflictId,
+  newMeetId,
+  newSessionId,
+  newTemplateId,
+  slug,
+} from '../src/storage/ids';
+import { classify, meetPath, sessionPath, templatePath } from '../src/storage/paths';
 
 /** Mulberry32: a small seeded PRNG, so every generated case is reproducible. */
 function prng(seed: number): () => number {
@@ -77,6 +84,29 @@ describe('conflict ids', () => {
       new RegExp(`^2026-09-27-${SUFFIX}$`),
     );
     expect(() => newConflictId('27/09/2026', none)).toThrow(/YYYY-MM-DD/);
+  });
+});
+
+describe('meet ids', () => {
+  it('are the meet’s date when created, then four random characters', () => {
+    const random = prng(10);
+    for (let i = 0; i < 100; i++) {
+      expect(newMeetId('2026-05-16', none, random)).toMatch(new RegExp(`^2026-05-16-${SUFFIX}$`));
+    }
+    expect(newMeetId('2026-05-16', none, () => 0)).toBe('2026-05-16-0000');
+  });
+
+  it('name a file sync recognises as a meet', () => {
+    const id = newMeetId('2026-05-16', none, prng(11));
+    expect(classify(meetPath(id))).toEqual({ kind: 'meet', id });
+  });
+
+  it('refuse a date that is not YYYY-MM-DD, and never return one already held', () => {
+    expect(() => newMeetId('16 May 2026', none)).toThrow(/YYYY-MM-DD/);
+    const taken = new Set(['2026-05-16-0000']);
+    expect(
+      newMeetId('2026-05-16', (id) => taken.has(id), sequence(0, 0, 0, 0, 0.5, 0.5, 0.5, 0.5)),
+    ).toBe('2026-05-16-gggg');
   });
 });
 

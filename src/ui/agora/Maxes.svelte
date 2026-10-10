@@ -4,8 +4,8 @@
   import Button from '../kit/Button.svelte';
   import Icon from '../kit/Icon.svelte';
   import {
+    bestSingle,
     kgText,
-    liftBests,
     MAX_RANGE,
     maxProblem,
     maxViews,
@@ -13,16 +13,18 @@
     whenText,
     type BestLine,
   } from '../lifter';
+  import { meetBestLine } from '../meets';
   import { showToast } from '../overlays.svelte';
   import { localDate } from '../session';
   import EntryForm from './EntryForm.svelte';
 
   /**
    * The reference max per competition lift: the one in force today and when it
-   * was set, its history, a dated entry to add, and beside it the best recent
-   * e1RM as a suggestion that only fills the form. Nothing is written until the
-   * lifter saves it. Under it, the two numbers it is not: the heaviest single
-   * in training and the heaviest at a meet.
+   * was set, its history, and Edit max, which opens a dated entry filled with
+   * the max in force and today's date; beside it the best recent e1RM as a
+   * suggestion that only fills the form. Nothing is written until the lifter
+   * saves it. Under it, the two numbers it is not: the heaviest single in
+   * training and the heaviest at a meet.
    */
 
   const today = localDate(new Date());
@@ -37,10 +39,11 @@
   let problem = $state<string | null>(null);
   let history = $state<CompetitionLift | null>(null);
 
-  function open(lift: CompetitionLift, suggested: number | null = null): void {
+  /** The form for a new entry: today, with `kg` in it, by default the max in force. */
+  function open(lift: CompetitionLift, kgIn: number | null): void {
     adding = lift;
     date = today;
-    kg = suggested === null ? '' : String(suggested);
+    kg = kgIn === null ? '' : kgText(kgIn);
     note = '';
     problem = null;
   }
@@ -86,7 +89,8 @@
 <section id="maxes" aria-labelledby="maxes-h">
   <h2 id="maxes-h" class="visually-hidden">Reference maxes</h2>
   {#each views as view (view.lift)}
-    {@const bests = liftBests(view.lift, app.records, app.competitionBests, app.library)}
+    {@const single = bestSingle(view.lift, app.records, app.library)}
+    {@const meet = meetBestLine(view.lift, app.meets, app.library)}
     <p class="sec caps">Reference max · {view.lift}</p>
     <div class="card max">
       <div class="top">
@@ -109,26 +113,28 @@
           </div>
         {/if}
       </div>
-      {#if bests.single || bests.competition}
+      {#if single || meet}
         <dl class="bests">
-          {#if bests.single}
+          {#if single}
             <dt class="caps">Best single</dt>
             <dd>
-              <span class="figure-num">{kgText(bests.single.kg)}</span>
-              <span class="meta">{aboutBest(bests.single)}</span>
+              <span class="figure-num">{kgText(single.kg)}</span>
+              <span class="meta">{aboutBest(single)}</span>
             </dd>
           {/if}
-          {#if bests.competition}
+          {#if meet}
             <dt class="caps">At a meet</dt>
             <dd>
-              <span class="figure-num">{kgText(bests.competition.kg)}</span>
-              <span class="meta">{aboutBest(bests.competition)}</span>
+              <span class="figure-num">{kgText(meet.kg)}</span>
+              <span class="meta">{aboutBest(meet)}</span>
             </dd>
           {/if}
         </dl>
       {/if}
       <div class="tools">
-        <Button variant="link" onclick={() => open(view.lift)}>Enter a max</Button>
+        <Button variant="link" onclick={() => open(view.lift, view.inForce?.weight_kg ?? null)}
+          >Edit max</Button
+        >
         {#if view.history.length > 1}
           <Button
             variant="link"

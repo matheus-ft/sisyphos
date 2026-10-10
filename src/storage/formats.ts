@@ -3,7 +3,6 @@ import { exerciseFromRow } from '../library/parse';
 import type {
   BodyweightEntry,
   CompetitionLift,
-  CompetitionBest,
   ConflictRecord,
   Exercise,
   ExerciseAddition,
@@ -13,6 +12,9 @@ import type {
   LoadPrescription,
   LoadUnit,
   ManualRecord,
+  Meet,
+  MeetAttempts,
+  MeetSlot,
   OneRmEntry,
   PerformedSet,
   PrescribedSet,
@@ -71,7 +73,6 @@ export interface Tables {
   bodyweight: TableSchema<BodyweightEntry>;
   oneRm: TableSchema<OneRmEntry>;
   manualRecords: TableSchema<ManualRecord>;
-  competitionBests: TableSchema<CompetitionBest>;
   additions: TableSchema<ExerciseAddition>;
 }
 
@@ -111,6 +112,9 @@ const TIME_PRECISIONS = members<Session['time_precision']>({ instant: true, date
 const BODYWEIGHT_SOURCES = members<BodyweightEntry['source']>({ manual: true, import: true });
 
 const ISO_DATE = /^\d{4}-\d{2}-\d{2}$/;
+
+/** Attempts a lift has at a meet, taken or not (DATA.md, The files). */
+const MEET_ATTEMPTS = 3;
 
 // --- cells ---------------------------------------------------------------------
 
@@ -293,30 +297,6 @@ export const TABLES: Tables = {
       date: readDate(key, 'date'),
       exercise_id: readText(key, 'exercise_id'),
       reps: numberCell(readNumber(key, 'reps')),
-    }),
-  },
-
-  competitionBests: {
-    kind: 'competitionBests',
-    path: TABLE_PATHS.competitionBests,
-    columns: ['date', 'exercise_id', 'weight_kg', 'meet'],
-    key: ['date', 'exercise_id'],
-    numeric: [],
-    toRow: (best) => ({
-      date: best.date,
-      exercise_id: best.exercise_id,
-      weight_kg: numberCell(best.weight_kg),
-      meet: best.meet ?? '',
-    }),
-    fromRow: (row) => ({
-      date: readDate(row, 'date'),
-      exercise_id: readText(row, 'exercise_id'),
-      weight_kg: readNumber(row, 'weight_kg'),
-      meet: readOptionalText(row, 'meet'),
-    }),
-    readKey: (key) => ({
-      date: readDate(key, 'date'),
-      exercise_id: readText(key, 'exercise_id'),
     }),
   },
 
@@ -658,6 +638,53 @@ function templateJson(template: Template) {
   };
 }
 
+/**
+ * Refused here as the reader refuses it, so no device ever commits a meet it
+ * cannot read back. A lift is exactly three slots, an attempt a weight above
+ * zero, and a placing a whole number from 1.
+ */
+function attemptsJson(lift: string, slots: MeetAttempts) {
+  if (!Array.isArray(slots) || slots.length !== MEET_ATTEMPTS) {
+    throw new Error(`cannot write the ${lift}: it has ${MEET_ATTEMPTS} attempts, taken or not`);
+  }
+  return slots.map((slot) => {
+    if (slot == null) return null;
+    if (!(slot.weight_kg > 0)) {
+      throw new Error(`cannot write a ${lift} attempt of ${slot.weight_kg} kg: above zero`);
+    }
+    return { exercise_id: slot.exercise_id, weight_kg: slot.weight_kg, good: slot.good };
+  });
+}
+
+function meetJson(meet: Meet) {
+  if (meet.placing !== null && !(Number.isInteger(meet.placing) && meet.placing >= 1)) {
+    throw new Error(`cannot write a placing of ${meet.placing}: a whole number from 1, or null`);
+  }
+  if (meet.bodyweight_kg !== null && !(meet.bodyweight_kg > 0)) {
+    throw new Error(`cannot write a bodyweight of ${meet.bodyweight_kg} kg: above zero, or null`);
+  }
+  return {
+    id: meet.id,
+    date: meet.date,
+    name: meet.name,
+    location: meet.location,
+    federation: meet.federation,
+    weight_class: meet.weight_class,
+    equipment: meet.equipment,
+    bodyweight_kg: meet.bodyweight_kg,
+    placing: meet.placing,
+    notes: meet.notes,
+    lifts: {
+      squat: attemptsJson('squat', meet.lifts.squat),
+      bench: attemptsJson('bench', meet.lifts.bench),
+      deadlift: attemptsJson('deadlift', meet.lifts.deadlift),
+    },
+    created_at: meet.created_at,
+    updated_at: meet.updated_at,
+    device_id: meet.device_id,
+  };
+}
+
 /** A table row as a JSON object, columns in the given order. */
 function rowJson(row: TableRow, columns: readonly string[]) {
   const values = cells(row, columns);
@@ -859,6 +886,57 @@ const template: Read<Template> = (v, path) => {
   };
 };
 
+/** An amount of weight on the bar or the lifter: finite and above zero. */
+const positive: Read<number> = (v, path) =>
+  typeof v === 'number' && Number.isFinite(v) && v > 0 ? v : fail(path, 'a number above zero');
+
+const placing: Read<number> = (v, path) =>
+  typeof v === 'number' && Number.isInteger(v) && v >= 1 ? v : fail(path, 'a whole number from 1');
+
+const attempt: Read<MeetSlot> = nullable((v, path) => {
+  const field = fields(v, path);
+  return {
+    exercise_id: field('exercise_id', str),
+    weight_kg: field('weight_kg', positive),
+    good: field('good', bool),
+  };
+});
+
+/** Exactly three slots, taken or not. */
+const attempts: Read<MeetAttempts> = (v, path) => {
+  if (!Array.isArray(v) || v.length !== MEET_ATTEMPTS) {
+    return fail(path, `${MEET_ATTEMPTS} attempts, each an attempt or null`);
+  }
+  return [attempt(v[0], `${path}[0]`), attempt(v[1], `${path}[1]`), attempt(v[2], `${path}[2]`)];
+};
+
+const meet: Read<Meet> = (v, path) => {
+  const field = fields(v, path);
+  return {
+    id: field('id', str),
+    date: field('date', date),
+    name: field('name', nullable(str)),
+    location: field('location', nullable(str)),
+    federation: field('federation', nullable(str)),
+    weight_class: field('weight_class', nullable(str)),
+    equipment: field('equipment', nullable(str)),
+    bodyweight_kg: field('bodyweight_kg', nullable(positive)),
+    placing: field('placing', nullable(placing)),
+    notes: field('notes', nullable(str)),
+    lifts: field('lifts', (x, p) => {
+      const f = fields(x, p);
+      return {
+        squat: f('squat', attempts),
+        bench: f('bench', attempts),
+        deadlift: f('deadlift', attempts),
+      };
+    }),
+    created_at: field('created_at', str),
+    updated_at: field('updated_at', str),
+    device_id: field('device_id', str),
+  };
+};
+
 /**
  * Runs a table read on part of a JSON file, naming that part in its error. Any
  * error: what the table's readers cannot read is a file that does not parse.
@@ -911,6 +989,13 @@ export function parseTemplate(text: string): Template {
   return template(parseJson(text), 'template');
 }
 
+export function serializeMeet(meet: Meet): string {
+  return json(meetJson(meet));
+}
+export function parseMeet(text: string): Meet {
+  return meet(parseJson(text), 'meet');
+}
+
 /**
  * The saved version is written in its own file's form: a session or template
  * as its file would hold it, a table row with its columns in the table's order.
@@ -927,13 +1012,15 @@ export function serializeConflict(conflict: ConflictRecord): string {
     key = rowJson(conflict.key, schema.key);
     version =
       conflict.version == null ? null : rowJson(conflict.version as TableRow, schema.columns);
-  } else if (target.kind === 'session' || target.kind === 'template') {
+  } else if (target.kind === 'session' || target.kind === 'template' || target.kind === 'meet') {
     if (conflict.key != null) throw new Error(`a conflict on ${conflict.path} has no row key`);
     if (conflict.version != null) {
       version =
         target.kind === 'session'
           ? sessionJson(conflict.version as Session)
-          : templateJson(conflict.version as Template);
+          : target.kind === 'template'
+            ? templateJson(conflict.version as Template)
+            : meetJson(conflict.version as Meet);
     }
   } else {
     throw new Error(`cannot record a conflict on ${conflict.path}`);
@@ -958,7 +1045,7 @@ function conflict(value: unknown): ConflictRecord {
   const target = classify(path);
 
   let key: TableRow | null;
-  let version: Session | Template | TableRow | null;
+  let version: Session | Template | Meet | TableRow | null;
   if (target.kind === 'table') {
     // Resolving finds the row to replace by `key` and writes `version` into the
     // table, so both are read into the app's own form, as the table's rows
@@ -977,12 +1064,14 @@ function conflict(value: unknown): ConflictRecord {
     }
     key = own;
     version = saved;
-  } else if (target.kind === 'session' || target.kind === 'template') {
+  } else if (target.kind === 'session' || target.kind === 'template' || target.kind === 'meet') {
     key = field('key', nothing);
-    const saved: Session | Template | null =
+    const saved: Session | Template | Meet | null =
       target.kind === 'session'
         ? field('version', nullable(session))
-        : field('version', nullable(template));
+        : target.kind === 'template'
+          ? field('version', nullable(template))
+          : field('version', nullable(meet));
     // Resolving writes the saved record to `path`, and a file is named by the
     // id of the record it holds (DATA.md, Ids): one holding another id would be a second
     // file claiming that record.
@@ -991,7 +1080,7 @@ function conflict(value: unknown): ConflictRecord {
     }
     version = saved;
   } else {
-    return fail('conflict.path', 'a session, template or table path');
+    return fail('conflict.path', 'a session, template, meet or table path');
   }
 
   return {
@@ -1045,7 +1134,10 @@ function isObject(value: unknown): value is Record<string, unknown> {
 /**
  * Whether a format migration rewrites the file at this path. Every step so far
  * changes sessions, templates and conflict records only; tables, the marker and
- * files that are not the app's are left as they are.
+ * files that are not the app's are left as they are. A meet is not migrated:
+ * meets came after format 2 without a new format (DATA.md, The files), so no
+ * file of one is older than this build's form, and a conflict record about a
+ * meet holds nothing a step would change.
  */
 export function isMigrated(path: string): boolean {
   const kind = classify(path).kind;

@@ -16,9 +16,10 @@
     sessionName,
     templateLine,
   } from '../train';
-  import DatePick from '../train/DatePick.svelte';
+  import CalendarSheet from '../train/CalendarSheet.svelte';
   import PlanCard from '../train/PlanCard.svelte';
   import RunningCard from '../train/RunningCard.svelte';
+  import TemplateFolders from '../train/TemplateFolders.svelte';
 
   /**
    * Askēsis, the Train tab: what to do today. The session running, or today's
@@ -41,9 +42,14 @@
    * template, the lifter's choice. With no template there is nothing to choose.
    */
   let planning = $state<IsoDate | null>(null);
+  /** The calendar, while it asks for a day: to plan one, or to log a session that happened. */
+  let picking = $state<'plan' | 'log' | null>(null);
 
   function pickedDay(date: IsoDate): void {
-    if (app.templates.length === 0) void app.create(null, { planned: true, date });
+    const why = picking;
+    picking = null;
+    if (why === 'log') void app.create(null, { date });
+    else if (app.templates.length === 0) void app.create(null, { planned: true, date });
     else planning = date;
   }
 
@@ -105,63 +111,63 @@
   {@render planRows(plans.ahead)}
 {/if}
 
-<div class="starts">
+<ul class="group starts">
   {#if !running}
-    <Button
-      variant={plans.today.length ? 'quiet' : 'primary'}
-      bench
-      full
-      onclick={() => app.create(null)}>Start an empty session</Button
-    >
+    <li class="row-link">
+      <button onclick={() => app.create(null)}>
+        <span class="grow">
+          <span class="t">Start an empty session</span>
+          <span class="s">Add exercises as you go</span>
+        </span>
+        <Icon name="chev" size="sm" />
+      </button>
+    </li>
   {/if}
-  <ul class="group">
-    <li class="row-link">
-      <DatePick label="Plan a session for" min={today} onpick={pickedDay}>
-        <span class="grow">
-          <span class="t">Plan one ahead</span>
-          <span class="s">Fresh or from a template, started on the day</span>
-        </span>
-        <Icon name="calendar" />
-      </DatePick>
-    </li>
-    <li class="row-link">
-      <DatePick
-        label="Log a session from"
-        max={today}
-        onpick={(date) => app.create(null, { date })}
-      >
-        <span class="grow">
-          <span class="t">Log a past session</span>
-          <span class="s">Pick the day it happened</span>
-        </span>
-        <Icon name="calendar" />
-      </DatePick>
-    </li>
-  </ul>
-</div>
+  <li class="row-link">
+    <button onclick={() => (picking = 'plan')}>
+      <span class="grow">
+        <span class="t">Plan one ahead</span>
+        <span class="s">Fresh or from a template, started on the day</span>
+      </span>
+      <Icon name="calendar" />
+    </button>
+  </li>
+  <li class="row-link">
+    <button onclick={() => (picking = 'log')}>
+      <span class="grow">
+        <span class="t">Log a past session</span>
+        <span class="s">Pick the day it happened</span>
+      </span>
+      <Icon name="calendar" />
+    </button>
+  </li>
+</ul>
 
 <p class="sec caps">
   Templates
   {#if app.templates.length}<span class="meta">{app.templates.length}</span>{/if}
 </p>
-<ul class="group">
-  {#each app.templates as template (template.id)}
-    <li class="row-link">
-      <button onclick={() => app.openTemplate(template)}>
-        <span class="grow">
-          <span class="t">{template.name}</span>
-          <span class="s">{templateLine(template)}</span>
-        </span>
-        <Icon name="chev" size="sm" />
-      </button>
-    </li>
-  {/each}
-  <li class="row-link">
-    <button class="new" onclick={app.createTemplate}>
-      <span class="grow t">+ New template</span>
-    </button>
-  </li>
-</ul>
+<TemplateFolders templates={app.templates} />
+
+<CalendarSheet
+  open={picking === 'plan'}
+  onclose={() => (picking = null)}
+  label="Pick a day to plan"
+  sessions={app.current}
+  {today}
+  min={today}
+  onpick={pickedDay}
+/>
+
+<CalendarSheet
+  open={picking === 'log'}
+  onclose={() => (picking = null)}
+  label="Pick the day it happened"
+  sessions={app.current}
+  {today}
+  max={today}
+  onpick={pickedDay}
+/>
 
 <Sheet
   open={planning !== null}
@@ -218,17 +224,7 @@
   }
 
   .starts {
-    display: grid;
-    gap: var(--space-3);
-    margin: var(--space-5) 12px 0;
-  }
-
-  .starts .group {
-    margin: 0;
-  }
-
-  .new {
-    color: var(--accent);
+    margin-top: var(--space-5);
   }
 
   .pick-title {

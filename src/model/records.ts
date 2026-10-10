@@ -263,21 +263,55 @@ export interface ManualRecord {
   context: string | null;
 }
 
+// --- meets ---------------------------------------------------------------------
+
 /**
- * The heaviest single made at a meet: judged, peaked for, lifted in a singlet
- * on commands. A different number from anything lifted in training, so it is
- * kept apart from the record book rather than standing in it as a one-rep
- * record, and apart from the reference max, which programming reads.
- *
- * Identified by date and exercise: a meet day has one best attempt per lift.
+ * One attempt at a meet. `exercise_id` is a competition exercise, so sumo and
+ * conventional stay apart on one platform; the parser does not check it against
+ * the library, the screen that enters it does. There is no live logging, so
+ * `good` is always known.
  */
-export interface CompetitionBest {
-  date: IsoDate;
-  /** A competition-tier exercise, so sumo and conventional stay apart. */
+export interface MeetAttempt {
   exercise_id: string;
   weight_kg: number;
-  /** The meet, e.g. "Nationals 2026". */
-  meet: string | null;
+  good: boolean;
+}
+
+/** An attempt, or null: not taken, or not known. */
+export type MeetSlot = MeetAttempt | null;
+
+/** A lift's three attempts, in the order they were taken. */
+export type MeetAttempts = [MeetSlot, MeetSlot, MeetSlot];
+
+/**
+ * A powerlifting meet: judged, peaked for, lifted on commands, so a different
+ * thing from anything lifted in training, kept apart from the record book and
+ * from the reference max. A record of its own, one file, entered by hand after
+ * the fact.
+ *
+ * The best of a lift and the total are never stored: the heaviest good attempt,
+ * and the sum of the three bests, are worked out wherever they are shown
+ * (`src/ui/meets.ts`).
+ */
+export interface Meet {
+  /** `<date when created>-<4 random>`. Names its file and never changes, whatever the date does. */
+  id: Id;
+  date: IsoDate;
+  name: string | null;
+  location: string | null;
+  federation: string | null;
+  weight_class: string | null;
+  /** Free text: raw, wraps, single-ply, multi-ply, or whatever the federation calls it. */
+  equipment: string | null;
+  bodyweight_kg: number | null;
+  /** A whole number from 1. */
+  placing: number | null;
+  notes: string | null;
+  lifts: Record<CompetitionLift, MeetAttempts>;
+  created_at: Instant;
+  updated_at: Instant;
+  /** Last device to write. Used for conflict reporting, never for resolution. */
+  device_id: string;
 }
 
 export interface BodyweightEntry {
@@ -307,5 +341,5 @@ export interface ConflictRecord {
   /** The device whose version this is. */
   device_id: string;
   /** That device's version: the whole record, the row, or null if it had deleted it. */
-  version: Session | Template | TableRow | null;
+  version: Session | Template | Meet | TableRow | null;
 }

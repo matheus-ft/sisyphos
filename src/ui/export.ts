@@ -1,11 +1,12 @@
 import { csvLine } from '../csv';
 import { toKg } from '../metrics/load';
 import { compareSessions } from '../metrics/flatten';
-import type { PerformedSet, Session } from '../model';
+import type { Meet, PerformedSet, Session } from '../model';
 import { sessionMinutes } from './format';
+import { ATTEMPTS, liftBest, meetTotal } from './meets';
 
 /**
- * sets.csv and sessions.csv, the export DATA.md, Exports describes. Generated
+ * sets.csv, sessions.csv, meets.csv and attempts.csv, the export DATA.md, Exports describes. Generated
  * on demand and never read back, so nothing here is a source of truth.
  *
  * Cells follow DATA.md, Serialisation, so the two tables read like the log's
@@ -43,6 +44,39 @@ export const SESSIONS_COLUMNS = [
   'program_weekday',
   'bodyweight_kg',
   'notes',
+] as const;
+
+/**
+ * One row to a meet. The best of each lift and the total are worked out here
+ * (the heaviest good attempt, and the sum of the three), because the log does
+ * not store them: a notebook should not have to re-derive what the app shows.
+ */
+export const MEETS_COLUMNS = [
+  'meet_id',
+  'date',
+  'name',
+  'location',
+  'federation',
+  'weight_class',
+  'equipment',
+  'bodyweight_kg',
+  'placing',
+  'squat_kg',
+  'bench_kg',
+  'deadlift_kg',
+  'total_kg',
+  'notes',
+] as const;
+
+/** One row to an attempt taken, so a missed one and the exercise (sumo or conventional) are kept. */
+export const ATTEMPTS_COLUMNS = [
+  'meet_id',
+  'date',
+  'lift',
+  'attempt',
+  'exercise_id',
+  'weight_kg',
+  'good',
 ] as const;
 
 const cell = (n: number | null | undefined): string => (n == null ? '' : String(n));
@@ -131,4 +165,53 @@ export function sessionsCsv(sessions: readonly Session[]): string {
       s.notes ?? '',
     ]),
   );
+}
+
+const meetOrder = (meets: readonly Meet[]) =>
+  [...meets].sort((a, b) => a.date.localeCompare(b.date) || a.id.localeCompare(b.id));
+
+/** Every meet, oldest first, with each lift's best and the total. Empty where a lift has no good attempt. */
+export function meetsCsv(meets: readonly Meet[]): string {
+  return table(
+    MEETS_COLUMNS,
+    meetOrder(meets).map((m) => [
+      m.id,
+      m.date,
+      m.name ?? '',
+      m.location ?? '',
+      m.federation ?? '',
+      m.weight_class ?? '',
+      m.equipment ?? '',
+      cell(m.bodyweight_kg),
+      cell(m.placing),
+      cell(liftBest(m.lifts.squat)?.weight_kg),
+      cell(liftBest(m.lifts.bench)?.weight_kg),
+      cell(liftBest(m.lifts.deadlift)?.weight_kg),
+      cell(meetTotal(m)),
+      m.notes ?? '',
+    ]),
+  );
+}
+
+/** Every attempt taken, missed ones included; `attempt` is 1 to 3, so meet, lift and attempt identify one. */
+export function attemptsCsv(meets: readonly Meet[]): string {
+  const rows: string[][] = [];
+  for (const meet of meetOrder(meets)) {
+    for (const lift of ['squat', 'bench', 'deadlift'] as const) {
+      for (let i = 0; i < ATTEMPTS; i++) {
+        const slot = meet.lifts[lift][i];
+        if (!slot) continue;
+        rows.push([
+          meet.id,
+          meet.date,
+          lift,
+          String(i + 1),
+          slot.exercise_id,
+          cell(slot.weight_kg),
+          slot.good ? 'true' : '',
+        ]);
+      }
+    }
+  }
+  return table(ATTEMPTS_COLUMNS, rows);
 }

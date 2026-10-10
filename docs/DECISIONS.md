@@ -255,14 +255,29 @@ lifts those are is the lifter's choice, so it is config (`definitions.json`),
 not the library's tier: high-bar squat is a competition lift, but not this
 lifter's.
 
-**A meet's best is a fourth thing, in a table of its own**
-(`lifter/competition-bests.csv`). A single made on a platform is peaked for and
-judged, so it is neither a training record nor a reference max, and the app
-shows all three side by side rather than letting one stand for another.
-Rejected: a `competition` flag on a hand-entered record. Adding a column to a
-table changes the log's format, so every device's copy and every sync base
-would need migrating, and an older app could no longer read the file at all; a
-new file is additive, since an older app leaves a file it does not know alone.
+**A meet is a record of its own** (`meets/<id>.json`), not a row in a table. A
+meet is a day with nine attempts, a total, a placing and a federation; the first
+design kept only the heaviest single of each lift at one (a table,
+`lifter/competition-bests.csv`), and could say none of the rest. A meet is
+judged and peaked for, so it is neither a training record nor a reference max,
+and the app shows the three side by side rather than letting one stand for
+another. It is one file per meet, like a session, named by its date and four
+characters. Each attempt names its own exercise, so sumo and conventional stay
+apart on one platform, and `good` is a plain boolean since a meet is entered
+afterwards. Its best of a lift and its total are derived, never stored: a stored
+total is a value that can disagree with the attempts it sums.
+
+It is no format bump. A new file kind is additive: an older app treats `meets/`
+as files that are not its own and leaves them alone, so it can neither read nor
+lose one. A bump would stop every phone still on the old version from syncing at
+all until it updated, for a file it could have ignored.
+
+The old table was dropped, not migrated. Its rows were a single per lift with no
+attempts, and the lifter re-enters their meets by hand, so a migration would
+have invented attempts to fill a shape it did not have. The file stays in the
+log repo as one the app leaves alone, and a copy on a device is dropped at
+launch (`retire.ts`), because it would otherwise sit there as a change that
+never backs up.
 
 ## Rejected: storing anything twice
 

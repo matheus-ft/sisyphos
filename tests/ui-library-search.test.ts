@@ -6,6 +6,8 @@ import {
   isFiltered,
   muscleLine,
   NO_FILTER,
+  TIER_DETAIL,
+  TIER_FILTERS,
   TIER_LABEL,
 } from '../src/ui/librarySearch';
 import { byId, library, muscles } from './analysis-fixtures';
@@ -48,6 +50,15 @@ describe('filtering the library', () => {
     expect(comp.every((e) => e.tier === 'comp')).toBe(true);
   });
 
+  it('by variation, which is both close and distant', () => {
+    const variations = filterLibrary(library, { ...NO_FILTER, tier: 'variation' });
+    expect(variations.length).toBeGreaterThan(0);
+    expect(variations.every((e) => e.tier === 'high_spec' || e.tier === 'low_spec')).toBe(true);
+    const close = library.filter((e) => e.tier === 'high_spec').length;
+    const distant = library.filter((e) => e.tier === 'low_spec').length;
+    expect(variations).toHaveLength(close + distant);
+  });
+
   it('by muscle, whether primary or aux', () => {
     const glutes = filterLibrary(library, { ...NO_FILTER, muscle: 'glutes' });
     expect(glutes.some((e) => e.muscles.primary.includes('glutes'))).toBe(true);
@@ -75,9 +86,22 @@ describe('what a row says', () => {
 
   it('labels the tiers in the lifter’s words', () => {
     expect(TIER_LABEL).toEqual({
-      comp: 'Main',
-      high_spec: 'Variant',
-      low_spec: 'Distant',
+      comp: 'Competition',
+      high_spec: 'Variation',
+      low_spec: 'Variation',
+      acc: 'Accessory',
+    });
+  });
+
+  it('offers three tier choices, with variation covering both', () => {
+    expect(TIER_FILTERS.map((o) => o.label)).toEqual(['Competition', 'Variation', 'Accessory']);
+  });
+
+  it('names the precise tier in the detail', () => {
+    expect(TIER_DETAIL).toEqual({
+      comp: 'Competition',
+      high_spec: 'Close variation',
+      low_spec: 'Distant variation',
       acc: 'Accessory',
     });
   });

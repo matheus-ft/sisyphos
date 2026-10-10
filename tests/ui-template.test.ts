@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import exercisesCsv from '../src/library/exercises.csv?raw';
 import musclesCsv from '../src/library/muscles.csv?raw';
 import { parseExercises, parseMuscles } from '../src/library/parse';
+import type { ProgramLabel } from '../src/model';
 import { newSession, fromTemplate, targetsOf } from '../src/ui/session';
 import { parseTemplate, serializeTemplate } from '../src/storage/formats';
 import {
@@ -10,14 +11,19 @@ import {
   duplicateTarget,
   moveTarget,
   editTarget,
+  exerciseHeadline,
   exerciseLines,
   formatClock,
   formatRange,
+  groupTemplates,
   loadModes,
   loadOf,
   loadPreview,
   moveTemplateExercise,
   newTemplate,
+  NO_PROGRAM_KEY,
+  openAfterMove,
+  openAfterRemove,
   parseOrdinal,
   parsePercent,
   parseRange,
@@ -25,6 +31,7 @@ import {
   removeTarget,
   removeTemplateExercise,
   rename,
+  restShown,
   setIntention,
   setLabel,
   setsSummary,
@@ -467,5 +474,138 @@ describe('a line for a list', () => {
     t = editTarget(t, 0, 0, { reps: 5 }, 'weight');
     expect(exerciseLines(t.exercises, names)).toEqual(['Low-Bar Squat 1 × 5', 'Bench Press 1 set']);
     expect(exerciseLines([{ exercise_id: 'gone', prescribed: [] }], names)).toEqual(['gone']);
+  });
+});
+
+describe('an exercise on one line', () => {
+  const bench = library.find((e) => e.id === 'bench')!;
+  const line = (t: ReturnType<typeof blank>, exercise = bench) =>
+    exerciseHeadline(t.exercises[0], exercise);
+
+  it('gives the name, the sets, the RPE and the rest', () => {
+    let t = addTemplateExercise(blank(), bench);
+    t = editTarget(t, 0, 0, { reps: 5, rpe: 8 }, 'weight');
+    t = addTarget(addTarget(t, 0, 'weight'), 0, 'weight');
+    t = setTemplateRest(t, 0, 180);
+    expect(line(t)).toBe('Bench Press · 3×5 @8 · 3:00');
+  });
+
+  it('leaves out what is not planned but shows the rest the exercise will take', () => {
+    const t = addTemplateExercise(blank(), bench);
+    expect(line(t)).toBe(`Bench Press · 1 set · ${restShown(bench, null)}`);
+    expect(exerciseHeadline({ ...t.exercises[0], prescribed: [] }, bench)).toBe(
+      `Bench Press · ${restShown(bench, null)}`,
+    );
+  });
+
+  it('shows ranges, and a span of RPE where the sets differ', () => {
+    let t = addTemplateExercise(blank(), bench);
+    t = setTemplateRest(t, 0, 120);
+    t = editTarget(t, 0, 0, { reps: [3, 5], rpe: 7 }, 'weight');
+    t = addTarget(t, 0, 'weight');
+    t = editTarget(t, 0, 1, { rpe: 9 }, 'weight');
+    expect(line(t)).toBe('Bench Press · 2×3–5 @7–9 · 2:00');
+    t = editTarget(t, 0, 1, { reps: 8, rpe: [8, null] }, 'weight');
+    expect(line(t)).toBe('Bench Press · 2 sets @7+ · 2:00');
+  });
+
+  it('counts only the working sets', () => {
+    let t = addTemplateExercise(blank(), bench);
+    t = setTemplateRest(t, 0, 180);
+    t = editTarget(t, 0, 0, { reps: 5, rpe: 8 }, 'weight');
+    const [work] = t.exercises[0].prescribed;
+    const warmup = { ...work, reps: [8, 8] as [number, number], rpe: [3, 3] as [number, number] };
+    const entry = { ...t.exercises[0], prescribed: [{ ...warmup, is_warmup: true }, work] };
+    expect(exerciseHeadline(entry, bench)).toBe('Bench Press · 1×5 @8 · 3:00');
+  });
+
+  it('times unloaded work and names an exercise the library no longer has by its id', () => {
+    let t = addTemplateExercise(blank(), plank);
+    t = setTemplateRest(t, 0, 60);
+    t = editTarget(t, 0, 0, { amount: 45 }, 'time');
+    t = addTarget(t, 0, 'time');
+    expect(line(t, plank)).toBe('Plank · 2×0:45 · 1:00');
+    expect(exerciseHeadline(t.exercises[0], undefined)).toBe(
+      `plank · 2×0:45 · ${restShown(undefined, 60)}`,
+    );
+  });
+
+  it('keeps the open exercise open as the list changes', () => {
+    expect(openAfterMove(null, 1, -1)).toBeNull();
+    // The open one moves with its card.
+    expect(openAfterMove(1, 1, -1)).toBe(0);
+    expect(openAfterMove(1, 1, 1)).toBe(2);
+    // The one it swaps with takes its old place.
+    expect(openAfterMove(0, 1, -1)).toBe(1);
+    expect(openAfterMove(2, 1, 1)).toBe(1);
+    // Others are not touched.
+    expect(openAfterMove(3, 1, 1)).toBe(3);
+    expect(openAfterRemove(null, 0)).toBeNull();
+    expect(openAfterRemove(1, 1)).toBeNull();
+    expect(openAfterRemove(2, 0)).toBe(1);
+    expect(openAfterRemove(0, 2)).toBe(0);
+  });
+});
+
+describe('templates in folders', () => {
+  let n = 0;
+  const made = (name: string, label: Partial<ProgramLabel> = {}) =>
+    setLabel({ ...blank(), id: `t${n++}`, name }, label);
+
+  it('groups by program with the programs in order and those with none last', () => {
+    const folders = groupTemplates([
+      made('Loose'),
+      made('Pull', { name: 'Rebuild' }),
+      made('Press', { name: 'Off-season' }),
+      made('Squat', { name: 'Rebuild' }),
+    ]);
+    expect(folders.map((f) => [f.name, f.count])).toEqual([
+      ['Off-season', 1],
+      ['Rebuild', 2],
+      [null, 1],
+    ]);
+    expect(folders.at(-1)!.key).toBe(NO_PROGRAM_KEY);
+  });
+
+  it('takes a program written in other capitals or with spaces for the same one', () => {
+    const folders = groupTemplates([
+      made('A', { name: 'Rebuild' }),
+      made('B', { name: ' rebuild ' }),
+      made('C', { name: '  ' }),
+    ]);
+    expect(folders.map((f) => [f.name, f.count])).toEqual([
+      ['Rebuild', 2],
+      [null, 1],
+    ]);
+  });
+
+  it('orders a program by block, week, day and name, and splits it into blocks', () => {
+    const [folder] = groupTemplates([
+      made('Zed', { name: 'P', block: 2, week: 1, day: 1 }),
+      made('Wed', { name: 'P', block: 1, week: 2, day: 3 }),
+      made('Tue', { name: 'P', block: 1, week: 2, day: 2 }),
+      made('Early', { name: 'P', block: 1, week: 1, day: 5 }),
+      made('Open', { name: 'P' }),
+      made('Alpha', { name: 'P', block: 2, week: 1, day: 1 }),
+    ]);
+    expect(folder.blocks.map((b) => [b.block, b.templates.map((t) => t.name)])).toEqual([
+      [null, ['Open']],
+      [1, ['Early', 'Tue', 'Wed']],
+      [2, ['Alpha', 'Zed']],
+    ]);
+  });
+
+  it('keeps unlabelled templates in blocks too, by name', () => {
+    const [folder] = groupTemplates([made('b'), made('a')]);
+    expect(folder.name).toBeNull();
+    expect(folder.blocks.map((b) => b.templates.map((t) => t.name))).toEqual([['a', 'b']]);
+  });
+
+  it('is empty for no templates, and leaves the templates as they were', () => {
+    expect(groupTemplates([])).toEqual([]);
+    const all = [made('B', { name: 'X', block: 2 }), made('A', { name: 'X', block: 1 })];
+    const before = structuredClone(all);
+    groupTemplates(all);
+    expect(all).toEqual(before);
   });
 });

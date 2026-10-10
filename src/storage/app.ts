@@ -7,6 +7,7 @@ import { requestPersistence } from './durability';
 import { Log } from './log';
 import { GitHubRemote } from './remote/github';
 import type { Remote } from './remote/remote';
+import { retire } from './retire';
 import { Scheduler } from './scheduler';
 import { setUp, type SetupInput, type SetupResult } from './setup';
 import type { StatusSnapshot } from './status';
@@ -119,6 +120,8 @@ export interface AppStorage {
 
 export async function startStorage(options: StartOptions): Promise<AppStorage> {
   const store = await (options.openStore ?? (() => IndexedDbStore.open()))();
+  // Before anything reads the device: what a retired kind left behind (retire.ts).
+  await retire(store);
   const { device_id: deviceId } = await store.settings();
   const shipped = options.shipped ?? shippedExercises();
   const makeRemote = options.makeRemote ?? githubRemote();

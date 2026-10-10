@@ -2,9 +2,11 @@
   import { untrack } from 'svelte';
   import musclesCsv from '../../library/muscles.csv?raw';
   import { parseMuscles } from '../../library/parse';
+  import { muscleWeights } from '../../metrics/definitions';
   import { setsBehindMuscle, weeklyVolume, type VolumeWindow } from '../../metrics/weekly';
   import { app } from '../app.svelte';
   import {
+    COUNTING_OPTIONS,
     formatCount,
     groupMuscleSets,
     LEGEND_LABELS,
@@ -18,6 +20,7 @@
   } from '../athloi';
   import Button from '../kit/Button.svelte';
   import Chip from '../kit/Chip.svelte';
+  import Segmented from '../kit/Segmented.svelte';
   import Sheet from '../kit/Sheet.svelte';
   import Statue from './Statue.svelte';
 
@@ -37,14 +40,18 @@
   let selected = $state<string | null>(null);
   let table = $state(false);
 
-  const volume = $derived(weeklyVolume(app.current, app.library, muscles, period, today));
+  // The counting is a device preference; the active preset in definitions.json is only its default.
+  const counting = $derived(app.prefs.muscleCounting);
+  const weights = $derived(muscleWeights(counting));
+
+  const volume = $derived(weeklyVolume(app.current, app.library, muscles, period, today, weights));
   const levels = $derived(levelsOf(volume));
   const top = $derived(topMuscles(volume));
   const worked = $derived(volume.find((v) => v.muscle.id === selected));
   const behind = $derived(
     selected
       ? groupMuscleSets(
-          setsBehindMuscle(app.current, app.library, selected, period, today),
+          setsBehindMuscle(app.current, app.library, selected, period, today, weights),
           app.library,
         )
       : [],
@@ -65,6 +72,15 @@
   {/each}
 </div>
 
+<div class="counting">
+  <Segmented
+    options={COUNTING_OPTIONS}
+    value={counting}
+    label="Counting"
+    onchange={(next) => app.setPrefs({ muscleCounting: next })}
+  />
+</div>
+
 <div class="panel">
   <Statue {levels} {selected} onpick={(id) => (selected = id)}>
     <div class="legend">
@@ -73,7 +89,7 @@
           <li style:--shade="var(--vol-{i})"><span>{text}</span></li>
         {/each}
       </ol>
-      <p class="caption">{legendCaption(period)}</p>
+      <p class="caption">{legendCaption(period, counting)}</p>
     </div>
   </Statue>
 </div>
@@ -114,7 +130,6 @@
         <tr>
           <th scope="col">Muscle</th>
           <th scope="col" class="num">Sets</th>
-          <th scope="col" class="num">Shade</th>
         </tr>
       </thead>
       <tbody>
@@ -124,8 +139,6 @@
               ><button onclick={() => (selected = v.muscle.id)}>{v.muscle.name}</button></th
             >
             <td class="num figure-num">{formatCount(v.sets)}</td>
-            <!-- The legend's own words for the shade, not its index. -->
-            <td class="num figure-num">{LEGEND_LABELS[v.level]}</td>
           </tr>
         {/each}
       </tbody>
@@ -170,6 +183,10 @@
     flex-wrap: wrap;
     gap: var(--space-2);
     margin: var(--space-3) var(--gutter) var(--space-3);
+  }
+
+  .counting {
+    margin: 0 var(--gutter) var(--space-3);
   }
 
   .panel {

@@ -6,14 +6,14 @@
   import { showToast } from '../overlays.svelte';
 
   /**
-   * The row that gets sets.csv and sessions.csv off the phone, shared through
+   * The row that gets sets.csv, sessions.csv, meets.csv and attempts.csv off the phone, shared through
    * the share sheet where the browser can, else downloaded. A list item: place
    * it in a `.group`.
    */
 
   async function share(name: ExportFile['name']): Promise<void> {
     // Built before the first await: iOS shares only from within the tap.
-    const file = exportFile(name, app.current);
+    const file = exportFile(name, { sessions: app.current, meets: app.meets });
     const result = await deliver(file);
     if (result === 'downloaded') showToast({ message: `${name} downloaded` });
   }
@@ -27,6 +27,12 @@
     >
     <Button variant="quiet" class="file" onclick={() => share('sessions.csv')}
       ><Icon name="download" size="sm" /> sessions.csv</Button
+    >
+    <Button variant="quiet" class="file" onclick={() => share('meets.csv')}
+      ><Icon name="download" size="sm" /> meets.csv</Button
+    >
+    <Button variant="quiet" class="file" onclick={() => share('attempts.csv')}
+      ><Icon name="download" size="sm" /> attempts.csv</Button
     >
   </span>
 </li>

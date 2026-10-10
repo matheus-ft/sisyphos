@@ -3,11 +3,13 @@ import {
   classify,
   conflictPath,
   FORMAT_PATH,
+  meetPath,
+  RETIRED_PATHS,
   sessionPath,
   TABLE_PATHS,
   templatePath,
 } from '../src/storage/paths';
-import { newConflictId, newSessionId, newTemplateId } from '../src/storage/ids';
+import { newConflictId, newMeetId, newSessionId, newTemplateId } from '../src/storage/ids';
 
 /** A small seeded PRNG, so the generated ids are the same every run. */
 function mulberry32(seed: number): () => number {
@@ -21,6 +23,14 @@ function mulberry32(seed: number): () => number {
 
 const none = () => false;
 
+describe('a retired kind', () => {
+  it('is foreign: sync neither reads nor writes what an earlier build kept there', () => {
+    expect(RETIRED_PATHS).toContain('lifter/competition-bests.csv');
+    for (const path of RETIRED_PATHS) expect(classify(path), path).toEqual({ kind: 'foreign' });
+    for (const path of Object.values(TABLE_PATHS)) expect(RETIRED_PATHS).not.toContain(path);
+  });
+});
+
 describe('classify', () => {
   it('recognises every path the builders produce, as the same record', () => {
     const random = mulberry32(7);
@@ -30,6 +40,8 @@ describe('classify', () => {
       expect(classify(sessionPath(session))).toEqual({ kind: 'session', id: session });
       const conflict = newConflictId('2026-09-27', none, random);
       expect(classify(conflictPath(conflict))).toEqual({ kind: 'conflict', id: conflict });
+      const meet = newMeetId('2026-05-16', none, random);
+      expect(classify(meetPath(meet))).toEqual({ kind: 'meet', id: meet });
       const template = newTemplateId(names[i % names.length], none, random);
       expect(classify(templatePath(template))).toEqual({ kind: 'template', id: template });
     }
@@ -60,6 +72,15 @@ describe('classify', () => {
       'sessions/2026-01-01-k3f9.json',
       'lifter/bodyweight.csv.bak',
       'lifter/notes.csv',
+      'meets/notes.json',
+      'meets/2026-05-16.json',
+      'meets/2026-05-16-ABCD.json',
+      'meets/2026-05-16-8mzi.json', // i is not in the alphabet
+      'meets/2026-5-16-8mzt.json',
+      'meets/2026/2026-05-16-8mzt.json', // meets are a flat folder
+      'meets/2026-05-16-8mzt.json.bak',
+      'meets/2026-05-16-8mzt.csv',
+      'meets/ nationals 2026-05-16-8mzt.json',
     ]) {
       expect(classify(path), path).toEqual({ kind: 'foreign' });
     }

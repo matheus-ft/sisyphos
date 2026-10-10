@@ -459,15 +459,9 @@ export function loadPreview(
 
 type Prescribed = Pick<Omit<PrescribedSet, 'id'>, 'reps' | 'load' | 'is_warmup'>;
 
-/**
- * "3 × 5", "4 × 3–5", "3 × 0:45", or "3 sets" where the targets differ: one
- * exercise's working sets, for a card with room for a few words. Empty when
- * there are none.
- */
-export function setsSummary(prescribed: Prescribed[]): string {
+/** How many working sets there are, and the reps (or time) all of them share; null where they differ or are open. */
+function workSets(prescribed: Prescribed[]): { n: number; each: string | null } {
   const work = prescribed.filter((p) => !p.is_warmup);
-  if (work.length === 0) return '';
-  const n = work.length;
   const each = new Set(
     work.map((p) =>
       p.load.kind === 'time'
@@ -478,7 +472,18 @@ export function setsSummary(prescribed: Prescribed[]): string {
     ),
   );
   const [only] = each;
-  return each.size === 1 && only ? `${n} × ${only}` : `${n} ${n === 1 ? 'set' : 'sets'}`;
+  return { n: work.length, each: each.size === 1 && only ? only : null };
+}
+
+/**
+ * "3 × 5", "4 × 3–5", "3 × 0:45", or "3 sets" where the targets differ: one
+ * exercise's working sets, for a card with room for a few words. Empty when
+ * there are none.
+ */
+export function setsSummary(prescribed: Prescribed[]): string {
+  const { n, each } = workSets(prescribed);
+  if (n === 0) return '';
+  return each ? `${n} × ${each}` : `${n} ${n === 1 ? 'set' : 'sets'}`;
 }
 
 /** "Low-bar squat 3 × 5", "Bench press 4 × 3–5": a plan's exercises with their targets. */
@@ -491,4 +496,125 @@ export function exerciseLines(
     const sets = setsSummary(e.prescribed);
     return sets ? `${name} ${sets}` : name;
   });
+}
+
+// --- the exercise on one line -------------------------------------------------------
+
+type Planned = Prescribed & Pick<Omit<PrescribedSet, 'id'>, 'rpe'>;
+
+/** The RPE the working sets aim at, as one range from the lowest to the highest: "8", "7–9", "8+". */
+function rpeSpan(prescribed: Planned[]): string {
+  const aims = prescribed
+    .filter((p) => !p.is_warmup && p.rpe && (p.rpe[0] !== null || p.rpe[1] !== null))
+    .map((p) => p.rpe as Interval);
+  if (aims.length === 0) return '';
+  const lows = aims.map((a) => a[0]);
+  const highs = aims.map((a) => a[1]);
+  return formatRange([
+    lows.includes(null) ? null : Math.min(...(lows as number[])),
+    highs.includes(null) ? null : Math.max(...(highs as number[])),
+  ]);
+}
+
+/**
+ * An exercise on one line, for the template screen's collapsed card: its name,
+ * its working sets, the RPE they aim at and the rest it takes, as in
+ * "Bench press · 3×5 @8 · 3:00". What is not planned is left out, except the
+ * rest, which is the tier's default until the lifter sets one.
+ */
+export function exerciseHeadline(
+  entry: { exercise_id: string; rest_s: number | null; prescribed: Planned[] },
+  exercise: Exercise | undefined,
+): string {
+  const { n, each } = workSets(entry.prescribed);
+  const rpe = rpeSpan(entry.prescribed);
+  const sets = n === 0 ? '' : each ? `${n}×${each}` : `${n} ${n === 1 ? 'set' : 'sets'}`;
+  return [
+    exercise?.name ?? entry.exercise_id,
+    // The RPE belongs to the sets: "3×5 @8".
+    [sets, rpe ? `@${rpe}` : ''].filter(Boolean).join(' '),
+    restShown(exercise, entry.rest_s),
+  ]
+    .filter(Boolean)
+    .join(' · ');
+}
+
+/** Which exercise stays open after one is moved `by` places: the open one is followed, and the one it swaps with is not. */
+export function openAfterMove(open: number | null, index: number, by: number): number | null {
+  if (open === null) return null;
+  if (open === index) return index + by;
+  if (open === index + by) return index;
+  return open;
+}
+
+/** Which exercise stays open after one is removed: none if it was that one, else the same exercise at its new place. */
+export function openAfterRemove(open: number | null, index: number): number | null {
+  if (open === null || open === index) return null;
+  return open > index ? open - 1 : open;
+}
+
+// --- folders ------------------------------------------------------------------------
+
+/** Templates of one program with the same block, in the order they are done. */
+export interface TemplateBlock {
+  /** Null for templates of the program with no block. */
+  block: number | null;
+  templates: Template[];
+}
+
+/** The templates of one program label, or of none. */
+export interface TemplateFolder {
+  /** Stands for the program across differences of capitals and spaces; for remembering what is collapsed. */
+  key: string;
+  /** The program's name; null for templates with none, shown as "No program". */
+  name: string | null;
+  blocks: TemplateBlock[];
+  count: number;
+}
+
+export const NO_PROGRAM_KEY = '-';
+
+/** Nulls first, then ascending. */
+const byNumber = (a: number | null, b: number | null): number => (a ?? 0) - (b ?? 0);
+
+const byName = (a: string, b: string): number =>
+  a.localeCompare(b, undefined, { numeric: true, sensitivity: 'base' });
+
+/**
+ * Templates in folders by the program label's name, "Rebuild" and "rebuild "
+ * being one program: the folders by name, then those with no program last;
+ * inside, blocks in order, and in a block week, day and name. A view over the
+ * templates, not something stored.
+ */
+export function groupTemplates(templates: readonly Template[]): TemplateFolder[] {
+  const programs = new Map<string, { name: string | null; templates: Template[] }>();
+  for (const template of templates) {
+    const name = template.label.name?.trim() || null;
+    const key = name === null ? NO_PROGRAM_KEY : `p:${name.toLowerCase()}`;
+    const program = programs.get(key) ?? { name, templates: [] };
+    program.templates.push(template);
+    programs.set(key, program);
+  }
+
+  return [...programs.entries()]
+    .map(([key, program]): TemplateFolder => {
+      const sorted = [...program.templates].sort(
+        (a, b) =>
+          byNumber(a.label.block, b.label.block) ||
+          byNumber(a.label.week, b.label.week) ||
+          byNumber(a.label.day, b.label.day) ||
+          byName(a.name, b.name),
+      );
+      const blocks: TemplateBlock[] = [];
+      for (const template of sorted) {
+        const last = blocks.at(-1);
+        if (last && last.block === template.label.block) last.templates.push(template);
+        else blocks.push({ block: template.label.block, templates: [template] });
+      }
+      return { key, name: program.name, blocks, count: sorted.length };
+    })
+    .sort(
+      (a, b) =>
+        Number(a.name === null) - Number(b.name === null) || byName(a.name ?? '', b.name ?? ''),
+    );
 }

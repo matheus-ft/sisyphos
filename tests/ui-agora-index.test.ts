@@ -1,6 +1,5 @@
 import { describe, expect, it } from 'vitest';
 import {
-  aimAt,
   countOf,
   libraryValue,
   OTHER_PLATE,
@@ -8,7 +7,6 @@ import {
   plateChoice,
   plateOptions,
   settingsSummary,
-  takeAim,
 } from '../src/ui/agoraIndex';
 import { DEFAULT_PREFS, PLATE_CHOICES } from '../src/ui/prefs';
 
@@ -48,14 +46,5 @@ describe('persistent storage', () => {
     expect(persistenceText(true).granted).toBe(true);
     expect(persistenceText(false)).toMatchObject({ granted: false });
     expect(persistenceText(null).granted).toBe(false);
-  });
-});
-
-describe('landing on a section of the lifter page', () => {
-  it('is remembered once, for the page that opens next', () => {
-    expect(takeAim()).toBeNull();
-    aimAt('maxes');
-    expect(takeAim()).toBe('maxes');
-    expect(takeAim()).toBeNull();
   });
 });

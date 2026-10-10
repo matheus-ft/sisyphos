@@ -1,11 +1,12 @@
 import { expect } from 'vitest';
-import type { ConflictRecord, IsoDate, Session, Template } from '../src/model';
+import type { ConflictRecord, IsoDate, Meet, Session, Template } from '../src/model';
 import type { Mode } from '../src/storage/decide';
 import { SyncError } from '../src/storage/errors';
 import { blobSha } from '../src/storage/hash';
 import {
   parseConflict,
   serializeFormatMarker,
+  serializeMeet,
   serializeSession,
   serializeTemplate,
   TABLES,
@@ -17,6 +18,7 @@ import {
   FORMAT_PATH,
   FORMAT_VERSION,
   isOurs,
+  meetPath,
   sessionPath,
   templatePath,
 } from '../src/storage/paths';
@@ -124,10 +126,35 @@ export function template(id: string, intention: string | null = null): Template 
   };
 }
 
+/** A meet with one squat attempt; `placing` is what two devices can disagree about. */
+export function meet(id: string, placing: number | null = null): Meet {
+  return {
+    id,
+    date: id.slice(0, 10),
+    name: 'Nationals 2026',
+    location: null,
+    federation: null,
+    weight_class: null,
+    equipment: null,
+    bodyweight_kg: null,
+    placing,
+    notes: null,
+    lifts: {
+      squat: [{ exercise_id: 'low_bar_squat', weight_kg: 200, good: true }, null, null],
+      bench: [null, null, null],
+      deadlift: [null, null, null],
+    },
+    created_at: T0,
+    updated_at: T0,
+    device_id: 'dev-a',
+  };
+}
+
 export const sessionFile = (s: Session): [string, string] => [
   sessionPath(s.id),
   serializeSession(s),
 ];
+export const meetFile = (m: Meet): [string, string] => [meetPath(m.id), serializeMeet(m)];
 export const templateFile = (t: Template): [string, string] => [
   templatePath(t.id),
   serializeTemplate(t),

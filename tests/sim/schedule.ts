@@ -13,13 +13,7 @@ import { prng } from '../sync-harness';
  */
 
 export type Kind =
-  | 'session'
-  | 'template'
-  | 'bodyweight'
-  | 'oneRm'
-  | 'manualRecords'
-  | 'competitionBests'
-  | 'additions';
+  'session' | 'template' | 'bodyweight' | 'oneRm' | 'manualRecords' | 'meet' | 'additions';
 
 export const KINDS: readonly Kind[] = [
   'session',
@@ -27,12 +21,12 @@ export const KINDS: readonly Kind[] = [
   'bodyweight',
   'oneRm',
   'manualRecords',
-  'competitionBests',
+  'meet',
   'additions',
 ];
 
 /**
- * A lifter's change. `create` makes a new session or template, or puts a table
+ * A lifter's change. `create` makes a new session, template or meet, or puts a table
  * row with a key from a small pool, so devices often log the same key; `edit`
  * and `delete` act on a record the device holds.
  */
@@ -105,7 +99,7 @@ export function generate(seed: number): Schedule {
       'bodyweight',
       'oneRm',
       'manualRecords',
-      'competitionBests',
+      'meet',
       'additions',
     ]);
     return { op, kind, pick: int(12) };
@@ -200,7 +194,7 @@ const NOUNS: Record<Kind, string> = {
   bodyweight: 'a weigh-in',
   oneRm: 'a 1RM',
   manualRecords: 'a manual record',
-  competitionBests: 'a competition best',
+  meet: 'a meet',
   additions: 'an exercise',
 };
 

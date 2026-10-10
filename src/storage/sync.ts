@@ -1,4 +1,4 @@
-import type { ConflictRecord, IsoDate, Session, TableRow, Template } from '../model';
+import type { ConflictRecord, IsoDate, Meet, Session, TableRow, Template } from '../model';
 import { decideFile, decideTable, type Mode } from './decide';
 import { FormatError, SyncError } from './errors';
 import {
@@ -7,10 +7,12 @@ import {
   migrateFile,
   parseConflict,
   parseFormatMarker,
+  parseMeet,
   parseSession,
   parseTemplate,
   serializeConflict,
   serializeFormatMarker,
+  serializeMeet,
   serializeSession,
   serializeTemplate,
   TABLES,
@@ -189,13 +191,15 @@ async function readPast(remote: Remote, last: string): Promise<string | null> {
  * their bases say so (`SyncEntry.base_format`) until `migrateBases` reads them.
  */
 function settleBases(inflight: Inflight): StoreOp[] {
-  return inflight.pushed.map(({ path, sha, body }) => ({
-    op: 'base',
-    path,
-    sha,
-    body,
-    format: sha !== null && isMigrated(path) ? inflight.format : null,
-  }));
+  return inflight.pushed
+    .filter(({ path }) => isOurs(path))
+    .map(({ path, sha, body }) => ({
+      op: 'base',
+      path,
+      sha,
+      body,
+      format: sha !== null && isMigrated(path) ? inflight.format : null,
+    }));
 }
 
 // --- Bases an older build left -------------------------------------------------------
@@ -308,7 +312,9 @@ async function syncRound(
     }),
   );
   const unmoved = head === meta.last_synced_head && meta.last_synced_tree !== null;
-  if (unmoved && entries.every((e) => e.local_sha === e.base_sha)) {
+  // Only the app's own files count: a foreign path (a file an earlier build wrote
+  // and this one no longer reads) never takes part, whatever its entry says.
+  if (unmoved && entries.every((e) => !isOurs(e.path) || e.local_sha === e.base_sha)) {
     return result(head, null, [], found, []);
   }
 
@@ -693,8 +699,8 @@ type Outcome =
   /** Left exactly as it was, base included. */
   | 'left';
 
-type FileKind = 'session' | 'template' | 'conflict';
-type FileRecord = Session | Template | ConflictRecord;
+type FileKind = 'session' | 'template' | 'meet' | 'conflict';
+type FileRecord = Session | Template | Meet | ConflictRecord;
 
 const UNREADABLE = Symbol('unreadable');
 
@@ -735,6 +741,7 @@ class Planner {
         return this.marker(path, remote);
       case 'session':
       case 'template':
+      case 'meet':
       case 'conflict':
         return this.file(path, kind.kind, remote);
       case 'table':
@@ -763,7 +770,7 @@ class Planner {
     return { base: remote };
   }
 
-  /** A session, template or conflict record: the unit is the file. */
+  /** A session, template, meet or conflict record: the unit is the file. */
   private file(path: string, kind: FileKind, sha: string | null): Outcome {
     const { mode } = this.input;
     const entry = this.input.entries.get(path);
@@ -902,7 +909,7 @@ class Planner {
       key: null,
       found_at: this.foundAt,
       device_id: this.input.deviceId,
-      version: version as Session | Template | null,
+      version: version as Session | Template | Meet | null,
     });
   }
 
@@ -1004,6 +1011,8 @@ function parseFile(kind: FileKind, text: string): FileRecord {
       return parseSession(text);
     case 'template':
       return parseTemplate(text);
+    case 'meet':
+      return parseMeet(text);
     case 'conflict':
       return parseConflict(text);
   }
@@ -1015,6 +1024,8 @@ function serializeFile(kind: FileKind, record: FileRecord): string {
       return serializeSession(record as Session);
     case 'template':
       return serializeTemplate(record as Template);
+    case 'meet':
+      return serializeMeet(record as Meet);
     case 'conflict':
       return serializeConflict(record as ConflictRecord);
   }
@@ -1040,10 +1051,11 @@ function needed(path: string, text: string | null | undefined): string | null {
 
 // --- 7: the commit message -------------------------------------------------------
 
-/** What the commit holds, in a line: `sync: 2 sessions, bodyweight, 1 conflict`. */
+/** What the commit holds, in a line: `sync: 2 sessions, 1 meet, bodyweight, 1 conflict`. */
 function commitMessage(pushes: Push[]): string {
   let sessions = 0;
   let templates = 0;
+  let meets = 0;
   let conflicts = 0;
   let resolved = 0;
   const tables = new Set<string>();
@@ -1051,6 +1063,7 @@ function commitMessage(pushes: Push[]): string {
     const kind = classify(path);
     if (kind.kind === 'session') sessions++;
     else if (kind.kind === 'template') templates++;
+    else if (kind.kind === 'meet') meets++;
     else if (kind.kind === 'table') tables.add(kind.table);
     else if (kind.kind === 'conflict') {
       if (content === null) resolved++;
@@ -1060,6 +1073,7 @@ function commitMessage(pushes: Push[]): string {
   const parts = [
     count(sessions, 'session'),
     count(templates, 'template'),
+    count(meets, 'meet'),
     ...TABLE_KINDS.filter((table) => tables.has(table)).map((table) =>
       TABLE_PATHS[table].replace(/^.*\//, '').replace(/\.csv$/, ''),
     ),

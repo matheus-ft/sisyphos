@@ -10,6 +10,7 @@ describe('device preferences', () => {
       plateLb: 5,
       keepAwake: false,
       chime: false,
+      muscleCounting: 'fractional',
     });
     expect(readPrefs(null)).toEqual(DEFAULT_PREFS);
     expect(readPrefs(undefined)).toEqual(DEFAULT_PREFS);
@@ -51,6 +52,14 @@ describe('device preferences', () => {
     expect(readPrefs({ keepAwake: 1 as unknown as boolean }).keepAwake).toBe(false);
   });
 
+  it('counts muscles by a preset the definitions have, else by the active one', () => {
+    for (const name of ['fractional', 'direct', '1:1']) {
+      expect(readPrefs({ muscleCounting: name }).muscleCounting).toBe(name);
+    }
+    expect(readPrefs({ muscleCounting: 'binary' }).muscleCounting).toBe('fractional');
+    expect(readPrefs({ muscleCounting: 1 as unknown as string }).muscleCounting).toBe('fractional');
+  });
+
   it('trims a device name and ignores one that is not text', () => {
     expect(readPrefs({ deviceName: '  Phone ' }).deviceName).toBe('Phone');
     expect(readPrefs({ deviceName: 7 as unknown as string }).deviceName).toBe('');
@@ -66,12 +75,18 @@ describe('device preferences', () => {
   it("reads from the store's settings, saved before the preferences existed or after", async () => {
     const store = new MemoryStore();
     expect(readPrefs(await store.settings())).toEqual(DEFAULT_PREFS);
-    await store.saveSettings({ deviceName: 'Phone', chime: true, plateLb: 2.5 });
+    await store.saveSettings({
+      deviceName: 'Phone',
+      chime: true,
+      plateLb: 2.5,
+      muscleCounting: 'direct',
+    });
     expect(readPrefs(await store.settings())).toEqual({
       ...DEFAULT_PREFS,
       deviceName: 'Phone',
       chime: true,
       plateLb: 2.5,
+      muscleCounting: 'direct',
     });
   });
 });

@@ -1,7 +1,7 @@
 // One session from the plan on Train to Done: every way of saving a set, the
 // rest it starts, and the finish screen.
 import { expect, test } from '@playwright/test';
-import { openSeeded } from './seed.ts';
+import { dayFromToday, openSeeded, pickCalendarDay, savedSession } from './seed.ts';
 
 test('a planned session runs from Start to Done', async ({ page }) => {
   const errors: string[] = [];
@@ -144,4 +144,24 @@ test('holding a set offers its actions: copy, paste, duplicate and move', async 
     .getByRole('button', { name: 'Move up' })
     .click();
   await expect(load(1)).toHaveValue('110');
+});
+
+test('a past session is picked from the calendar and kept on that day', async ({ page }) => {
+  await openSeeded(page);
+  // Train's one primary button is today's plan: starting empty is a quiet row among the others.
+  await expect(page.locator('.button-primary')).toHaveCount(1);
+  await expect(page.getByRole('button', { name: /^Start an empty session/ })).toBeVisible();
+
+  await page.getByRole('button', { name: /^Log a past session/ }).click();
+  const calendar = page.getByRole('dialog', { name: 'Pick the day it happened' });
+  // Nothing after today can be reached, and the seed's sessions are marked.
+  await expect(calendar.getByRole('button', { name: 'Next month' })).toBeHidden();
+  await expect(calendar.locator('.disc.session').first()).toBeVisible();
+
+  const day = dayFromToday(-2);
+  await pickCalendarDay(calendar, day, 'Previous month');
+  await expect(page).toHaveURL(new RegExp(`#/session/${day}-`));
+  const id = page.url().split('/session/')[1];
+  await expect.poll(async () => (await savedSession(page, id))?.date).toBe(day);
+  expect((await savedSession(page, id))?.ended_at ?? null).toBeNull();
 });

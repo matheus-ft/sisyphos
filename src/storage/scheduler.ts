@@ -4,6 +4,7 @@ import type { Mode } from './decide';
 import { exposure } from './durability';
 import { SyncError, type SyncErrorKind } from './errors';
 import type { Log } from './log';
+import { isOurs } from './paths';
 import type { Remote } from './remote/remote';
 import { describeSync, type StatusSnapshot } from './status';
 import type { LocalStore, Settings } from './store/store';
@@ -537,7 +538,9 @@ export class Scheduler {
       unreadable: [...moment.unreadable],
       exposure: exposure({
         syncConfigured: remote !== null,
-        entries,
+        // Only the app's own files can be backed up: a foreign one never syncs, so it
+        // would be "waiting to back up" for ever.
+        entries: entries.filter((entry) => isOurs(entry.path)),
         sessionInProgress: inProgress,
         now,
       }),
