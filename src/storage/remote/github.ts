@@ -1,6 +1,14 @@
 import { FormatError, SyncError, type SyncErrorKind } from '../errors';
 import { blobSha } from '../hash';
-import type { NewCommit, Remote, RemoteChange, RemoteTree, RepoInfo } from './remote';
+import {
+  pause,
+  REREAD_MS,
+  type NewCommit,
+  type Remote,
+  type RemoteChange,
+  type RemoteTree,
+  type RepoInfo,
+} from './remote';
 
 /**
  * The log repo on GitHub, through the Git Data API.
@@ -50,13 +58,6 @@ const API = 'https://api.github.com';
  * best-practices-for-using-the-rest-api#handle-rate-limit-errors-appropriately).
  */
 const DEFAULT_WAIT_MS = 60_000;
-
-/**
- * The pauses before each re-read of a head a refused move says should have
- * moved (`headLeaves`): under four seconds in all, which a real refusal costs
- * before it is reported.
- */
-const HEAD_REREAD_MS = [250, 500, 1000, 2000];
 
 /**
  * What a token can hold: printable ASCII, no spaces. GitHub's tokens are letters,
@@ -245,16 +246,18 @@ export class GitHubRemote implements Remote {
   }
 
   /**
-   * Whether a read of the head shows it moved off `from`, read again with backoff
-   * while it does not. GitHub serves reads of a ref from replicas that can trail a
-   * write to it for a moment, so just after another device moved the branch, a
-   * read may still show `from`; seen in the live smoke test's forced race.
-   * `no-store` cannot help: the stale answer is GitHub's, not a cache's.
-   * Waiting also means the sync's next round reads the head that won.
+   * Whether a read of the head shows it moved off `from`, read again after each
+   * of `REREAD_MS` while it does not: just after another device moved the
+   * branch, GitHub's reads can still show `from` (remote.ts, `REREAD_MS`), as
+   * the live smoke test's forced race once did. `no-store` cannot help: the
+   * stale answer is GitHub's, not a cache's. Waiting also means the sync's next
+   * round reads the head that won. A real refusal costs the wait before it is
+   * reported.
    */
   private async headLeaves(from: string): Promise<boolean> {
-    for (const delay of [0, ...HEAD_REREAD_MS]) {
-      if (delay > 0) await new Promise((resolve) => setTimeout(resolve, delay));
+    if ((await this.head()) !== from) return true;
+    for (const ms of REREAD_MS) {
+      await pause(ms);
       if ((await this.head()) !== from) return true;
     }
     return false;

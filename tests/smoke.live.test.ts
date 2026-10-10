@@ -401,8 +401,14 @@ describe.skipIf(!CONFIGURED)('live smoke test against GitHub', { timeout: 120_00
     const b = await sync(B);
 
     expect(landed).not.toBeNull();
-    expect(B.moves.slice(movesBefore)).toEqual(['raced', 'moved']);
-    expect(b.commits).toBe(2);
+    // Lost at least once, then moved. A round after the first can read the head
+    // before A's move, which GitHub's reads can trail (github.ts, `headLeaves`),
+    // and lose again: a correct sync, only a slower one.
+    const moves = B.moves.slice(movesBefore);
+    expect(moves.length).toBeGreaterThanOrEqual(2);
+    expect(moves).toEqual([...moves.slice(0, -1).map(() => 'raced'), 'moved']);
+    // One commit per round, and no more.
+    expect(b.commits).toBe(moves.length);
     expect(await probe.contains(landed!, b.committed!)).toBe(true);
 
     await sync(A);

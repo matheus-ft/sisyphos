@@ -61,6 +61,8 @@ export class MemoryRemote implements Remote {
   /** Commits created so far, so two commits of the same tree and parent still differ, as their timestamps would on GitHub. */
   private created = 0;
   private readonly failures = new Map<RemoteOp, Error[]>();
+  /** Set by `lagHead`. */
+  private lagging: { head: string | null; reads: number } = { head: null, reads: 0 };
 
   constructor(options: MemoryRemoteOptions = {}) {
     this.info = {
@@ -81,6 +83,10 @@ export class MemoryRemote implements Remote {
 
   async head(): Promise<string | null> {
     this.enter('head');
+    if (this.lagging.reads > 0) {
+      this.lagging.reads--;
+      return this.lagging.head;
+    }
     return this.branch;
   }
 
@@ -165,6 +171,15 @@ export class MemoryRemote implements Remote {
   forceBranch(commit: string): void {
     if (!this.commits.has(commit)) throw new Error(`No commit ${commit} to point the branch at`);
     this.branch = commit;
+  }
+
+  /**
+   * The next `reads` reads of the head answer `head`, whatever the branch holds,
+   * as GitHub's reads can for a moment after the branch moved (remote.ts,
+   * `REREAD_MS`).
+   */
+  lagHead(head: string, reads: number): void {
+    this.lagging = { head, reads };
   }
 
   /** Every file at the head, path to content. Empty for an empty repository. */

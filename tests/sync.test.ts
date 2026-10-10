@@ -1,5 +1,5 @@
-import { describe, expect, it, vi } from 'vitest';
-import type { ConflictRecord } from '../src/model';
+import { afterEach, describe, expect, it, vi } from 'vitest';
+import type { ConflictRecord, Session } from '../src/model';
 import { FormatError, SyncError } from '../src/storage/errors';
 import {
   serializeConflict,
@@ -976,5 +976,69 @@ describe('a rewritten history', () => {
     // the rewrite is seen and S1 is pushed back, not deleted as missing.
     expect((await a.files()).get(sessionPath(S1.id))).toBe(serializeSession(S1));
     expect(remote.files().get(sessionPath(S1.id))).toBe(serializeSession(S1));
+  });
+});
+
+describe('a head read that trails the last push', () => {
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  const EDITED = session(S1.id, 'v1');
+
+  /** A, having pushed S1 and then an edit of it: the head before the edit. */
+  async function pushedTwice() {
+    const remote = newLog();
+    const a = new Device(remote, 'dev-a', { seed: 1 });
+    await a.put(sessionFile(S1));
+    await a.sync();
+    const before = (await remote.head())!;
+    await a.put(sessionFile(EDITED));
+    await a.sync();
+    return { remote, a, before };
+  }
+
+  /** A's next sync, its pauses between reads of the head skipped; with how long they would have been. */
+  async function nextSync(a: Device) {
+    const reset = vi.spyOn(a.disk, 'resetSync');
+    vi.useFakeTimers({ toFake: ['setTimeout', 'Date'] });
+    const start = Date.now();
+    const syncing = a.sync();
+    await vi.runAllTimersAsync();
+    const result = await syncing;
+    return { result, waited: Date.now() - start, resets: reset.mock.calls.length };
+  }
+
+  it('is read again until it shows the push, and the bases are kept', async () => {
+    const { remote, a, before } = await pushedTwice();
+    await a.weigh('2026-09-04', 83);
+    // The sync's first read and its first re-read still show the head before
+    // A's last push.
+    remote.lagHead(before, 2);
+
+    const { result, waited, resets } = await nextSync(a);
+    expect(waited).toBe(250 + 500);
+    expect(resets).toBe(0);
+    // Forgotten bases would have set A's edit against the old S1 as a conflict.
+    expect(result).toMatchObject({ pushed: [BODYWEIGHT], conflicts: [] });
+    expect(conflictsIn(remote.files())).toEqual([]);
+    expect(remote.files().get(sessionPath(S1.id))).toBe(serializeSession(EDITED));
+    expect(remote.files().get(BODYWEIGHT)).toBe(await a.disk.content(BODYWEIGHT));
+  });
+
+  it('forgets the bases when the head stays behind: the history was rewound', async () => {
+    const { remote, a, before } = await pushedTwice();
+    remote.forceBranch(before);
+
+    const { result, waited, resets } = await nextSync(a);
+    expect(waited).toBe(250 + 500 + 1000 + 2000);
+    expect(resets).toBe(1);
+    // A first sync, as before the wait: the log's S1 stands, and A's edit, which
+    // the rewound history no longer holds, is saved rather than lost.
+    expect(result.taken).toEqual([sessionPath(S1.id)]);
+    expect(result.conflicts.map((c) => [c.path, (c.version as Session).notes])).toEqual([
+      [sessionPath(S1.id), 'v1'],
+    ]);
+    expect(await a.disk.content(sessionPath(S1.id))).toBe(serializeSession(S1));
   });
 });

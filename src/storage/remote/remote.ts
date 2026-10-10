@@ -11,6 +11,20 @@
  * `FormatError` for content that is not UTF-8 text.
  */
 
+/**
+ * The pauses before each fresh read of a head that should have moved: under four
+ * seconds in all. GitHub serves reads of a ref from replicas that can trail a
+ * write to it for a moment, so a read just after another device moved the
+ * branch may still show the head before. A read that is only early comes right
+ * within that; one that is still wrong after it is not early.
+ */
+export const REREAD_MS = [250, 500, 1000, 2000];
+
+/** Resolves after `ms`: the pause before one of those reads. */
+export function pause(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
 export interface RemoteFile {
   path: string;
   /** Git blob sha of the file's content. */
