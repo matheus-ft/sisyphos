@@ -1,5 +1,6 @@
 import type {
   BodyweightEntry,
+  CompetitionBest,
   Exercise,
   Id,
   IsoDate,
@@ -344,17 +345,21 @@ export function sparseNote(
 
 // --- Labours -------------------------------------------------------------------------
 
-/** The exercises with a record, ordered as the lift choices are. */
+/**
+ * The exercises with a record or a meet's best, ordered as the lift choices
+ * are. `count` is their records alone: a meet's best is not one.
+ */
 export function recordedExercises(
   book: readonly PersonalRecord[],
   library: readonly Exercise[],
+  bests: readonly CompetitionBest[] = [],
 ): { exercise: Exercise; last: IsoDate; count: number }[] {
   const by = new Map<string, { last: IsoDate; count: number }>();
-  for (const r of book) {
+  for (const r of [...book, ...bests]) {
     const held = by.get(r.exercise_id);
     by.set(r.exercise_id, {
       last: held && held.last > r.date ? held.last : r.date,
-      count: (held?.count ?? 0) + 1,
+      count: (held?.count ?? 0) + ('reps' in r ? 1 : 0),
     });
   }
   return library
@@ -365,6 +370,24 @@ export function recordedExercises(
         TIER_ORDER[a.exercise.tier] - TIER_ORDER[b.exercise.tier] ||
         b.last.localeCompare(a.last) ||
         a.exercise.name.localeCompare(b.exercise.name),
+    );
+}
+
+/** The heaviest an exercise was ever lifted at a meet, the earlier on a tie; null if never. */
+export function meetBest(
+  bests: readonly CompetitionBest[],
+  exerciseId: string,
+): CompetitionBest | null {
+  return bests
+    .filter((b) => b.exercise_id === exerciseId)
+    .reduce<CompetitionBest | null>(
+      (best, b) =>
+        !best ||
+        b.weight_kg > best.weight_kg ||
+        (b.weight_kg === best.weight_kg && b.date < best.date)
+          ? b
+          : best,
+      null,
     );
 }
 

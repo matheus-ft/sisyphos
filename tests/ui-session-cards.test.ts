@@ -56,7 +56,7 @@ const instance = (
   performed,
   notes: null,
 });
-const bench = { id: 'bench', name: 'Bench Press', load_type: 'external' } as Exercise;
+const bench = { id: 'bench', name: 'Bench Press', tier: 'comp', load_type: 'external' } as Exercise;
 
 describe('which state a card is in', () => {
   it('is current when it holds the next set to enter', () => {
@@ -93,7 +93,7 @@ describe('the next set to enter', () => {
 
 describe('a done card', () => {
   it('lists the working sets closely and counts warm-ups apart', () => {
-    const squat = { id: 'low_bar_squat', load_type: 'external' } as Exercise;
+    const squat = { id: 'low_bar_squat', tier: 'comp', load_type: 'external' } as Exercise;
     const i = instance([
       done(60, 5, null, { is_warmup: true }),
       done(100, 5, 7),

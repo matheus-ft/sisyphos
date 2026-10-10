@@ -8,6 +8,7 @@ import {
   addTarget,
   addTemplateExercise,
   duplicateTarget,
+  moveTarget,
   editTarget,
   exerciseLines,
   formatClock,
@@ -215,6 +216,18 @@ describe('reps, RPE and loads as ranges', () => {
     });
     t = editTarget(addTemplateExercise(blank(), plank), 0, 0, { amount: [45, 60] }, 'time');
     expect(target(t).load).toEqual({ kind: 'time', seconds: [45, 60] });
+  });
+});
+
+describe('moving a target', () => {
+  it("moves it among its exercise's targets, keeping within them", () => {
+    let t = addTemplateExercise(blank(), squat);
+    t = editTarget(t, 0, 0, { amount: 100 }, 'weight');
+    t = addTarget(t, 0, 'weight');
+    t = editTarget(t, 0, 1, { amount: 140 }, 'weight');
+    const amounts = (x: typeof t) => x.exercises[0].prescribed.map((p) => targetAmount(p));
+    expect(amounts(moveTarget(t, 0, 1, -1))).toEqual([140, 100]);
+    expect(amounts(moveTarget(t, 0, 1, 1))).toEqual([100, 140]);
   });
 });
 

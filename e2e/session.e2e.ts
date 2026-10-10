@@ -92,3 +92,56 @@ test('a planned session runs from Start to Done', async ({ page }) => {
 
   expect(errors).toEqual([]);
 });
+
+test('holding a set offers its actions: copy, paste, duplicate and move', async ({ page }) => {
+  await openSeeded(page);
+  await page.getByRole('button', { name: 'Start', exact: true }).click();
+  const squat = page.getByRole('region', { name: 'Low-Bar Squat' });
+  const rows = squat.locator('.row:not(.ghost)');
+  const load = (row: number) => rows.nth(row).getByRole('textbox', { name: 'Load' });
+  const set = (n: number | RegExp) =>
+    page.getByRole('dialog', { name: typeof n === 'number' ? `Low-Bar Squat, Set ${n}` : n });
+  /** Held still on the set's number, longer than a tap. */
+  const hold = async (row: number) => {
+    const box = (await rows.nth(row).locator('.n').boundingBox())!;
+    await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
+    await page.mouse.down();
+    await page.waitForTimeout(600);
+    await page.mouse.up();
+  };
+
+  // The plan's three squat sets; set 1, lifted, is copied from its menu.
+  await expect(rows).toHaveCount(3);
+  await page.getByRole('button', { name: 'Enter set 1' }).click();
+  await set(1).getByRole('textbox', { name: 'Load' }).fill('100');
+  await set(1).getByRole('textbox', { name: 'Reps' }).fill('5');
+  await set(1)
+    .getByRole('button', { name: /^8(,|$)/ })
+    .click();
+  const rest = page.getByRole('dialog', { name: 'Rest' });
+  await rest.getByRole('button', { name: 'Skip rest' }).click();
+  await expect(rest).toBeHidden();
+  await hold(0);
+  await set(1).getByRole('button', { name: 'Copy' }).click();
+  await expect(page.getByText('Set copied')).toBeVisible();
+
+  // Pasted into set 2: the load and reps, not the RPE, so it waits for one.
+  await hold(1);
+  await set(2)
+    .getByRole('button', { name: /^Paste 100 × 5/ })
+    .click();
+  await expect(load(1)).toHaveValue('100');
+  await expect(rows.nth(1).getByRole('textbox', { name: 'RPE' })).toHaveValue('');
+
+  // Duplicated, there is one more set; moved up, a set changes place.
+  await hold(0);
+  await set(1).getByRole('button', { name: 'Duplicate' }).click();
+  await expect(rows).toHaveCount(4);
+  await load(2).fill('110');
+  await load(2).blur();
+  await hold(2);
+  await set(/^Low-Bar Squat, Set /)
+    .getByRole('button', { name: 'Move up' })
+    .click();
+  await expect(load(1)).toHaveValue('110');
+});

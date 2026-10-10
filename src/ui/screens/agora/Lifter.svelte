@@ -1,6 +1,7 @@
 <script lang="ts">
   import { onMount } from 'svelte';
   import Bodyweight from '../../agora/Bodyweight.svelte';
+  import CompetitionBests from '../../agora/CompetitionBests.svelte';
   import HandRecords from '../../agora/HandRecords.svelte';
   import Maxes from '../../agora/Maxes.svelte';
   import { takeAim } from '../../agoraIndex';
@@ -9,7 +10,7 @@
 
   /**
    * What is true of the lifter rather than of one session: bodyweight,
-   * reference maxes and records entered by hand. An index row that named one of
+   * reference maxes, the bests made at meets and records entered by hand. An index row that named one of
    * them lands here with that section in view.
    */
 
@@ -31,4 +32,5 @@
 
 <Bodyweight />
 <Maxes />
+<CompetitionBests />
 <HandRecords />

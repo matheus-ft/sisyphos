@@ -2,7 +2,7 @@
   import { requestPersistence } from '../../../storage/durability';
   import ExportRow from '../../agora/ExportRow.svelte';
   import { app } from '../../app.svelte';
-  import { persistenceText, plateOptions } from '../../agoraIndex';
+  import { OTHER_PLATE, persistenceText, plateChoice, plateOptions } from '../../agoraIndex';
   import { restBell } from '../../device';
   import Button from '../../kit/Button.svelte';
   import Icon from '../../kit/Icon.svelte';
@@ -10,6 +10,7 @@
   import Segmented from '../../kit/Segmented.svelte';
   import Switch from '../../kit/Switch.svelte';
   import { promptDialog, showToast } from '../../overlays.svelte';
+  import { parsePlate, PLATE_RANGE, type PlateUnit } from '../../prefs';
   import { routeHash } from '../../route';
   import { statusLine } from '../../status';
 
@@ -44,6 +45,31 @@
     // iOS lets a page make sound only after a tap, and this is one.
     if (on) restBell().prime();
     void app.setPrefs({ chime: on });
+  }
+
+  const plateOf = (unit: PlateUnit) => (unit === 'kg' ? app.prefs.plateKg : app.prefs.plateLb);
+  const setPlate = (unit: PlateUnit, step: number) =>
+    app.setPrefs(unit === 'kg' ? { plateKg: step } : { plateLb: step });
+
+  /** Picked, or with Other, typed in: the smallest change the plates allow. */
+  async function pickPlate(unit: PlateUnit, value: string): Promise<void> {
+    if (value !== OTHER_PLATE) return setPlate(unit, Number(value));
+    const { min, max } = PLATE_RANGE[unit];
+    const text = await promptDialog({
+      title: unit === 'kg' ? 'Smallest step in kilograms' : 'Smallest step in pounds',
+      body: 'The least the bar can change by: a pair of your lightest plates.',
+      label: `Step, ${unit}`,
+      value: String(plateOf(unit)),
+      inputmode: 'decimal',
+      confirmLabel: 'Save step',
+    });
+    if (text === null) return;
+    const step = parsePlate(text, unit);
+    if (step === null) {
+      showToast({ message: 'Not saved', strong: `A step is ${min} to ${max} ${unit}` });
+      return;
+    }
+    await setPlate(unit, step);
   }
 
   async function ask(): Promise<void> {
@@ -103,26 +129,31 @@
 
 <p class="sec caps">Plate increments</p>
 <ul class="group">
-  <li>
+  <li class="plates">
     <span class="grow t" id="kg-l">Kilograms</span>
     <Segmented
+      full
       label="Kilogram plate increment"
-      options={plateOptions('kg')}
-      value={String(app.prefs.plateKg)}
-      onchange={(value) => void app.setPrefs({ plateKg: Number(value) })}
+      options={plateOptions('kg', app.prefs.plateKg)}
+      value={plateChoice('kg', app.prefs.plateKg)}
+      onchange={(value) => void pickPlate('kg', value)}
     />
   </li>
-  <li>
+  <li class="plates">
     <span class="grow t" id="lb-l">Pounds</span>
     <Segmented
+      full
       label="Pound plate increment"
-      options={plateOptions('lb')}
-      value={String(app.prefs.plateLb)}
-      onchange={(value) => void app.setPrefs({ plateLb: Number(value) })}
+      options={plateOptions('lb', app.prefs.plateLb)}
+      value={plateChoice('lb', app.prefs.plateLb)}
+      onchange={(value) => void pickPlate('lb', value)}
     />
   </li>
 </ul>
-<p class="group-foot">Steps the − and + buttons, and rounds percentage loads.</p>
+<p class="group-foot">
+  Steps the − and + buttons, and rounds percentage loads. Other takes any step, as 0.5 for
+  fractional plates.
+</p>
 
 <p class="sec caps">Sync and export</p>
 <ul class="group">
@@ -142,6 +173,13 @@
 </p>
 
 <style>
+  /* Four choices, Other among them, need the row's width: the unit sits above them. */
+  .plates {
+    flex-wrap: wrap;
+    row-gap: var(--space-1);
+    padding-block: var(--space-2) var(--space-3);
+  }
+
   /* Beside Not yet and Ask the line is what the button is for: let it wrap, not cut. */
   .s.wraps {
     white-space: normal;

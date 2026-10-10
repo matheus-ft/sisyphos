@@ -31,6 +31,10 @@ import {
   parseSeconds,
   planSet,
   removeExercise,
+  copyOf,
+  duplicateSet,
+  moveSet,
+  pasteEdit,
   removeSet,
   restSeconds,
   setDate,
@@ -171,6 +175,47 @@ describe('a session being logged', () => {
     const [e] = s.exercises;
     expect(removeSet(s, e.id, e.performed[0].id).exercises[0].performed).toEqual([]);
     expect(removeExercise(s, e.id).exercises).toEqual([]);
+  });
+
+  it("moves a set among its exercise's sets, keeping within them", () => {
+    const newId = ids();
+    let s = withSquat(newId);
+    const e = s.exercises[0].id;
+    s = addSet(s, e, newId);
+    s = addSet(s, e, newId);
+    const order = (x: Session) => x.exercises[0].performed.map((p) => p.id);
+    const [a, b, c] = order(s);
+    expect(order(moveSet(s, e, c, -1))).toEqual([a, c, b]);
+    expect(order(moveSet(s, e, a, -1))).toEqual([a, b, c]);
+    expect(order(moveSet(s, e, a, 5))).toEqual([b, c, a]);
+  });
+
+  it('duplicates a set right after it, without its RPE, still to be lifted', () => {
+    const newId = ids();
+    const s = withSquat(newId);
+    const [e] = s.exercises;
+    const [done, copy] = duplicateSet(s, e.id, e.performed[0].id, newId).exercises[0].performed;
+    expect(done.state).toBe('done');
+    expect(copy).toMatchObject({
+      state: 'pending',
+      reps: 5,
+      rpe: null,
+      prescribed_id: null,
+      load: { kind: 'weight', value: 140, unit: 'kg' },
+    });
+    expect(copy.id).not.toBe(done.id);
+  });
+
+  it('copies a set as its load and reps, and pastes them, never the RPE', () => {
+    const [e] = withSquat().exercises;
+    const copy = copyOf(e.performed[0])!;
+    expect(pasteEdit(copy, 'weight')).toEqual({ amount: 140, unit: 'kg', reps: 5 });
+    // A hold is not a squat: nothing to paste.
+    expect(pasteEdit(copy, 'time')).toBeNull();
+    expect(pasteEdit({ load: { kind: 'time', seconds: 45 }, reps: null }, 'time')).toEqual({
+      amount: 45,
+    });
+    expect(copyOf({ ...e.performed[0], load: null })).toBeNull();
   });
 
   it('asks for bodyweight only for bodyweight-plus work, until the session has it', () => {

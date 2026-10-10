@@ -263,6 +263,23 @@ export interface ManualRecord {
   context: string | null;
 }
 
+/**
+ * The heaviest single made at a meet: judged, peaked for, lifted in a singlet
+ * on commands. A different number from anything lifted in training, so it is
+ * kept apart from the record book rather than standing in it as a one-rep
+ * record, and apart from the reference max, which programming reads.
+ *
+ * Identified by date and exercise: a meet day has one best attempt per lift.
+ */
+export interface CompetitionBest {
+  date: IsoDate;
+  /** A competition-tier exercise, so sumo and conventional stay apart. */
+  exercise_id: string;
+  weight_kg: number;
+  /** The meet, e.g. "Nationals 2026". */
+  meet: string | null;
+}
+
 export interface BodyweightEntry {
   date: IsoDate;
   weight_kg: number;

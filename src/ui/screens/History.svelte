@@ -177,9 +177,17 @@
     text-transform: none;
   }
 
+  /* The notch's share of the padding lies, unseen, over the end of the week
+     above (on an iPhone, its whole last row), so taps pass through it; once
+     stuck, it covers what is beneath it, and takes them. */
+  .week .sec {
+    pointer-events: none;
+  }
+
   .week .sec:global(.stuck) {
     background: color-mix(in srgb, var(--ground) 92%, transparent);
     backdrop-filter: blur(8px);
     box-shadow: 0 1px 0 var(--line);
+    pointer-events: auto;
   }
 </style>

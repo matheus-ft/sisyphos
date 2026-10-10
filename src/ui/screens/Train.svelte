@@ -1,11 +1,12 @@
 <script lang="ts">
-  import type { Session } from '../../model';
+  import type { IsoDate, Session, Template } from '../../model';
   import { app } from '../app.svelte';
   import { longDate, programLabel } from '../format';
   import Boulder from '../kit/Boulder.svelte';
   import Button from '../kit/Button.svelte';
   import Icon from '../kit/Icon.svelte';
   import ScreenHeader from '../kit/ScreenHeader.svelte';
+  import Sheet from '../kit/Sheet.svelte';
   import { localDate } from '../session';
   import {
     firstSessionOfWeek,
@@ -34,6 +35,23 @@
 
   /** A plan's second line: its program label, else what it is called. */
   const subline = (s: Session): string => programLabel(s.label) ?? sessionName(s, app.library);
+
+  /**
+   * The day being planned, once picked: the plan starts empty or from a
+   * template, the lifter's choice. With no template there is nothing to choose.
+   */
+  let planning = $state<IsoDate | null>(null);
+
+  function pickedDay(date: IsoDate): void {
+    if (app.templates.length === 0) void app.create(null, { planned: true, date });
+    else planning = date;
+  }
+
+  function plan(from: Template | null): void {
+    const date = planning;
+    planning = null;
+    if (date) void app.create(from, { planned: true, date });
+  }
 </script>
 
 {#snippet planRows(sessions: Session[])}
@@ -98,14 +116,10 @@
   {/if}
   <ul class="group">
     <li class="row-link">
-      <DatePick
-        label="Plan a session for"
-        min={today}
-        onpick={(date) => app.create(null, { planned: true, date })}
-      >
+      <DatePick label="Plan a session for" min={today} onpick={pickedDay}>
         <span class="grow">
           <span class="t">Plan one ahead</span>
-          <span class="s">Fill it in now, start it on the day</span>
+          <span class="s">Fresh or from a template, started on the day</span>
         </span>
         <Icon name="calendar" />
       </DatePick>
@@ -149,6 +163,36 @@
   </li>
 </ul>
 
+<Sheet
+  open={planning !== null}
+  onclose={() => (planning = null)}
+  label="Plan {planning ? longDate(planning) : ''}"
+>
+  <h2 class="pick-title caps">Plan {planning ? longDate(planning) : ''}</h2>
+  <ul class="group pick">
+    <li class="row-link">
+      <button onclick={() => plan(null)}>
+        <span class="grow">
+          <span class="t">Start fresh</span>
+          <span class="s">An empty plan to fill in</span>
+        </span>
+        <Icon name="chev" size="sm" />
+      </button>
+    </li>
+    {#each app.templates as template (template.id)}
+      <li class="row-link">
+        <button onclick={() => plan(template)}>
+          <span class="grow">
+            <span class="t">{template.name}</span>
+            <span class="s">{templateLine(template)}</span>
+          </span>
+          <Icon name="chev" size="sm" />
+        </button>
+      </li>
+    {/each}
+  </ul>
+</Sheet>
+
 <div class="frieze">
   <Boulder size="frieze" progress={0} label={null} />
   {#if wit && !running}<p class="meta caption">The boulder is at the bottom again.</p>{/if}
@@ -185,6 +229,17 @@
 
   .new {
     color: var(--accent);
+  }
+
+  .pick-title {
+    margin: 0 0 var(--space-2);
+    font-size: var(--fs-label);
+    color: var(--ink-2);
+  }
+
+  /* Edge to edge inside the sheet, which already keeps the gutter. */
+  .pick {
+    margin: 0;
   }
 
   .frieze {

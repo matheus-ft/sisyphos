@@ -49,6 +49,9 @@
   }
 
   function up(): void {
+    // Only a press that began on the handle: a long press elsewhere can open
+    // the sheet under the finger, and lifting it is not a tap on the handle.
+    if (dragFrom === null) return;
     const dragged = drag;
     dragFrom = null;
     drag = 0;

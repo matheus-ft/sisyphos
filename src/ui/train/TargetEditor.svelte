@@ -3,6 +3,7 @@
   import { app } from '../app.svelte';
   import Button from '../kit/Button.svelte';
   import Chip from '../kit/Chip.svelte';
+  import Icon from '../kit/Icon.svelte';
   import { plateStep } from '../prefs';
   import { localDate } from '../session';
   import {
@@ -33,8 +34,23 @@
     onedit: (change: TargetEdit) => void;
     onduplicate: () => void;
     onremove: () => void;
+    /** Moves the target up or down among its exercise's; `first` and `last` say where it can go. */
+    onmove: (by: -1 | 1) => void;
+    first: boolean;
+    last: boolean;
   }
-  let { target, number, exercise, timed, onedit, onduplicate, onremove }: Props = $props();
+  let {
+    target,
+    number,
+    exercise,
+    timed,
+    onedit,
+    onduplicate,
+    onremove,
+    onmove,
+    first,
+    last,
+  }: Props = $props();
 
   const uid = $props.id();
   const load = $derived(loadOf(target));
@@ -99,6 +115,18 @@
         >Duplicate</Button
       >
       <Button variant="link" aria-label="Remove set {number}" onclick={onremove}>Remove</Button>
+      <button
+        class="icon-btn"
+        aria-label="Move set {number} up"
+        disabled={first}
+        onclick={() => onmove(-1)}><Icon name="up" size="sm" /></button
+      >
+      <button
+        class="icon-btn down"
+        aria-label="Move set {number} down"
+        disabled={last}
+        onclick={() => onmove(1)}><Icon name="up" size="sm" /></button
+      >
     </div>
   </div>
 
@@ -193,7 +221,21 @@
 
   .acts {
     display: flex;
+    align-items: center;
     margin-right: calc(-1 * var(--space-2));
+  }
+
+  .acts .icon-btn {
+    color: var(--accent);
+  }
+
+  .acts .icon-btn:disabled {
+    color: var(--muted);
+  }
+
+  /* The up arrow turned over. */
+  .down :global(svg) {
+    transform: rotate(180deg);
   }
 
   .chips {

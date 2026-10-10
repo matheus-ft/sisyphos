@@ -646,6 +646,7 @@ export const TOKEN_COLUMN: Record<TableKind, string> = {
   bodyweight: 'weight_kg',
   oneRm: 'note',
   manualRecords: 'context',
+  competitionBests: 'meet',
   additions: 'name',
 };
 

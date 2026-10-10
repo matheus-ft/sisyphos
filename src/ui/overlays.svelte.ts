@@ -40,6 +40,8 @@ export interface PromptInput {
   label: string;
   value?: string;
   placeholder?: string;
+  /** The keyboard the field brings up: "decimal" for a number. */
+  inputmode?: 'text' | 'decimal';
   confirmLabel: string;
   cancelLabel?: string;
 }

@@ -11,6 +11,7 @@
     addTarget,
     addTemplateExercise,
     duplicateTarget,
+    moveTarget,
     editTarget,
     moveTemplateExercise,
     removeTarget,
@@ -140,6 +141,9 @@
           {exercise}
           {timed}
           onedit={(change) => edit(index, t, change)}
+          first={t === 0}
+          last={t === entry.prescribed.length - 1}
+          onmove={(by) => onchange(moveTarget(template, index, t, by))}
           onduplicate={() => onchange(duplicateTarget(template, index, t))}
           onremove={() => onchange(removeTarget(template, index, t))}
         />

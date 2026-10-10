@@ -428,7 +428,13 @@ describe.each(BACKENDS)('Log over %s', (_name, backend) => {
   describe('tables', () => {
     it('reads a missing file as an empty table', async () => {
       const { log } = await setup();
-      for (const kind of ['bodyweight', 'oneRm', 'manualRecords', 'additions'] as const) {
+      for (const kind of [
+        'bodyweight',
+        'oneRm',
+        'manualRecords',
+        'competitionBests',
+        'additions',
+      ] as const) {
         expect(await log.getRows(kind)).toEqual([]);
       }
     });

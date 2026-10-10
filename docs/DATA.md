@@ -14,6 +14,7 @@ sisyphos-log/                      ← your own PRIVATE repo. Your training.
 ├── lifter/bodyweight.csv
 ├── lifter/one-rm-history.csv
 ├── lifter/manual-records.csv
+├── lifter/competition-bests.csv
 ├── library/additions.csv          exercises you made or changed
 └── conflicts/                     versions waiting for you to choose
 ```
@@ -41,6 +42,27 @@ else's repository.
 
 A new token can be pasted at any time. Pointing the app at a different repo is a
 fresh start with that repo: nothing from the old one is compared against it.
+
+### A copy for someone else
+
+To let someone (a designer, a coach) use the app on your real data without
+being able to change your log, give them a copy of the log repo and a token
+for the copy alone. It is all of your log, weigh-ins included.
+
+1. Sync on every device until the status says synced.
+2. On github.com, create an empty private repository, say
+   `sisyphos-log-copy`, without a README.
+3. Copy the log into it, history and all:
+   `git clone --bare https://github.com/<you>/sisyphos-log.git`, then
+   `git -C sisyphos-log.git push --mirror https://github.com/<you>/sisyphos-log-copy.git`.
+4. Create a fine-grained token as for your own log, but for the copy only and
+   with a short expiry, and send it to them privately with `<you>/sisyphos-log-copy`.
+5. They open the app on their own phone or browser and connect with those. The
+   first sync restores the copy; everything they do lands in it.
+
+To refresh it later, push again with `--force`: their device merges what it
+holds into the new copy, as after any rewritten history. When they are done,
+delete the token and the copy.
 
 The token stays on the device: it is sent only to `api.github.com`, and never
 logged or synced.
@@ -171,8 +193,17 @@ Effective-dated reference maxes that resolve percentage prescriptions. Always se
 by hand.
 
 `lifter/manual-records.csv` — `date, exercise_id, reps, weight_kg, rpe, context`.
-Key: `date, exercise_id, reps`. Records with **no session behind them**: a
-competition lift, or anything from before you started logging here.
+Key: `date, exercise_id, reps`. Records with **no session behind them**: a lift
+from before you started logging here. Only the competition lifts keep records
+(`holdsRecords` in `src/metrics/records.ts`); a row for any other exercise is
+kept, and not shown.
+
+`lifter/competition-bests.csv` — `date, exercise_id, weight_kg, meet`. Key:
+`date, exercise_id`. The heaviest single of each competition lift at a meet,
+entered by hand. Not a record: a meet's single is peaked for and judged, so it
+stands apart from the record book and from the reference max. Added after
+format 2 without changing the format: an older app leaves a file it does not
+know alone, so nothing it writes can lose one.
 
 Records that _do_ come from logged sets are not stored at all. They're derived by
 scanning sessions, exactly like tonnage and e1RM, and each one points at the set
@@ -181,7 +212,8 @@ that session and show the sets around it. A stored PR is a derived value that ca
 fall out of agreement with the set that produced it.
 
 Note this is a different thing again from the 1RM history. The 1RM history drives
-prescriptions and is a decision you make; records are observations.
+prescriptions and is a decision you make; records are observations in training,
+and a meet's bests are observations on the platform.
 
 `library/additions.csv` — the columns of the shipped `src/library/exercises.csv`,
 then `based_on`: empty for an exercise the shipped library didn't have, or the
