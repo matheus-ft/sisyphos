@@ -1,6 +1,13 @@
 import { describe, expect, it } from 'vitest';
 import { MemoryStore } from '../src/storage/store/memory';
-import { DEFAULT_PREFS, parsePlate, PLATE_CHOICES, plateStep, readPrefs } from '../src/ui/prefs';
+import {
+  DEFAULT_PREFS,
+  parsePlate,
+  parseTheme,
+  PLATE_CHOICES,
+  plateStep,
+  readPrefs,
+} from '../src/ui/prefs';
 
 describe('device preferences', () => {
   it('fills every default when nothing was saved', () => {
@@ -11,6 +18,7 @@ describe('device preferences', () => {
       keepAwake: false,
       chime: false,
       muscleCounting: 'fractional',
+      theme: 'system',
     });
     expect(readPrefs(null)).toEqual(DEFAULT_PREFS);
     expect(readPrefs(undefined)).toEqual(DEFAULT_PREFS);
@@ -23,6 +31,18 @@ describe('device preferences', () => {
       plateKg: 1.25,
       keepAwake: true,
     });
+  });
+
+  it('reads the theme, and takes anything but light and dark as the phone’s setting', () => {
+    expect(DEFAULT_PREFS.theme).toBe('system');
+    for (const theme of ['system', 'light', 'dark'] as const) {
+      expect(parseTheme(theme)).toBe(theme);
+      expect(readPrefs({ theme }).theme).toBe(theme);
+    }
+    for (const junk of ['Dark', 'auto', '', null, undefined, 1, {}]) {
+      expect(parseTheme(junk)).toBe('system');
+      expect(readPrefs({ theme: junk as unknown as string }).theme).toBe('system');
+    }
   });
 
   it('takes any plate increment a pair of plates could make, and nothing else', () => {

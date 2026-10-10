@@ -279,7 +279,7 @@
    Light: clay
    ------------------------------------------------------------------------ */
 :root {
-  color-scheme: light dark;
+  color-scheme: light dark; /* the phone decides; Light and Dark below override it */
 
   /* Surfaces, back to front. */
   --ground: #e8c29c; /* the unglazed clay */
@@ -368,8 +368,15 @@
 /* ------------------------------------------------------------------------
    Dark: the black glaze
    ------------------------------------------------------------------------ */
+/*
+ * The glaze applies when the phone is dark and the lifter has not chosen
+ * Light, or when they have chosen Dark (`data-theme` on <html>, set by
+ * src/ui/theme.ts and by the script in index.html). CSS cannot share one rule
+ * between a media query and an attribute, so the list is written twice and the
+ * two copies must match: change a token in both.
+ */
 @media (prefers-color-scheme: dark) {
-  :root {
+  :root:not([data-theme='light']) {
     --ground: #15100c;
     --ground-deep: #100c09;
     --surface: #1f1812;
@@ -437,6 +444,81 @@
     --shadow-4: inset 0 1px 0 rgba(239, 205, 166, 0.08), 0 18px 44px rgba(0, 0, 0, 0.7);
     --scrim: rgba(0, 0, 0, 0.62);
   }
+}
+
+:root[data-theme='light'] {
+  color-scheme: light;
+}
+
+:root[data-theme='dark'] {
+  color-scheme: dark;
+
+  --ground: #15100c;
+  --ground-deep: #100c09;
+  --surface: #1f1812;
+  --raised: #2a2019;
+  --sunken: #0d0a07;
+  --sheen: rgba(226, 166, 117, 0.07); /* the glaze's metallic gleam */
+
+  --ink: #efcda6; /* reserved clay */
+  --ink-2: #c9a27c;
+  --muted: #a6825f;
+  --line: #3a2b20;
+  --line-strong: #8e6a48;
+
+  --accent: #ee8a52;
+  --accent-strong: #f6a574; /* pressed lightens on glaze */
+  --accent-ink: #1a0e07;
+  --accent-wash: #3f2619;
+
+  --glaze: #15100c;
+  --clay: #e2a675;
+  --figure: #e2a675;
+  --on-figure: #1a110b;
+  --figure-accent: #74280b;
+
+  --success: #7cc2ae;
+  --success-wash: #1e302b;
+  --warning: #e9a84e;
+  --warning-wash: #3a2c14;
+  --danger: #ff8f9e;
+  --danger-ink: #1a0e07;
+  --danger-wash: #3e2226;
+  --laurel: #d9c35a;
+  --laurel-fill: #d9c35a;
+  --laurel-wash: #33301a;
+
+  --rest-field: #0e0a07;
+  --rest-surface: #1f1610;
+  --rest-ink: #ebc29a;
+  --rest-muted: #a07e5e;
+  --rest-accent: #e8925a;
+  --rest-track: #3a2b20;
+  --rest-over: #a23f18;
+  --rest-over-2: #872f0e;
+  --rest-over-ink: #fdebd3;
+
+  --statue-field: #1a130e;
+  --statue-line: #0e0a07;
+  --statue-dilute: #7e5232;
+  --vol-0: #d69e6e;
+  --vol-1: #cc8352;
+  --vol-2: #ba6234;
+  --vol-3: #9c441c;
+  --vol-4: #76290b;
+
+  --chart-line: #efcda6;
+  --chart-area: #3a2c20;
+  --chart-grid: #2e231a;
+  --chart-strata: #4a3828;
+
+  /* On glaze a shadow barely shows; a clay rim on top edges does the
+     lifting instead. */
+  --shadow-1: inset 0 1px 0 rgba(239, 205, 166, 0.05), 0 1px 2px rgba(0, 0, 0, 0.5);
+  --shadow-2: inset 0 1px 0 rgba(239, 205, 166, 0.06), 0 4px 10px rgba(0, 0, 0, 0.55);
+  --shadow-3: inset 0 1px 0 rgba(239, 205, 166, 0.08), 0 -10px 30px rgba(0, 0, 0, 0.65);
+  --shadow-4: inset 0 1px 0 rgba(239, 205, 166, 0.08), 0 18px 44px rgba(0, 0, 0, 0.7);
+  --scrim: rgba(0, 0, 0, 0.62);
 }
 
 @media (prefers-reduced-motion: reduce) {

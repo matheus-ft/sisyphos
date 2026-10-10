@@ -16,6 +16,16 @@ export interface Prefs {
   chime: boolean;
   /** The muscle-counting preset the Body view uses: a name in `muscle_roles.presets` of `definitions.json`. */
   muscleCounting: string;
+  /** The appearance: the phone's own setting, or Light or Dark whatever the phone says. */
+  theme: Theme;
+}
+
+export const THEMES = ['system', 'light', 'dark'] as const;
+export type Theme = (typeof THEMES)[number];
+
+/** A stored theme, or System when it is absent or not one. */
+export function parseTheme(value: unknown): Theme {
+  return THEMES.find((t) => t === value) ?? 'system';
 }
 
 /** The increments the settings screen offers to pick, per unit. */
@@ -57,6 +67,7 @@ export const DEFAULT_PREFS: Prefs = {
   keepAwake: false,
   chime: false,
   muscleCounting: CONFIG.activeMuscleWeights,
+  theme: 'system',
 };
 
 type Stored = Partial<Pick<Settings, keyof Prefs>>;
@@ -74,6 +85,7 @@ export function readPrefs(settings: Stored | null | undefined): Prefs {
       typeof s.muscleCounting === 'string' && MUSCLE_PRESET_NAMES.includes(s.muscleCounting)
         ? s.muscleCounting
         : DEFAULT_PREFS.muscleCounting,
+    theme: parseTheme(s.theme),
   };
 }
 
