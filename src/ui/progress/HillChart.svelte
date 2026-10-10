@@ -206,7 +206,7 @@
       aria-hidden="true"
     >
       <strong class="figure-num"
-        >{texts[at].best}{#if texts[at].from}{' '}<span class="from">from {texts[at].from}</span
+        >{texts[at].best}{#if texts[at].from}<span class="from">from {texts[at].from}</span
           >{/if}</strong
       >
       {#if texts[at].single}<span class="single-text figure-num">{texts[at].single}</span>{/if}
