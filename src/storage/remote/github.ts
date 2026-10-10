@@ -1,6 +1,14 @@
 import { FormatError, SyncError, type SyncErrorKind } from '../errors';
 import { blobSha } from '../hash';
-import type { NewCommit, Remote, RemoteChange, RemoteTree, RepoInfo } from './remote';
+import {
+  pause,
+  REREAD_MS,
+  type NewCommit,
+  type Remote,
+  type RemoteChange,
+  type RemoteTree,
+  type RepoInfo,
+} from './remote';
 
 /**
  * The log repo on GitHub, through the Git Data API.
@@ -11,7 +19,8 @@ import type { NewCommit, Remote, RemoteChange, RemoteTree, RepoInfo } from './re
  *   rate limits (403/429 with `x-ratelimit-remaining: 0` or `retry-after`);
  * - `blob` verifies the content against its sha;
  * - `tree` rejects a truncated tree;
- * - `moveBranch` returns 'raced' only when a fresh head read differs from `from`;
+ * - `moveBranch` returns 'raced' only when a fresh head read differs from `from`,
+ *   or GitHub refused as not a fast forward a `to` that descends from `from`;
  * - the token is only ever sent as an `Authorization` header, and never appears
  *   in an error message;
  * - a 404 is marked `notFound`, so setup can tell a wrong name or token from a
@@ -216,10 +225,15 @@ export class GitHubRemote implements Remote {
     if (res.ok) return 'moved';
     if (res.status === 422 || res.status === 409) {
       // GitHub answers 422 for a non-fast-forward and for validation failures
-      // alike, so only a fresh read of the head can tell a race from a real
-      // refusal. Treating every 422 as a race retries forever.
+      // alike, so a refusal alone cannot tell a race from a real one, and
+      // treating every 422 as a race retries forever.
       const said = await githubMessage(res);
-      if ((await this.head()) !== from) return 'raced';
+      if (await this.headLeaves(from)) return 'raced';
+      // Every read still shows `from`, but GitHub checks the fast-forward against
+      // the head as written: refusing a `to` that descends from `from` as not a
+      // fast forward means the head is no longer `from`, whatever the reads say yet.
+      // Without the check, a `to` off `from` would pass for a race every round.
+      if (/not a fast.forward/i.test(said) && (await this.contains(from, to))) return 'raced';
       throw this.error(
         'repo',
         `GitHub refused to move the branch ${branch} of ${this.name()} (HTTP ${res.status}): ${said}`,
@@ -229,6 +243,24 @@ export class GitHubRemote implements Remote {
       res,
       `The branch ${branch} of ${this.name()} was not found, or the token can no longer see the repository`,
     );
+  }
+
+  /**
+   * Whether a read of the head shows it moved off `from`, read again after each
+   * of `REREAD_MS` while it does not: just after another device moved the
+   * branch, GitHub's reads can still show `from` (remote.ts, `REREAD_MS`), as
+   * the live smoke test's forced race once did. `no-store` cannot help: the
+   * stale answer is GitHub's, not a cache's. Waiting also means the sync's next
+   * round reads the head that won. A real refusal costs the wait before it is
+   * reported.
+   */
+  private async headLeaves(from: string): Promise<boolean> {
+    if ((await this.head()) !== from) return true;
+    for (const ms of REREAD_MS) {
+      await pause(ms);
+      if ((await this.head()) !== from) return true;
+    }
+    return false;
   }
 
   async contains(ancestor: string, descendant: string): Promise<boolean> {

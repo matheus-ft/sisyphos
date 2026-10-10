@@ -29,7 +29,7 @@ import {
   TABLE_KINDS,
   TABLE_PATHS,
 } from './paths';
-import type { Remote, RemoteChange, RemoteTree } from './remote/remote';
+import { pause, REREAD_MS, type Remote, type RemoteChange, type RemoteTree } from './remote/remote';
 import type { Inflight, LocalStore, StoreOp, SyncEntry } from './store/store';
 
 /**
@@ -170,6 +170,20 @@ async function recover(context: Context): Promise<void> {
 }
 
 /**
+ * The head, read again after each of `REREAD_MS` until it is `last` or descends
+ * from it; null when it still does not after the last one.
+ */
+async function readPast(remote: Remote, last: string): Promise<string | null> {
+  for (const ms of REREAD_MS) {
+    await pause(ms);
+    const head = await remote.head();
+    if (head === null) throw noCommits();
+    if (head === last || (await remote.contains(last, head))) return head;
+  }
+  return null;
+}
+
+/**
  * Step 10's bases: each pushed path now agrees with the remote on what was
  * pushed. A commit an older build recorded pushed files in its format, and
  * their bases say so (`SyncEntry.base_format`) until `migrateBases` reads them.
@@ -249,7 +263,7 @@ async function syncRound(
   const { store, remote } = context;
 
   // 2. The head. Unmoved and nothing changed here: one request, and done.
-  const head = await remote.head();
+  let head = await remote.head();
   if (head === null) throw noCommits();
 
   // The bases describe the history this device last agreed with. If the head
@@ -260,7 +274,15 @@ async function syncRound(
   // conflict but never delete, as after pointing the device at another repo.
   const last = (await onDevice(() => store.meta())).last_synced_head;
   if (last !== null && head !== last && !(await remote.contains(last, head))) {
-    await onDevice(() => store.resetSync());
+    // A head behind that point is either a rewind or a read that trails the
+    // move to it (remote.ts, `REREAD_MS`), as the next sync straight after this
+    // device's own push can get. Forgetting the bases on an early read costs a
+    // first sync against an old head, and conflicts for every record changed
+    // since, so the head is read again: an early read comes right within the
+    // wait, a rewind stays.
+    const caught = (await remote.contains(head, last)) ? await readPast(remote, last) : null;
+    if (caught === null) await onDevice(() => store.resetSync());
+    else head = caught;
   }
   // Only once the head has been read: a remote that cannot be reached at all
   // must not pass for one that lacks those versions.
