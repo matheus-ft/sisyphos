@@ -153,6 +153,9 @@
               {:else}
                 <span class="none">–</span>
               {/if}
+              {#if summary.theoretical !== null}
+                <span class="meta theoretical">Theoretical {kgText(summary.theoretical)}</span>
+              {/if}
             </td>
             <td>
               {#if summary.latest?.total != null}

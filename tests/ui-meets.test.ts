@@ -21,6 +21,7 @@ import {
   meetsNewestFirst,
   meetsSummary,
   rowExercise,
+  theoreticalTotal,
   totalText,
   usualExercises,
   withRowExercise,
@@ -186,7 +187,45 @@ describe('across meets', () => {
     const summary = meetsSummary([], library);
     expect(summary.lifts.every((l) => l.best === null && l.latest === null)).toBe(true);
     expect(summary.total).toBeNull();
+    expect(summary.theoretical).toBeNull();
     expect(summary.latest).toBeNull();
+  });
+
+  it('gives the theoretical total beside the best total, from the same summary', () => {
+    const summary = meetsSummary(meets, library);
+    expect(summary.theoretical).toBe(610);
+    expect(summary.total?.kg).toBe(605);
+  });
+
+  it('has a theoretical total from each lift’s best, across meets, and null without all three', () => {
+    // Squat 210 from Nationals, bench 140 from Regionals, deadlift 260 from Regionals.
+    expect(theoreticalTotal(meets)).toBe(610);
+    expect(theoreticalTotal([regionals])).toBe(605);
+    // Nationals alone: 210 + 137.5 + 252.5.
+    expect(theoreticalTotal([nationals])).toBe(600);
+    expect(theoreticalTotal([])).toBeNull();
+    const noDeadlift = meetWith('2027-01-01-aaaa', {
+      squat: [good(220, 'low_bar_squat'), null, null],
+      bench: [good(140, 'bench'), null, null],
+    });
+    // A squat of 220 now beats 210; the missing deadlift changes nothing.
+    expect(theoreticalTotal([...meets, noDeadlift])).toBe(620);
+    expect(theoreticalTotal([noDeadlift])).toBeNull();
+    const bombedDeadlift = meetWith('2027-01-01-aaaa', {
+      squat: [good(220, 'low_bar_squat'), null, null],
+      bench: [good(140, 'bench'), null, null],
+      deadlift: [missed(300, 'sumo_deadlift'), null, null],
+    });
+    expect(theoreticalTotal([bombedDeadlift])).toBeNull();
+  });
+
+  it('keeps a theoretical total to the centigram, as a meet’s total is', () => {
+    const odd = meetWith('2026-01-01-aaaa', {
+      squat: [good(200, 'low_bar_squat'), null, null],
+      bench: [good(137.5, 'bench'), null, null],
+      deadlift: [good(275, 'sumo_deadlift'), null, null],
+    });
+    expect(theoreticalTotal([odd])).toBe(612.5);
   });
 
   it('writes a reference max’s “at a meet” line', () => {

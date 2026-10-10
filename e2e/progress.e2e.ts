@@ -29,19 +29,20 @@ test('body shades the statue by working sets and opens a muscle', async ({ page 
 
   // Nothing lifted this week yet, so Body opens on the last four weeks, whose
   // work gives the muscles different shades.
-  await expect(page.getByText('No working sets this week yet.')).toBeHidden();
   await expect.poll(async () => new Set(await shades(page)).size).toBeGreaterThan(1);
 
-  // This week alone is bare: every muscle is the untrained shade.
+  // This week alone is bare: every muscle is the untrained shade, and the table counts none.
   await page.getByRole('button', { name: 'This week' }).click();
-  await expect(page.getByText('No working sets this week yet.')).toBeVisible();
+  const table = page.getByRole('table');
+  await expect
+    .poll(async () => new Set(await table.getByRole('cell').allTextContents()))
+    .toEqual(new Set(['0']));
   // The fills ease between shades, so wait for them to settle.
   await expect.poll(async () => new Set(await shades(page)).size).toBe(1);
   await page.getByRole('button', { name: 'Last 4 weeks' }).click();
 
-  // The list beneath names the most worked; one opens the sets behind it.
-  const muscle = page.getByRole('button', { name: /sets in the last 4 weeks\. Show the sets$/ });
-  await muscle.first().click();
+  // The table lists the most worked first; one muscle opens the sets behind it.
+  await table.getByRole('row').nth(1).getByRole('button').click();
   const sheet = page.getByRole('dialog', { name: /sets in the last 4 weeks$/ });
   await expect(sheet).toBeVisible();
   await sheet.getByRole('list').getByRole('button').first().click();
@@ -56,8 +57,7 @@ test('body counts muscles by the chosen preset, which the phone keeps', async ({
   );
   await expect(page.getByText(/auxiliary muscles count half/)).toBeVisible();
 
-  // The table has no shade column, and the first row is the most worked muscle's sets.
-  await page.getByRole('button', { name: 'All muscles as a table' }).click();
+  // The table is always shown: it has no shade column, and its first row is the most worked muscle.
   const table = page.getByRole('table');
   await expect(table.getByRole('columnheader')).toHaveText(['Muscle', 'Sets']);
   const total = async (): Promise<number> =>

@@ -18,7 +18,7 @@ import { formatSet } from './session';
 
 /**
  * What the Progress tab (Athloi) works out before it draws: the body's levels
- * and list, the four lifts that keep a record book, the strength headline, and
+ * and table, the four lifts that keep a record book, the strength headline, and
  * the rows of the record book. The screens only paint these.
  */
 
@@ -109,32 +109,6 @@ export function legendCaption(
     ? `working sets this week, ${countingPhrase(counting)}`
     : // The no-break space keeps "4 weeks" whole when the caption wraps.
       `working sets a week, averaged over 4\u00a0weeks, ${countingPhrase(counting)}`;
-}
-
-export function volumeHeading(window: VolumeWindow): string {
-  return window === 'this_week' ? 'Most worked this week' : 'Most worked in 4 weeks';
-}
-
-export interface MuscleBar {
-  id: string;
-  name: string;
-  sets: number;
-  text: string;
-  /** 0..1 of the most worked muscle: the bar's length. */
-  share: number;
-}
-
-/** The muscles that did any work, most first, as many as `limit`. */
-export function topMuscles(volume: readonly MuscleVolume[], limit = 5): MuscleBar[] {
-  const worked = volume.filter((v) => v.sets > 0).slice(0, limit);
-  const most = worked[0]?.sets ?? 0;
-  return worked.map((v) => ({
-    id: v.muscle.id,
-    name: v.muscle.name,
-    sets: v.sets,
-    text: formatCount(v.sets),
-    share: most > 0 ? v.sets / most : 0,
-  }));
 }
 
 export interface MuscleSessionRow {

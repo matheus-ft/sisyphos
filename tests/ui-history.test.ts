@@ -8,6 +8,7 @@ import {
   monthGrid,
   monthOf,
   shiftMonth,
+  WEEKDAY_INITIALS,
 } from '../src/ui/history';
 import { byId, library, sessionOf, squat } from './analysis-fixtures';
 
@@ -236,20 +237,36 @@ describe('the best set of a session', () => {
 describe('the month calendar', () => {
   const today = '2026-10-04';
 
-  it('lays a month in whole weeks, Monday first, with the days around it', () => {
+  it('lays a month in whole weeks, Sunday first, with the days around it', () => {
     const month = monthGrid(2026, 10, [], { today });
     expect(month.title).toBe('October 2026');
     // 1 October 2026 is a Thursday and 31 October a Saturday.
     expect(month.weeks).toHaveLength(5);
     expect(month.weeks.every((w) => w.length === 7)).toBe(true);
-    expect(month.weeks[0][0]).toMatchObject({ date: '2026-09-28', day: 28, inMonth: false });
-    expect(month.weeks[0][3]).toMatchObject({ date: '2026-10-01', day: 1, inMonth: true });
-    expect(month.weeks[4][6]).toMatchObject({ date: '2026-11-01', day: 1, inMonth: false });
-    expect(month.weeks[4][5]).toMatchObject({ date: '2026-10-31', inMonth: true });
+    expect(month.weeks[0][0]).toMatchObject({ date: '2026-09-27', day: 27, inMonth: false });
+    expect(month.weeks[0][4]).toMatchObject({ date: '2026-10-01', day: 1, inMonth: true });
+    expect(month.weeks[4][6]).toMatchObject({ date: '2026-10-31', day: 31, inMonth: true });
+    expect(month.weeks.map((w) => w[0].date)).toEqual([
+      '2026-09-27',
+      '2026-10-04',
+      '2026-10-11',
+      '2026-10-18',
+      '2026-10-25',
+    ]);
   });
 
-  it('is exactly four weeks for a February that starts on a Monday', () => {
-    const month = monthGrid(2027, 2, [], { today });
+  it('heads its columns Sunday to Saturday', () => {
+    expect(WEEKDAY_INITIALS.join('')).toBe('SMTWTFS');
+    // 4 October 2026 is a Sunday, the first column of its week.
+    const days = monthGrid(2026, 10, [], { today }).weeks.flat();
+    expect(days.find((d) => d.date === '2026-10-04')).toMatchObject({ inMonth: true });
+    const firsts = monthGrid(2026, 10, [], { today }).weeks.map((w) => w[0].date);
+    expect(firsts.every((date) => new Date(date + 'T00:00:00Z').getUTCDay() === 0)).toBe(true);
+  });
+
+  it('is exactly four weeks for a February that starts on a Sunday', () => {
+    // 1 February 2026 is a Sunday, and 28 February the Saturday that ends the fourth week.
+    const month = monthGrid(2026, 2, [], { today });
     expect(month.weeks).toHaveLength(4);
     expect(month.weeks.flat().every((d) => d.inMonth)).toBe(true);
   });
@@ -280,7 +297,8 @@ describe('the month calendar', () => {
 
   it('shows sessions on the days around the month too', () => {
     const s = squatDay('2026-09-29');
-    const first = monthGrid(2026, 10, [s], { today }).weeks[0][1];
+    // 29 September 2026 is a Tuesday, the third day of the grid's first week.
+    const first = monthGrid(2026, 10, [s], { today }).weeks[0][2];
     expect(first.sessions).toEqual([s.id]);
     expect(first.inMonth).toBe(false);
   });

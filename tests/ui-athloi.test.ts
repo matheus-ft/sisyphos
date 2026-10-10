@@ -26,7 +26,6 @@ import {
   resolveTab,
   sparseNote,
   strengthTabs,
-  topMuscles,
 } from '../src/ui/athloi';
 import { newSession } from '../src/ui/session';
 import { parseMuscles } from '../src/library/parse';
@@ -94,19 +93,6 @@ describe('the body', () => {
     expect(levels.size).toBe(muscles.length);
     expect(levels.get('quads')).toBeGreaterThan(0);
     expect(levels.get('tibialis')).toBe(0);
-  });
-
-  it('lists the muscles that worked, most first, with bars in proportion', () => {
-    const top = topMuscles(volume, 3);
-    expect(top).toHaveLength(3);
-    expect(top[0].share).toBe(1);
-    expect(top[1].share).toBeLessThanOrEqual(1);
-    expect(top.map((t) => t.sets)).toEqual([...top.map((t) => t.sets)].sort((a, b) => b - a));
-    expect(top[0].text).toBe(formatCount(top[0].sets));
-  });
-
-  it('lists none when nothing was trained', () => {
-    expect(topMuscles(weeklyVolume([], library, muscles, 'this_week', today))).toEqual([]);
   });
 
   it('opens on this week, or on four weeks while this week is still bare', () => {

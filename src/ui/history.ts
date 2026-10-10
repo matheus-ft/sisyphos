@@ -5,6 +5,7 @@ import {
   dayAndMonth,
   daysInMonth,
   MONTH_NAMES,
+  weekdayIndex,
   weekStart,
 } from '../metrics/dates';
 import { setE1rm } from '../metrics/e1rm';
@@ -160,8 +161,14 @@ export interface CalendarMonth {
   month: number;
   /** "October 2026". */
   title: string;
-  /** Whole weeks, Monday first, each of seven days. */
+  /** Whole weeks, Sunday first, each of seven days. */
   weeks: CalendarDay[][];
+}
+
+/** The Sunday of the week holding `date`, weeks running Sunday to Saturday. */
+function sundayOf(date: IsoDate): IsoDate {
+  // weekdayIndex counts from Monday (0) to Sunday (6), so Sunday is one day after Saturday's 5.
+  return addDays(date, -((weekdayIndex(date) + 1) % 7));
 }
 
 export function monthGrid(
@@ -181,7 +188,7 @@ export function monthGrid(
   const first = dateOf(year, month, 1);
   const last = dateOf(year, month, daysInMonth(year, month));
   const weeks: CalendarDay[][] = [];
-  for (let start = weekStart(first); start <= last; start = addDays(start, 7)) {
+  for (let start = sundayOf(first); start <= last; start = addDays(start, 7)) {
     weeks.push(
       Array.from({ length: 7 }, (_, i): CalendarDay => {
         const date = addDays(start, i);
@@ -214,8 +221,8 @@ export function monthOf(date: IsoDate): { year: number; month: number } {
   return { year: Number(date.slice(0, 4)), month: Number(date.slice(5, 7)) };
 }
 
-/** The weekday heads over a month grid, Monday first. */
-export const WEEKDAY_INITIALS = ['M', 'T', 'W', 'T', 'F', 'S', 'S'] as const;
+/** The weekday heads over a month grid, Sunday first. */
+export const WEEKDAY_INITIALS = ['S', 'M', 'T', 'W', 'T', 'F', 'S'] as const;
 
 /** A range of days that may be picked; an end left out is open. */
 export interface DayRange {

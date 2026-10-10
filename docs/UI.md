@@ -128,9 +128,9 @@ session. The templates follow, in folders by program.
 **Planning ahead.** A planned session is filled in without starting the clock;
 Start sets the time. "Do this again" copies a past session as a plan; a
 template starts or plans one. "Plan one ahead" and "Log a past session" ask for
-the day in the app's own calendar, a sheet showing one month at a time: days
-with a session carry a disc, days with a plan a dashed ring, today an accent
-ring. Planning allows today and later and logging today and earlier, the days
+the day in the app's own calendar, a sheet showing one month at a time, weeks
+running Sunday to Saturday: days with a session carry a disc, days with a plan
+a dashed ring, today an accent ring. Planning allows today and later and logging today and earlier, the days
 outside greyed and the arrows stopping at the edge. Planning then asks whether
 to start fresh or from a template; logging opens the session on the day.
 
@@ -149,8 +149,8 @@ The folders are a view: nothing is stored for them.
 
 **Historia (History).** Every session by week, newest first, marking any still
 holding pending sets; filtered by exercise, each row shows that exercise's best
-set and e1RM. A calendar shows the month: a disc per session, a ring for a plan,
-a dot for a record day, today ringed. A whole row opens its session.
+set and e1RM. A calendar shows the month, Sunday first: a disc per session, a
+ring for a plan, a dot for a record day, today ringed. A whole row opens its session.
 
 **Past sessions are read, not edited.** A finished session opens locked:
 looking back through history never nudges a set. Edit unlocks it until the
@@ -165,9 +165,9 @@ lifter leaves it.
   muscles count: auxiliary muscles half, not at all, or in full. It is a
   device preference (`muscleCounting` in `src/ui/prefs.ts`) that starts at
   the active preset in `src/metrics/definitions.json`, and it feeds the
-  statue, the list and the table alike. The table lists each muscle's sets
-  and nothing more: the shade is the statue's to show. Each muscle opens the
-  sets behind it. It must read as a
+  statue and the table alike. The table is always shown, most worked first,
+  and lists each muscle's sets and nothing more: the shade is the statue's to
+  show. Each muscle opens the sets behind it. It must read as a
   Greek sculpture of a strong man: the first drawing, an archaic kouros, read
   as Egyptian, the slender youth after it read soft, and a contrapposto that
   broke at the hips was not wanted. The figure's regions are in
@@ -204,7 +204,9 @@ the best single in training, and the best single on a platform.
 
 - **Meets** lists them newest first, each with its date, name, location and
   total, under a summary of each lift's all-time meet best and the most recent
-  meet's. A meet is entered afterwards, in an editor with its details and a
+  meet's, and beside the best total the theoretical total: the three all-time
+  meet bests added together, each from whichever meet it came at, shown only
+  once all three lifts have one. A meet is entered afterwards, in an editor with its details and a
   compact 3 × 3 grid of attempts: a row for each lift with one exercise to
   choose (that lift's competition exercises, starting on the usual one), and for
   each attempt a weight, left empty when it was not taken, and good or missed.
