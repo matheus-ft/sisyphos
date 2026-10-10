@@ -42,3 +42,27 @@ test('a reload mid-session keeps the session open and the rest running', async (
   await expect(page).toHaveURL(new RegExp(`${session}$`));
   await expect(page.getByRole('button', { name: /^Rest, .* of 3:00\./ })).toBeVisible();
 });
+
+test('a relaunch opens on Train with its plan, never on an empty Train', async ({ page }) => {
+  await openSeeded(page);
+  // Each screen heading the relaunch puts up, with whether the plan came with it.
+  // The observer runs before the browser paints, so this is what the lifter saw.
+  await page.addInitScript(() => {
+    const shown: string[] = [];
+    const headings = new WeakSet<Element>();
+    Object.assign(window, { __shown: shown });
+    new MutationObserver(() => {
+      const heading = document.querySelector('main h1');
+      if (!heading || headings.has(heading)) return;
+      headings.add(heading);
+      const start = [...document.querySelectorAll('main button')].some(
+        (b) => b.textContent?.trim() === 'Start',
+      );
+      shown.push(start ? 'planned' : 'empty');
+    }).observe(document, { childList: true, subtree: true });
+  });
+  await page.reload();
+  await expect(page.getByRole('button', { name: 'Start', exact: true })).toBeVisible();
+  const shown = await page.evaluate(() => (window as unknown as { __shown: string[] }).__shown);
+  expect(shown).toEqual(['planned']);
+});

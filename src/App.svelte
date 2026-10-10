@@ -38,7 +38,7 @@
   /** A session is a focused mode, with its own back: the tab bar steps aside. */
   const focused = $derived(route.name === 'session' || route.name === 'finish');
   const takeover = $derived(app.showSetup || app.creating !== null || app.editing !== null);
-  const docked = $derived(!focused && !takeover && app.storage !== null);
+  const docked = $derived(!focused && !takeover && app.ready);
   const banner = $derived(app.status ? bannerOf(app.status, app.inSession) : null);
   /** On the page its action leads to, the banner would only repeat that page's own news. */
   const bannerHome = $derived(
@@ -86,7 +86,7 @@
   {#if app.failure}<p class="failure" role="alert">{app.failure}</p>{/if}
 
   <main>
-    {#if !app.storage}
+    {#if !app.ready}
       <div class="boot">
         {#if !app.failure}<Boulder size="frieze" progress={0} label="Opening" />{/if}
       </div>
@@ -135,7 +135,7 @@
     <TabBar current={tabOf(route)} {trainHref} {conflicts} />
   {/if}
 
-  {#if app.storage && noticeShown( { requested: app.conflictNotice, count: conflicts, inSession: app.inSession, finishing: route.name === 'finish', takeover } )}
+  {#if app.ready && noticeShown( { requested: app.conflictNotice, count: conflicts, inSession: app.inSession, finishing: route.name === 'finish', takeover } )}
     <ConflictNotice
       count={conflicts}
       onreview={() => {
@@ -170,7 +170,15 @@
     color: var(--danger);
   }
 
+  /* A launch that opens fast shows only the ground; a slow one, after a beat, the hill. */
   .boot {
     padding: 30dvh var(--gutter) 0;
+    animation: boot-in var(--dur-base) var(--ease-out) 300ms both;
+  }
+
+  @keyframes boot-in {
+    from {
+      opacity: 0;
+    }
   }
 </style>
