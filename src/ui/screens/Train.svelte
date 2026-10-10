@@ -147,7 +147,7 @@
   Templates
   {#if app.templates.length}<span class="meta">{app.templates.length}</span>{/if}
 </p>
-<TemplateFolders templates={app.templates} />
+<TemplateFolders templates={app.templates} home />
 
 <CalendarSheet
   open={picking === 'plan'}

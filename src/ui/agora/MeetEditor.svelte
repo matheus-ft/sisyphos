@@ -1,6 +1,7 @@
 <script lang="ts">
   import type { CompetitionLift, Exercise } from '../../model';
   import Button from '../kit/Button.svelte';
+  import Notes from '../kit/Notes.svelte';
   import { LIFTS } from '../lifter';
   import {
     EQUIPMENT_SUGGESTIONS,
@@ -153,7 +154,7 @@
 
   <div class="field wide">
     <label for="{uid}-notes">Notes, if any</label>
-    <textarea id="{uid}-notes" bind:value={form.notes} rows="2"></textarea>
+    <Notes id="{uid}-notes" label="Notes" saved={ondelete !== null} bind:value={form.notes} />
   </div>
 
   {#if ondelete}

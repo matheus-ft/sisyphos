@@ -19,6 +19,7 @@ describe('device preferences', () => {
       chime: false,
       muscleCounting: 'fractional',
       theme: 'system',
+      pinnedFolder: null,
     });
     expect(readPrefs(null)).toEqual(DEFAULT_PREFS);
     expect(readPrefs(undefined)).toEqual(DEFAULT_PREFS);
@@ -108,5 +109,12 @@ describe('device preferences', () => {
       plateLb: 2.5,
       muscleCounting: 'direct',
     });
+  });
+
+  it('reads the pinned folder trimmed, and none for junk', () => {
+    expect(readPrefs({ pinnedFolder: ' Rebuild ' }).pinnedFolder).toBe('Rebuild');
+    for (const junk of [null, '', '  ', 3, undefined]) {
+      expect(readPrefs({ pinnedFolder: junk as never }).pinnedFolder).toBeNull();
+    }
   });
 });

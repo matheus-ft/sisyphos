@@ -146,7 +146,12 @@ bodyweight plus, a target RPE or range, and a target rest per exercise. Lists of
 templates, on Train and in Agora, are folders by the label's program name with
 the blocks set apart inside, each folding to a line; templates with no program
 come last under "No program", and when none has a program there are no folders.
-The folders are a view: nothing is stored for them.
+On Train the folders start closed and any one opens; one folder can be pinned
+with the pin on its header (44 pt), and a pinned folder stays open at the top,
+marked "Pinned". Pinning another replaces it, and the pin takes it off. Which
+folder is pinned is a device preference (`pinnedFolder` in `src/ui/prefs.ts`)
+and does not sync; Agora's list keeps its plain, open folders. The folders are
+a view: nothing is stored for them.
 
 **Historia (History).** Every session by week, newest first, marking any still
 holding pending sets; filtered by exercise, each row shows that exercise's best
@@ -155,7 +160,10 @@ ring for a plan, a dot for a record day, today ringed. A whole row opens its ses
 
 **Past sessions are read, not edited.** A finished session opens locked:
 looking back through history never nudges a set. Edit unlocks it until the
-lifter leaves it.
+lifter leaves it. Its notes, and a saved meet's, read the same way: plain text
+in the body font, full width, line breaks kept, no box, with an "Edit" link that
+turns them back into a textarea growing with its text; leaving the field saves
+it and returns to text. A session in progress and a new meet keep the field.
 
 **Athloi (Progress).**
 

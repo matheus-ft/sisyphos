@@ -18,6 +18,8 @@ export interface Prefs {
   muscleCounting: string;
   /** The appearance: the phone's own setting, or Light or Dark whatever the phone says. */
   theme: Theme;
+  /** The program name of the template folder pinned at the top of Train; null for none. */
+  pinnedFolder: string | null;
 }
 
 export const THEMES = ['system', 'light', 'dark'] as const;
@@ -68,6 +70,7 @@ export const DEFAULT_PREFS: Prefs = {
   chime: false,
   muscleCounting: CONFIG.activeMuscleWeights,
   theme: 'system',
+  pinnedFolder: null,
 };
 
 type Stored = Partial<Pick<Settings, keyof Prefs>>;
@@ -86,6 +89,10 @@ export function readPrefs(settings: Stored | null | undefined): Prefs {
         ? s.muscleCounting
         : DEFAULT_PREFS.muscleCounting,
     theme: parseTheme(s.theme),
+    pinnedFolder:
+      typeof s.pinnedFolder === 'string' && s.pinnedFolder.trim() !== ''
+        ? s.pinnedFolder.trim()
+        : null,
   };
 }
 

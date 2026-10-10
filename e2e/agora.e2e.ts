@@ -88,6 +88,8 @@ test('a meet is entered, stands beside the reference max and in Labours, and is 
   await meets.getByRole('textbox', { name: 'Name' }).fill('Regionals');
   await meets.getByLabel('Date', { exact: true }).fill(dayFromToday(-20));
   await meets.getByRole('textbox', { name: 'Location' }).fill('Lisbon');
+  // A new meet keeps the editable field.
+  await expect(meets.getByRole('textbox', { name: 'Notes' })).toBeEditable();
   await meets.getByRole('textbox', { name: 'Bodyweight, kg' }).fill('82.6');
 
   // A 3 x 3 grid: a row for each lift, with its exercise to choose.
@@ -160,6 +162,19 @@ test('a meet is entered, stands beside the reference max and in Labours, and is 
   await expect(meets.getByRole('combobox', { name: 'Deadlift' })).toHaveValue('sumo_deadlift');
   await meets.getByRole('textbox', { name: 'Placing' }).fill('2');
   await weight('Squat', 3).fill('212.5');
+
+  // Notes: a saved meet reads them as text, Edit gives the field back, leaving it returns to text.
+  const noted = meets.locator('[id$="-notes"]');
+  await expect(noted).toHaveCount(1);
+  await expect(meets.getByRole('textbox', { name: 'Notes' })).toHaveCount(0);
+  await meets.getByRole('button', { name: 'Edit notes' }).click();
+  await meets
+    .getByRole('textbox', { name: 'Notes' })
+    .fill('Opener felt light.\nThird was a grinder.');
+  await meets.getByRole('textbox', { name: 'Notes' }).blur();
+  await expect(meets.getByRole('textbox', { name: 'Notes' })).toHaveCount(0);
+  await expect(noted).toHaveCSS('white-space', 'pre-wrap');
+  await expect(noted).toHaveText('Opener felt light.\nThird was a grinder.');
   await meets.getByRole('button', { name: 'Save meet' }).click();
   await expect(page.getByRole('status').filter({ hasText: 'Meet saved' })).toBeVisible();
   await expect(meets.getByRole('listitem').first()).toContainText('600 kg');

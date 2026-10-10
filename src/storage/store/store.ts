@@ -100,6 +100,8 @@ export interface Settings {
   muscleCounting?: string;
   /** The appearance: 'system', 'light' or 'dark'; `readPrefs` treats anything else as 'system'. */
   theme?: string;
+  /** The template folder (a program's name) pinned open at the top of Train; null for none. */
+  pinnedFolder?: string | null;
 }
 
 /**
