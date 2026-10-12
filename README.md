@@ -87,6 +87,7 @@ npm run e2e      # the main flows in a browser at phone size (e2e/); CI runs the
 npm run smoke    # the storage layer against real GitHub; see tests/smoke.live.test.ts
 npm run hooks:install   # formatting on commit
 node scripts/icons.mjs  # re-render the PNG icons from public/favicon.svg (the source)
+python3 scripts/health-shortcut.py unsigned.shortcut  # on a Mac, then sign it: docs/HEALTH.md
 ```
 
 ## Repository settings
