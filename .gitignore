@@ -17,3 +17,6 @@ playwright-report
 # Rulesets as exported from github.com: kept beside the repo for importing,
 # but the live settings are the truth (README, Repository settings).
 .github/rulesets/
+
+# Signed Shortcuts from scripts/health-shortcut.py and `shortcuts sign`: built per person, never committed.
+*.shortcut

@@ -27,76 +27,68 @@ Shortcut's access without signing the app out, and the other way round. Keep
 the token in the Shortcut only. Never paste it anywhere you would not paste a
 password.
 
-In the steps below, `<token>` is that token, `OWNER/REPO` is your log repo, and
-`lifter/bodyweight.csv` is the file in it.
+## Making the Shortcut
+
+On a Mac signed in to an Apple Account, from the repo root:
+
+```sh
+python3 scripts/health-shortcut.py unsigned.shortcut
+shortcuts sign --mode anyone --input unsigned.shortcut --output "Sisyphos weigh-in.shortcut"
+```
+
+The first command builds the Shortcut unsigned; the second signs it, since
+iOS imports only signed ones. `shortcuts sign` can sit on after it has written
+the file: once `Sisyphos weigh-in.shortcut` exists, stop it with Ctrl-C. The
+file holds no token and no repo name, so it is safe to share.
+
+1. AirDrop it to the iPhone and open it there. The Mac's Shortcuts has no Health
+   actions, so do not import it on the Mac.
+2. On import it asks for the token and for the log repo as `OWNER/REPO`.
+3. Open it once and check that **Find Health Samples** reads **Type is Weight**.
 
 ## The automation
 
-1. Open Shortcuts and go to **Automation**. Tap **+**, then **Personal
-   Automation**.
-2. Choose **App**, pick **Happy Scale**, and select **Is Closed**. Tap **Next**.
-3. Choose **Run Immediately**. Turn off anything that asks before running.
+The file cannot carry its trigger, so make it on the phone:
+
+1. In Shortcuts, go to **Automation**, tap **+**, choose **App**, pick
+   **Happy Scale** and select **Is Closed**.
+2. Choose **Run Immediately**, and turn off anything that asks before running.
+3. For the action, choose **Run Shortcut** with **Sisyphos weigh-in**.
 
 The trigger is leaving Happy Scale, not a time of day. Health cannot be read
 while the phone is locked, and a time-based automation can fire while it is.
 Leaving the app after a weigh-in means the weigh-in is already in Health.
 
-## The actions
+## What it writes
 
-Add these in order. Names in quotes are the action titles; some may read
-differently on your iOS version (see the last section).
+Today's latest weight sample, from any source, as `<day>,<kg>,import`. It
+writes nothing when:
 
-1. **Find Health Samples.** Type is Weight, Source is Happy Scale, Start Date is
-   today. Sort by Start Date, latest first, Limit 1. If none, **Stop**.
-2. **Get Details of Health Sample.** Take Value, Unit and Start Date.
-3. If Unit is `lb`, multiply Value by `0.45359237`. Round to 2 decimal places.
-4. **Replace Text** `,` with `.`, and trim. Store the result as `kg`.
-5. **Format Date** from Start Date, custom format `yyyy-MM-dd`. Store as `day`.
-6. **Get Contents of URL**: GET `https://api.github.com/repos/OWNER/REPO/contents/lifter/bodyweight.csv`
-   with headers `Authorization: Bearer <token>`, `Accept: application/vnd.github+json`,
-   and `X-GitHub-Api-Version: 2022-11-28`.
-7. If the response has no `sha`, the file is absent: set `csv` to
-   `date,weight_kg,source` followed by a newline, and leave `sha` empty.
-   Otherwise, take `sha`, remove the newlines from `content`, Base64 Decode it,
-   and store the result as `csv`.
-8. **Match Text** `(?m)^<day>,` in `csv`. If it matches, **Stop**. Never
-   overwrite a day.
-9. **Text**: `csv` (with a newline added if it does not end in one), then
-   `<day>,<kg>,import`, then a newline.
-10. **Base64 Encode**, with Line Breaks set to None.
-11. **Get Contents of URL**: PUT to the same URL, with a JSON body of
-    `message` set to `health: bodyweight <day>`, `content` set to the encoded
-    text, and `sha` set to the value from step 7. Omit `sha` when creating the
-    file.
-12. If the response has no `commit`, **Show Notification** "Weigh-in not sent".
-    The next run retries.
+- there is no weight sample from today;
+- the file already has a row for today, since it never overwrites a day;
+- the weight is not 20 to 399 kg, with at most 2 decimals. You get a
+  notification showing the value it read.
 
-The Shortcut writes `source` as `import` only. The app writes `manual` for
-weigh-ins typed in it (see `DATA.md`, Serialisation).
+It writes `source` as `import` only. The app writes `manual` for weigh-ins typed
+in it (see `DATA.md`, Serialisation). How each step does this, and why, is in
+`scripts/health-shortcut.py`.
 
 ## What can go wrong
 
-- **A 409 response.** The app wrote to the file between step 6 and step 11, so
-  the `sha` is stale. Nothing is written. The next run retries from the start.
-- **The same day weighed in the app before it synced.** Step 8 finds the day in
-  the file and stops, so the Shortcut does not overwrite it. If the app's
-  weigh-in is unsynced and the Shortcut's row lands first, the conflict screen
-  asks which to keep when the app next syncs. Pick one; sync does not stop for it.
-- **A malformed row** makes the whole bodyweight table unreadable until someone
-  fixes it by hand. The steps above guard against each cause: a decimal comma
-  (step 4 turns it into a point), a second row for one day (step 8), a quote
-  (no step writes one), and a source other than `manual` or `import` (step 9
-  always writes `import`).
+- **A 409 response.** The app wrote to the file between the Shortcut's read and
+  its write, so its `sha` is stale. Nothing is written, a notification says so,
+  and the next run retries.
+- **The same day weighed in the app before it synced.** The Shortcut finds the
+  day in the file and stops. If the app's weigh-in is unsynced and the
+  Shortcut's row lands first, the conflict screen asks which to keep when the
+  app next syncs. Pick one; sync does not stop for it.
+- **An "Unknown action" after an iOS update.** The file format is Shortcuts'
+  private one, and iOS may rename an action. Fix the identifier in the script
+  and build again.
 
-## Why there is no .shortcut file
+## Why it is generated, not shipped
 
 Since iOS 15 an imported Shortcut must be signed, and signing needs a Mac. A
-shared file would also carry the token inside it. So you build it once from the
-steps above, with your own token.
-
-## Not verified on a device
-
-These steps have not been run on a phone. Action names, option labels and the
-order of settings may differ by iOS version. The logic is what matters: find the
-latest weigh-in for today, convert it to kg, append it only if the day is absent,
-and write the file with its `sha`.
+signed file would be an opaque binary in the repo, where nobody can review what
+it does with the token. The script is the reviewable source, and anyone with a
+Mac can build the same file.
