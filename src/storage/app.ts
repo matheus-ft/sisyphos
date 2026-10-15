@@ -60,9 +60,11 @@ export function parseRepo(text: string): { owner: string; repo: string } | null 
     .replace(/\/+$/, '')
     .replace(/\.git$/i, '');
   // GitHub's own rules: owners are letters, digits and hyphens; repositories
-  // may also hold dots and underscores.
+  // may also hold dots and underscores, but cannot be `.` or `..`, which a URL
+  // would read as a path step rather than a name.
   const match = /^([A-Za-z0-9-]+)\/([A-Za-z0-9._-]+)$/.exec(name);
-  return match ? { owner: match[1], repo: match[2] } : null;
+  if (!match || match[2] === '.' || match[2] === '..') return null;
+  return { owner: match[1], repo: match[2] };
 }
 
 /** GitHub's token prefixes, which say what kind of token it is and nothing secret. */

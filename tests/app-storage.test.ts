@@ -70,12 +70,19 @@ describe('parseRepo', () => {
     expect(parseRepo(text)).toEqual({ owner, repo });
   });
 
-  it.each(['', 'me', 'me/', '/log', 'me/log/extra', 'me/ log', 'https://gitlab.com/me/log'])(
-    'refuses %j',
-    (text) => {
-      expect(parseRepo(text)).toBeNull();
-    },
-  );
+  it.each([
+    '',
+    'me',
+    'me/',
+    '/log',
+    'me/log/extra',
+    'me/ log',
+    'https://gitlab.com/me/log',
+    'me/.',
+    'me/..',
+  ])('refuses %j', (text) => {
+    expect(parseRepo(text)).toBeNull();
+  });
 });
 
 describe('maskToken', () => {
