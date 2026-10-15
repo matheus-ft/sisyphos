@@ -504,9 +504,16 @@ class App {
     if (!s) return;
     // Opened within the tap, as Safari requires, and pointed at the proposal after.
     const tab = window.open('', '_blank');
-    const kind = await s.log.saveExercise(exercise);
-    if (tab && kind) tab.location.href = submissionUrl(exercise, kind);
-    else tab?.close();
+    try {
+      const kind = await s.log.saveExercise(exercise);
+      if (tab && kind) tab.location.href = submissionUrl(exercise, kind);
+      else tab?.close();
+      this.failure = null;
+    } catch (error) {
+      tab?.close();
+      this.failure = `Not saved: ${messageOf(error)}`;
+      return;
+    }
     this.creating = null;
     await this.load();
     const route = this.route;
