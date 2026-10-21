@@ -37,7 +37,7 @@ spoto_press,Spoto Press,bench,high_spec,,,,pecs,triceps/front_delts
 larsen_press,Larsen Press,bench,high_spec,,,,pecs,triceps/front_delts
 pin_press,Pin Press,bench,high_spec,,,,pecs,triceps/front_delts
 db_bench,Dumbbell Bench Press,bench,low_spec,,,,pecs,front_delts/triceps
-incline_bench,Incline Bench Press,bench,low_spec,,,,pecs/front_delts,triceps
+incline_bench,Incline Dumbbell Press,bench,low_spec,,,,pecs/front_delts,triceps
 dips,Dips,bench,acc,,bw_plus,,pecs/triceps,front_delts
 overhead_press,Overhead Press,bench,acc,,,,front_delts/triceps,upper_back/lower_back
 
