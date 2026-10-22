@@ -114,3 +114,4 @@ plank,Plank,,acc,,none,,abs,front_delts
 ab_wheel,Ab Wheel,,acc,,bw_plus,,abs,lats
 hanging_leg_raise,Hanging Leg Raise,,acc,,bw_plus,,abs/hip_flexors,forearms/lats
 suitcase_carry,Suitcase Carry,,acc,true,,,abs/lower_back,forearms/upper_back
+incline_dumbbell_press,Incline Dumbbell Press,bench,acc,,,,pecs/front_delts,triceps
